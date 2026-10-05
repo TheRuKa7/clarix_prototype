@@ -1,0 +1,28 @@
+<div class="tf-page">
+  <p class="tf-hint">
+    What happens to an upload's rows before a call is placed. These aren't user-authored — they're
+    built into the pipeline, or planned and not live yet.
+  </p>
+
+  @if (loading()) {
+    <div class="tf-empty">Loading…</div>
+  } @else {
+    <div class="tf-grid">
+      @for (e of entries(); track e.id) {
+        <article class="tf-card">
+          <div class="tf-card-head">
+            <h3>{{ e.name }}</h3>
+            <span class="tf-badge" [class.is-planned]="e.status === 'PLANNED'">
+              {{ e.status === 'LIVE' ? 'Live' : 'Planned' }}
+            </span>
+          </div>
+          <p class="tf-desc">{{ e.description }}</p>
+          <dl class="tf-io">
+            <div><dt>In</dt><dd>{{ e.input }}</dd></div>
+            <div><dt>Out</dt><dd>{{ e.output }}</dd></div>
+          </dl>
+        </article>
+      }
+    </div>
+  }
+</div>

@@ -1,0 +1,33 @@
+@if (drawer()) { <div class="sn-scrim" (click)="drawer.set(false)"></div> }
+<aside class="sn" [class.open]="open()" [class.drawer]="drawer()" (mouseenter)="hoverIn()" (mouseleave)="hoverOut()" (focusin)="hoverIn()" (focusout)="focusOut($event)" aria-label="Main">
+  <a class="sn-brand" routerLink="/workflows" (click)="picked()" aria-label="Clarix home">
+    <img class="sn-mark" src="favicon.svg" alt="" width="40" height="40" />
+    <span class="sn-txt"><b>Clarix</b><small>workflows and calls</small></span>
+  </a>
+
+  <nav class="sn-nav">
+    @for (g of groups(); track g.label) {
+      <div class="sn-group"><span class="sn-txt">{{ g.label }}</span></div>
+      @for (i of g.items; track i.route) {
+        <a class="sn-link" [routerLink]="i.route" routerLinkActive="active" ariaCurrentWhenActive="page" [routerLinkActiveOptions]="{ exact: false }" (click)="picked()" [attr.title]="open() ? null : i.label">
+          <span class="sn-ico"><lucide-icon [name]="i.icon" [size]="18"></lucide-icon></span>
+          <span class="sn-txt">{{ i.label }}</span>
+        </a>
+      }
+    }
+  </nav>
+
+  <div class="sn-foot">
+    <span class="sn-avatar" [title]="auth.getCurrentUser()?.email ?? ''">
+      @if (avatar.value()) { <img [src]="avatar.value()!" alt="" /> } @else { {{ initials() }} }
+    </span>
+    <span class="sn-txt sn-who"><b>{{ auth.getCurrentUser()?.name ?? 'User' }}</b><small [title]="auth.getCurrentUser()?.email ?? ''">{{ auth.getCurrentUser()?.email ?? '' }}</small></span>
+    <button type="button" class="sn-out sn-txt" (click)="cycleTheme()" [title]="'Theme: ' + themeLabel()" [attr.aria-label]="'Theme: ' + themeLabel() + '. Change theme'"><lucide-icon [name]="themeIcon()" [size]="16"></lucide-icon></button>
+    <button type="button" class="sn-out sn-txt" (click)="signOut()" title="Sign out" aria-label="Sign out"><lucide-icon name="log-out" [size]="16"></lucide-icon></button>
+  </div>
+
+  <!-- Quick open and close, halfway down the edge. -->
+  <button type="button" class="sn-handle" (click)="toggle($event)" [attr.aria-label]="open() ? 'Close side bar' : 'Keep side bar open'" [title]="open() ? 'Close' : 'Keep open'">
+    <lucide-icon [name]="open() ? 'chevron-left' : 'chevron-right'" [size]="14" [strokeWidth]="2"></lucide-icon>
+  </button>
+</aside>

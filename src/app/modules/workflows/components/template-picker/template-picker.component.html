@@ -1,0 +1,71 @@
+<div class="tp">
+  <button
+    type="button"
+    class="tp__trigger"
+    [class.tp__trigger--placeholder]="!selectedId()"
+    [disabled]="disabled()"
+    [attr.aria-expanded]="open()"
+    aria-haspopup="listbox"
+    (click)="toggle()"
+  >
+    <lucide-icon name="git-branch" [size]="15" class="tp__trigger-icon"></lucide-icon>
+    <span class="tp__label">{{ label() }}</span>
+    <lucide-icon name="chevron-down" [size]="15" class="tp__caret"></lucide-icon>
+  </button>
+
+  @if (open()) {
+    <div class="tp__menu" role="listbox">
+      <div class="tp__search">
+        <lucide-icon name="search" [size]="14"></lucide-icon>
+        <input
+          type="text"
+          class="tp__search-input"
+          placeholder="Search by name or key…"
+          autocomplete="off"
+          [value]="search()"
+          (input)="onSearch($any($event.target).value)"
+          (click)="$event.stopPropagation()"
+        />
+      </div>
+
+      <div class="tp__options">
+        @if (loading()) {
+          <p class="tp__state">Loading templates…</p>
+        } @else {
+          @if (allowAny()) {
+            <button
+              type="button"
+              class="tp__option"
+              role="option"
+              [attr.aria-selected]="!selectedId()"
+              [class.tp__option--active]="!selectedId()"
+              (click)="pick(null)"
+            >
+              <span class="tp__option-name">{{ anyLabel() }}</span>
+            </button>
+          }
+
+          @for (t of filtered(); track t.id) {
+            <button
+              type="button"
+              class="tp__option"
+              role="option"
+              [attr.aria-selected]="t.id === selectedId()"
+              [class.tp__option--active]="t.id === selectedId()"
+              (click)="pick(t)"
+            >
+              <span class="tp__option-name">{{ t.name }}</span>
+              @if (t.templateKey) {
+                <span class="tp__option-key">{{ t.templateKey }}</span>
+              }
+            </button>
+          }
+
+          @if (filtered().length === 0) {
+            <p class="tp__state">No template matches “{{ search() }}”.</p>
+          }
+        }
+      </div>
+    </div>
+  }
+</div>

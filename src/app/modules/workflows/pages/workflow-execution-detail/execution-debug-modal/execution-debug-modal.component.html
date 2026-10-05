@@ -1,0 +1,126 @@
+<div class="dbg-backdrop" (click)="close()">
+  <div class="dbg-card" role="dialog" aria-modal="true" aria-label="Execution event timeline"
+    (click)="$event.stopPropagation()">
+
+    <header class="dbg-header">
+      <div class="dbg-title">
+        <lucide-icon name="history" [size]="18"></lucide-icon>
+        <span>Event Timeline</span>
+        <span class="dbg-count">{{ events().length }} events</span>
+      </div>
+      <div class="dbg-actions">
+        <button *hasPermission="'workflows:executions:debug'" type="button" class="dbg-btn dbg-btn--primary"
+          (click)="syncNow()" [disabled]="syncing()"
+          title="Poll the call provider's call-details API and reconcile status now">
+          <lucide-icon [name]="syncing() ? 'loader' : 'refresh-cw'" [size]="14"
+            [class.dbg-spin]="syncing()"></lucide-icon>
+          {{ syncing() ? 'Syncing…' : 'Sync now' }}
+        </button>
+        <button type="button" class="dbg-icon-btn" (click)="load()" [disabled]="loading()" title="Refresh timeline">
+          <lucide-icon name="rotate-cw" [size]="16" [class.dbg-spin]="loading()"></lucide-icon>
+        </button>
+        <button type="button" class="dbg-icon-btn" (click)="close()" aria-label="Close">
+          <lucide-icon name="x" [size]="18"></lucide-icon>
+        </button>
+      </div>
+    </header>
+
+    <div class="dbg-body">
+      @if (loading() && events().length === 0) {
+        <div class="dbg-state">Loading timeline…</div>
+      } @else if (error()) {
+        <div class="dbg-state dbg-state--error">
+          <lucide-icon name="triangle-alert" [size]="18"></lucide-icon>
+          {{ error() }}
+        </div>
+      } @else if (events().length === 0) {
+        <div class="dbg-state">No events recorded for this execution yet.</div>
+      } @else {
+        <ol class="dbg-timeline">
+          @for (node of nodes(); track node.event.id) {
+            <li class="dbg-node">
+              <div class="dbg-rail">
+                <span class="dbg-dot" [class]="node.tone" [class.dbg-dot--latest]="node.isLatest">
+                  <lucide-icon [name]="node.icon" [size]="13"></lucide-icon>
+                </span>
+              </div>
+
+              <div class="dbg-content">
+                <div class="dbg-line">
+                  <span class="dbg-label">{{ node.label }}</span>
+                  @if ((node.event.retryAttempt ?? 0) > 0) {
+                    <span class="dbg-badge">attempt {{ node.event.retryAttempt }}</span>
+                  }
+                </div>
+
+                <div class="dbg-meta">
+                  <span [title]="node.event.createdAt">{{ node.time }}</span>
+                  @if (node.relative) { <span class="dbg-rel">· {{ node.relative }}</span> }
+                  @if (node.event.performedBy) {
+                    <span class="dbg-by"><lucide-icon name="user" [size]="11"></lucide-icon>{{ node.event.performedBy }}</span>
+                  }
+                </div>
+
+                <ng-container *hasPermission="'workflows:executions:debug'">
+                @if (node.hasRequest || node.hasResponse || node.hasError) {
+                  <div class="dbg-pills">
+                    @if (node.hasRequest) {
+                      <button type="button" class="dbg-pill"
+                        [class.dbg-pill--active]="isPayloadOpen(node.event.id, 'request')"
+                        (click)="togglePayload(node.event.id, 'request')">
+                        <lucide-icon name="arrow-up-right" [size]="12"></lucide-icon> Request
+                      </button>
+                    }
+                    @if (node.hasResponse) {
+                      <button type="button" class="dbg-pill"
+                        [class.dbg-pill--active]="isPayloadOpen(node.event.id, 'response')"
+                        (click)="togglePayload(node.event.id, 'response')">
+                        <lucide-icon name="arrow-down-left" [size]="12"></lucide-icon> Response
+                      </button>
+                    }
+                    @if (node.hasError) {
+                      <button type="button" class="dbg-pill dbg-pill--error"
+                        [class.dbg-pill--active]="isPayloadOpen(node.event.id, 'error')"
+                        (click)="togglePayload(node.event.id, 'error')">
+                        <lucide-icon name="triangle-alert" [size]="12"></lucide-icon> Error
+                      </button>
+                    }
+                  </div>
+
+                  @if (isPayloadOpen(node.event.id, 'request')) {
+                    <div class="dbg-payload">
+                      <button type="button" class="dbg-copy" (click)="copyPayload(payloadJson(node.event, 'request'))">
+                        <lucide-icon [name]="copied() ? 'check' : 'copy'" [size]="12"></lucide-icon>
+                        {{ copied() ? 'Copied' : 'Copy' }}
+                      </button>
+                      <pre>{{ payloadJson(node.event, 'request') }}</pre>
+                    </div>
+                  }
+                  @if (isPayloadOpen(node.event.id, 'response')) {
+                    <div class="dbg-payload">
+                      <button type="button" class="dbg-copy" (click)="copyPayload(payloadJson(node.event, 'response'))">
+                        <lucide-icon [name]="copied() ? 'check' : 'copy'" [size]="12"></lucide-icon>
+                        {{ copied() ? 'Copied' : 'Copy' }}
+                      </button>
+                      <pre>{{ payloadJson(node.event, 'response') }}</pre>
+                    </div>
+                  }
+                  @if (isPayloadOpen(node.event.id, 'error')) {
+                    <div class="dbg-payload dbg-payload--error">
+                      <button type="button" class="dbg-copy" (click)="copyPayload(payloadJson(node.event, 'error'))">
+                        <lucide-icon [name]="copied() ? 'check' : 'copy'" [size]="12"></lucide-icon>
+                        {{ copied() ? 'Copied' : 'Copy' }}
+                      </button>
+                      <pre>{{ payloadJson(node.event, 'error') }}</pre>
+                    </div>
+                  }
+                }
+                </ng-container>
+              </div>
+            </li>
+          }
+        </ol>
+      }
+    </div>
+  </div>
+</div>

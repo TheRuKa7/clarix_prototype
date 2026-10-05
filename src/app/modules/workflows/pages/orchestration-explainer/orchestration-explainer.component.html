@@ -1,0 +1,31 @@
+<div class="ex-page">
+  <p class="ex-hint">
+    The agent is one voice for the whole call. Clarix decides what that call is about; the provider
+    runs the conversation; Clarix makes sense of it afterwards.
+  </p>
+
+  <div class="ex-row">
+    @for (card of boundary; track $index) {
+      <div class="ex-card" [class.is-clarix]="card.who === 'Clarix'">
+        <span class="ex-when">{{ card.when }}</span>
+        <h4>{{ card.who }}</h4>
+        <ul>
+          @for (item of card.items; track item) {
+            <li>{{ item }}</li>
+          }
+        </ul>
+      </div>
+      @if ($index < boundary.length - 1) {
+        <span class="ex-arrow">→</span>
+      }
+    }
+  </div>
+
+  <div class="ex-note">
+    <strong>Why not hand the supplier between bots?</strong>
+    <p>
+      Switching voice mid-call means a new media session: reconnect delay, an audible click, and a
+      supplier who thinks the line dropped. One persona, many agenda items.
+    </p>
+  </div>
+</div>

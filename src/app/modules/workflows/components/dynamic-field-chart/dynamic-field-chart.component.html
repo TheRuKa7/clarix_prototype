@@ -1,0 +1,49 @@
+@if (hasData()) {
+  @switch (chartType()) {
+    @case ('donut') {
+      <apx-chart
+        [series]="donutOptions().series"
+        [chart]="donutOptions().chart"
+        [labels]="donutOptions().labels"
+        [colors]="donutOptions().colors"
+        [legend]="donutOptions().legend"
+        [dataLabels]="donutOptions().dataLabels"
+        [stroke]="donutOptions().stroke"
+        [tooltip]="donutOptions().tooltip"
+        [plotOptions]="donutOptions().plotOptions"
+        [theme]="donutOptions().theme"
+      ></apx-chart>
+    }
+    @case ('line') {
+      <apx-chart
+        [series]="lineOptions().series"
+        [chart]="lineOptions().chart"
+        [xaxis]="lineOptions().xaxis"
+        [yaxis]="lineOptions().yaxis"
+        [colors]="lineOptions().colors"
+        [dataLabels]="lineOptions().dataLabels"
+        [legend]="lineOptions().legend"
+        [tooltip]="lineOptions().tooltip"
+        [fill]="lineOptions().fill"
+        [theme]="lineOptions().theme"
+      ></apx-chart>
+    }
+    @default {
+      <apx-chart
+        [series]="barOptions().series"
+        [chart]="barOptions().chart"
+        [xaxis]="barOptions().xaxis"
+        [yaxis]="barOptions().yaxis"
+        [colors]="barOptions().colors"
+        [plotOptions]="barOptions().plotOptions"
+        [dataLabels]="barOptions().dataLabels"
+        [legend]="barOptions().legend"
+        [tooltip]="barOptions().tooltip"
+        [fill]="barOptions().fill"
+        [theme]="barOptions().theme"
+      ></apx-chart>
+    }
+  }
+} @else {
+  <div class="empty-state">No responses collected yet</div>
+}

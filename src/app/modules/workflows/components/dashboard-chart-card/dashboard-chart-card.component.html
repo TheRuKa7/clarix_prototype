@@ -1,0 +1,18 @@
+<section class="chart-card" aria-busy="{{ loading() }}">
+  <header class="chart-card-header">
+    <h3 class="chart-card-title">{{ title() }}</h3>
+    @if (subtitle()) {
+      <p class="chart-card-subtitle">{{ subtitle() }}</p>
+    }
+  </header>
+
+  <div class="chart-card-body">
+    @if (loading()) {
+      <div class="chart-card-skeleton" aria-hidden="true"></div>
+    } @else if (empty()) {
+      <div class="chart-card-empty">{{ emptyMessage() }}</div>
+    } @else {
+      <ng-content></ng-content>
+    }
+  </div>
+</section>

@@ -1,0 +1,359 @@
+<div class="modal-backdrop" (click)="cancel()" aria-hidden="true"></div>
+
+<div class="modal" role="dialog" aria-modal="true" aria-label="New campaign">
+
+  <div class="modal-header">
+    <h2 class="modal-title">New campaign</h2>
+    <button class="close-btn" (click)="cancel()" aria-label="Close">
+      <lucide-icon name="x" [size]="20"></lucide-icon>
+    </button>
+  </div>
+
+  <div class="modal-body">
+
+    @if (result()) {
+      <div class="result-banner" role="status">
+        <lucide-icon name="circle-check" [size]="18"></lucide-icon>
+        <div>
+          <p class="result-title">Campaign started</p>
+          <p class="result-text">
+            Queued <strong>{{ result()!.triggered }}</strong> / {{ result()!.total }}
+            @if (result()!.failed > 0) {
+              · <span class="result-failed">{{ result()!.failed }} failed</span>
+            }
+          </p>
+        </div>
+      </div>
+
+      @if (result()!.failed > 0 && result()!.failedRows.length > 0) {
+        <div class="failed-rows">
+          <p class="section-label">Failed rows (showing up to 10)</p>
+          <ul>
+            @for (row of result()!.failedRows.slice(0, 10); track row.row) {
+              <li>Row {{ row.row }}: {{ row.reason }}</li>
+            }
+          </ul>
+        </div>
+      }
+
+      @if (result()!.rows && result()!.rows!.length > 0 && file()) {
+        <button type="button" class="btn-secondary" (click)="downloadResultCsv()">
+          <lucide-icon name="download" [size]="16"></lucide-icon>
+          Download result sheet
+        </button>
+      }
+    } @else {
+
+      <!-- One screen: pick the agent, get its template, drop the filled sheet, start. -->
+      <div class="nc-agent">
+        <label class="nc-field">
+          <span class="section-label">Agent</span>
+          <select class="form-input form-select" [ngModel]="activeTemplate()?.id || ''" (ngModelChange)="pickById($event)" aria-label="Agent">
+            <option value="" disabled>{{ agentsLoading() ? 'Loading agents…' : 'Choose an agent' }}</option>
+            @for (a of agentOptions(); track a.id) { <option [value]="a.id">{{ a.name }}</option> }
+          </select>
+        </label>
+        <button type="button" class="btn-secondary nc-template" (click)="downloadSample()" [disabled]="!activeTemplate()"
+          [title]="activeTemplate() ? 'Sheet with the columns ' + activeTemplate()!.name + ' needs' : 'Choose an agent first'">
+          <lucide-icon name="download" [size]="15"></lucide-icon> Template
+        </button>
+      </div>
+
+      @if (activeTemplate()) {
+      <section class="section">
+        <p class="section-label">Sheet</p>
+
+        @if (!file()) {
+          <label class="dropzone">
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              (change)="onFileSelected($event)"
+              class="dropzone-input"
+            />
+            <lucide-icon name="upload" [size]="28" class="dropzone-icon"></lucide-icon>
+            <span class="dropzone-title">Drop the filled sheet or click to choose</span>
+            <span class="dropzone-hint">CSV with the template columns</span>
+          </label>
+        } @else {
+          <div class="file-pill">
+            <lucide-icon name="file-text" [size]="18"></lucide-icon>
+            <div class="file-meta">
+              <span class="file-name">{{ file()!.name }}</span>
+              <span class="file-size">{{ (file()!.size / 1024) | number:'1.0-1' }} KB</span>
+            </div>
+            <button type="button" class="file-remove" (click)="removeFile()" aria-label="Remove file">
+              <lucide-icon name="x" [size]="16"></lucide-icon>
+            </button>
+          </div>
+
+          @if (parsing()) {
+            <p class="status-line">
+              <lucide-icon name="loader-circle" [size]="14" class="animate-spin"></lucide-icon>
+              Reading headers…
+            </p>
+          } @else if (headers().length > 0) {
+            <div class="file-status">
+              <!-- What's in the file. -->
+              <p class="status-line status-ok">
+                <lucide-icon name="check" [size]="14"></lucide-icon>
+                Detected {{ headers().length }} columns
+                @if (countingRows()) {
+                  <span class="status-pending">· counting rows…</span>
+                } @else if (rowCount() !== null) {
+                  <span>· {{ rowCount() | number }} {{ rowCount() === 1 ? 'row' : 'rows' }}</span>
+                }
+              </p>
+
+              <!-- What we did with it. Amber once a column is left for the user to map by hand. -->
+              <span
+                class="map-badge"
+                [class.map-badge-partial]="autoMappedColumnCount() < headers().length"
+                [title]="'Matched ' + autoMappedColumnCount() + ' of ' + headers().length + ' CSV columns to a field by name. Map the rest below.'"
+              >
+                <lucide-icon name="link" [size]="12"></lucide-icon>
+                {{ autoMappedColumnCount() }} auto mapped
+              </span>
+            </div>
+
+            <!-- The headers parsed fine, so the file looks healthy; say why it still can't run. -->
+            @if (isEmptySheet()) {
+              <p class="status-line status-error" role="alert">
+                <lucide-icon name="circle-alert" [size]="14"></lucide-icon>
+                This sheet has no data rows — add at least one row below the header to trigger.
+              </p>
+            }
+          }
+        }
+      </section>
+
+      @if (headers().length > 0) {
+        <details class="nc-more" [open]="missingMappings().length > 0">
+          <summary>
+            <lucide-icon name="sliders-horizontal" [size]="14"></lucide-icon>
+            Columns and options
+            <span class="nc-more-hint">{{ missingMappings().length ? missingMappings().length + ' to match' : 'all matched' }}{{ eventTypeOptions().length > 1 ? ' · event ' + eventType() : '' }}{{ scheduledAtColumn() ? ' · scheduled' : '' }}</span>
+          </summary>
+        @if (eventTypeOptions().length > 1) {
+          <section class="section">
+            <p class="section-label">Event type</p>
+            <select
+              class="form-input form-select"
+              [ngModel]="eventType()"
+              (ngModelChange)="setEventType($event)"
+            >
+              @for (et of eventTypeOptions(); track et) {
+                <option [value]="et">{{ et }}</option>
+              }
+            </select>
+          </section>
+        }
+
+        <section class="section">
+          <p class="section-label">Columns</p>
+          <p class="section-hint">
+            Pick which column from your uploaded CSV provides the value for each system field below.
+            Required fields must be mapped before you can trigger.
+          </p>
+
+          @if (contactKeys().length > 0) {
+            <div class="mapping-group">
+              <p class="section-sublabel">Contact</p>
+              @for (key of contactKeys(); track key) {
+                <div class="mapping-row">
+                  <div class="mapping-key">
+                    <span class="key-name">{{ key }}<span class="req-star" aria-label="required" title="required">*</span></span>
+                  </div>
+                  <select
+                    class="form-input form-select"
+                    [ngModel]="contactMapping()[key]"
+                    (ngModelChange)="setContactMapping(key, $event)"
+                  >
+                    <option value="">— Skip —</option>
+                    @for (h of headers(); track h) {
+                      <option [value]="h">{{ h }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            </div>
+          }
+
+          @if (contextMappings().length > 0) {
+            <div class="mapping-group-separator" role="separator" aria-hidden="true"></div>
+
+            <div class="mapping-group">
+              <p class="section-sublabel">Context fields</p>
+              @for (m of contextMappings(); track m.fieldName) {
+                <div class="mapping-row">
+                  <div class="mapping-key">
+                    <span class="key-name">{{ m.fieldName }}@if (m.required) {<span class="req-star" aria-label="required" title="required">*</span>}</span>
+                  </div>
+                  <select
+                    class="form-input form-select"
+                    [ngModel]="contextMapping()[m.fieldName] || ''"
+                    (ngModelChange)="setContextMapping(m.fieldName, $event)"
+                  >
+                    <option value="">— Skip —</option>
+                    @for (h of headers(); track h) {
+                      <option [value]="h">{{ h }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            </div>
+          }
+
+          @if (enrichmentInputs().length > 0) {
+            <div class="mapping-group-separator" role="separator" aria-hidden="true"></div>
+
+            <div class="mapping-group">
+              <p class="section-sublabel">Enrichment inputs</p>
+              <p class="section-hint">
+                Inputs for the template's Data Functions. These derive other values
+                (e.g. supplier id → phone), so the derived fields are not asked here.
+              </p>
+              @for (e of enrichmentInputs(); track e.key) {
+                <div class="mapping-row">
+                  <div class="mapping-key">
+                    <span class="key-name">{{ e.key }}@if (e.required) {<span class="req-star" aria-label="required" title="required">*</span>}</span>
+                  </div>
+                  <select
+                    class="form-input form-select"
+                    [ngModel]="enrichmentInputMapping()[e.key] || ''"
+                    (ngModelChange)="setEnrichmentInputMapping(e.key, $event)"
+                  >
+                    <option value="">— Skip —</option>
+                    @for (h of headers(); track h) {
+                      <option [value]="h">{{ h }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            </div>
+          }
+
+          @if (reportFields().length > 0) {
+            <div class="mapping-group-separator" role="separator" aria-hidden="true"></div>
+
+            <div class="mapping-group">
+              <p class="section-sublabel">Additional report data</p>
+              <p class="section-hint">Optional. Included in the executions report only.</p>
+              @for (m of reportFields(); track m.fieldName) {
+                <div class="mapping-row">
+                  <div class="mapping-key">
+                    <span class="key-name">{{ m.header }}</span>
+                  </div>
+                  <select
+                    class="form-input form-select"
+                    [ngModel]="reportMapping()[m.fieldName] || ''"
+                    (ngModelChange)="setReportMapping(m.fieldName, $event)"
+                  >
+                    <option value="">— Skip —</option>
+                    @for (h of headers(); track h) {
+                      <option [value]="h">{{ h }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            </div>
+          }
+
+          <div class="mapping-group-separator" role="separator" aria-hidden="true"></div>
+
+          <div class="mapping-group">
+            <p class="section-sublabel">Scheduling</p>
+            <p class="section-hint">
+              Optional. Map a column holding a future date/time to defer each row's run
+              (e.g. "yyyy-MM-dd HH:mm:ss" or ISO-8601). Blank or past values run immediately.
+            </p>
+            <div class="mapping-row">
+              <div class="mapping-key">
+                <span class="key-name">Scheduled At</span>
+              </div>
+              <select
+                class="form-input form-select"
+                [ngModel]="scheduledAtColumn()"
+                (ngModelChange)="setScheduledAtColumn($event)"
+              >
+                <option value="">— Run immediately —</option>
+                @for (h of headers(); track h) {
+                  <option [value]="h">{{ h }}</option>
+                }
+              </select>
+            </div>
+          </div>
+        </section>
+        </details>
+      }
+
+      @if (phoneIssues(); as issues) {
+        @if (badRowCount() > 0) {
+          <div class="phone-check" role="status">
+            <lucide-icon name="triangle-alert" [size]="16"></lucide-icon>
+            <div>
+              <strong>{{ badRowCount() }} row{{ badRowCount() === 1 ? '' : 's' }} would not be called.</strong>
+              @if (issues.invalid.length) {
+                <div>{{ issues.invalid.length }} with a phone number that is not a valid mobile number:
+                  @for (r of issues.invalid.slice(0, 4); track r.row) { row {{ r.row }} ({{ r.value || 'empty' }}){{ $last ? '' : ', ' }} }{{ issues.invalid.length > 4 ? '…' : '' }}</div>
+              }
+              @if (issues.duplicate.length) {
+                <div>{{ issues.duplicate.length }} repeating a number already in the sheet:
+                  @for (r of issues.duplicate.slice(0, 4); track r.row) { row {{ r.row }} (same as row {{ r.firstRow }}){{ $last ? '' : ', ' }} }{{ issues.duplicate.length > 4 ? '…' : '' }}</div>
+              }
+              <label class="phone-check-toggle">
+                <input type="checkbox" [checked]="skipBadRows()" (change)="skipBadRows.set($any($event.target).checked)" />
+                Leave these rows out of the upload
+              </label>
+            </div>
+          </div>
+        } @else {
+          <p class="status-line ok"><lucide-icon name="circle-check" [size]="14"></lucide-icon> Every phone number looks valid and none repeat.</p>
+        }
+      }
+
+      @if (headers().length > 0 && missingMappings().length > 0) {
+        <p class="status-line">
+          <lucide-icon name="circle-alert" [size]="14"></lucide-icon>
+          Map a column for: {{ missingMappings().join(', ') }}
+        </p>
+      }
+      } <!-- /activeTemplate -->
+
+      @if (errorMessage()) {
+        <div class="error-banner" role="alert">
+          <lucide-icon name="circle-alert" [size]="16"></lucide-icon>
+          <span>{{ errorMessage() }}</span>
+        </div>
+      }
+    }
+  </div>
+
+  <div class="modal-footer">
+    @if (result()) {
+      <button type="button" class="btn-secondary" (click)="resetAll()">
+        <lucide-icon name="arrow-left" [size]="16"></lucide-icon>
+        Back
+      </button>
+      <button type="button" class="btn-primary" (click)="cancel()">Close</button>
+    } @else {
+      <button type="button" class="btn-secondary" (click)="cancel()" [disabled]="submitting()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="btn-primary"
+        [disabled]="!canSubmit()"
+        (click)="submit()"
+      >
+        @if (submitting()) {
+          <lucide-icon name="loader-circle" [size]="16" class="animate-spin"></lucide-icon>
+          Starting…
+        } @else {
+          <lucide-icon name="play" [size]="16"></lucide-icon>
+          Start campaign{{ rowCount() ? ' · ' + rowCount() + ' rows' : '' }}
+        }
+      </button>
+    }
+  </div>
+</div>

@@ -1,0 +1,33 @@
+:host { display: block; }
+.pl {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px; min-width: 0;
+  border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-primary);
+}
+.pl-empty { color: var(--text-muted); font-size: 0.8rem; gap: 8px; }
+.pl-bad { color: var(--danger-color, var(--ds-danger-fg)); }
+.pl-retry { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--border-color); background: transparent; border-radius: 8px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; color: var(--text-color); }
+.pl-spin { display: inline-flex; animation: pl-rot 0.9s linear infinite; }
+@keyframes pl-rot { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pl-spin { animation: none; } }
+.pl-play {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--text-color); color: var(--bg-primary); display: grid; place-items: center;
+}
+.pl-btn {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; border: 0; background: transparent;
+  color: var(--text-muted); display: grid; place-items: center; cursor: pointer; text-decoration: none;
+  &:hover { background: var(--hover-bg); color: var(--text-color); }
+}
+.pl-speed { width: auto; padding: 0 6px; font-size: 0.72rem; font-weight: 700; font-family: var(--ds-mono); }
+.pl-wave {
+  flex: 1; min-width: 80px; height: 30px; display: flex; align-items: center; gap: 2px; cursor: pointer; touch-action: none; border-radius: 6px;
+  &:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  i { flex: 1; min-width: 1px; border-radius: 2px; background: var(--border-color); }
+  i.agent { background: var(--ds-accent-border); }
+  i.caller { background: var(--ds-warning-border); }
+  i.on { background: var(--text-muted); }
+  i.agent.on { background: var(--ds-accent); }
+  i.caller.on { background: var(--ds-warning); }
+}
+.pl-time { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; font-family: var(--ds-mono); }
+@media (max-width: 560px) { .pl { flex-wrap: wrap; } .pl-wave { order: 9; flex-basis: 100%; } }

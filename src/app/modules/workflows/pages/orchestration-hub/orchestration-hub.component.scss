@@ -1,0 +1,45 @@
+.oh-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.oh-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0;
+}
+
+.oh-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+  max-width: 640px;
+}
+
+.oh-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.oh-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+
+  &:hover {
+    color: var(--text-color);
+  }
+
+  &.active {
+    color: var(--ds-accent-fg);
+    border-bottom-color: var(--primary-color);
+  }
+}

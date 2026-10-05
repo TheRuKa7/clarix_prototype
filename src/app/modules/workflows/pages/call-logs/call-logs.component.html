@@ -1,0 +1,85 @@
+<div class="cl-page">
+  <div class="cl-header">
+    <div>
+      <h1 class="cl-title">Call Logs</h1>
+      <p class="cl-subtitle">Every call across campaigns, with its result and recording.</p>
+    </div>
+  </div>
+
+  <div class="cl-filter-bar">
+    <div class="cl-search">
+      <lucide-icon name="search" [size]="14"></lucide-icon>
+      <input
+        type="text"
+        placeholder="Search by contact, phone, PO, or supplier…" aria-label="Search calls"
+        [(ngModel)]="searchTerm"
+        (ngModelChange)="onSearchChange()"
+      />
+    </div>
+    <select class="cl-select" aria-label="Filter by call status" [(ngModel)]="statusFilter" (ngModelChange)="onStatusFilterChange()">
+      <option value="">All statuses</option>
+      @for (s of statusOptions; track s) {
+        <option [value]="s">{{ statusWord(s) }}</option>
+      }
+    </select>
+  </div>
+
+  <div class="cl-table-card">
+    <table class="cl-table">
+      <thead>
+        <tr>
+          <th>Contact</th>
+          <th>Call status</th>
+          <th>Duration</th>
+          <th>Created</th>
+          <th class="cl-act-h"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @if (loading()) {
+          <tr><td colspan="5" class="cl-empty-row">Loading calls…</td></tr>
+        } @else if (executions().length === 0) {
+          <tr><td colspan="5" class="cl-empty-row">No calls match these filters.</td></tr>
+        } @else {
+          @for (e of executions(); track e.id) {
+            <tr class="cl-row" (click)="openCall(e)" tabindex="0" (keydown.enter)="openCall(e)" title="Open the call page">
+              <td>
+                <div class="cl-contact-name">{{ e.resolvedContact?.name || '—' }}</div>
+                <div class="cl-contact-sub">{{ e.resolvedContact?.phone || '—' }}</div>
+              </td>
+              <td>
+                @let v = view(e);
+                @let w = word(e.outcome);
+                <span class="cl-status" [attr.data-tone]="w ? w.tone : v.tone" [title]="w?.help || ''">{{ w ? w.label : v.label }}</span>
+                @if (v.detail) { <div class="cl-contact-sub">{{ v.detail }}</div> }
+              </td>
+              <td>{{ dur(e.callDurationSeconds) }}</td>
+              <td>{{ e.createdAt ? (e.createdAt | date: 'MMM d, HH:mm') : '—' }}</td>
+              <td class="cl-row-arrow" (click)="$event.stopPropagation()">
+                <button type="button" class="cl-icon" [disabled]="!hasTalk(e) || !!downloads.busy()" (click)="downloads.transcript(e)" [title]="hasTalk(e) ? 'Download transcript' : 'No transcript for this call'" aria-label="Download transcript">
+                  <lucide-icon [name]="downloads.busy() === e.id + ':transcript' ? 'loader' : 'file-text'" [size]="15"></lucide-icon>
+                </button>
+                <button type="button" class="cl-icon" [disabled]="!hasTalk(e) || !!downloads.busy()" (click)="downloads.audio(e)" [title]="hasTalk(e) ? 'Download audio' : 'No recording for this call'" aria-label="Download audio">
+                  <lucide-icon [name]="downloads.busy() === e.id + ':audio' ? 'loader' : 'audio-lines'" [size]="15"></lucide-icon>
+                </button>
+                <lucide-icon name="chevron-right" [size]="16" (click)="openCall(e)"></lucide-icon>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="cl-pagination">
+    <span class="cl-pagination-label">
+      {{ total() === 0 ? 0 : page() * pageSize + 1 }}–{{ (page() + 1) * pageSize > total() ? total() : (page() + 1) * pageSize }}
+      of {{ total() }}
+    </span>
+    <div class="cl-pagination-btns">
+      <button type="button" class="cl-page-btn" [disabled]="page() === 0" (click)="prevPage()">Prev</button>
+      <button type="button" class="cl-page-btn" [disabled]="(page() + 1) * pageSize >= total()" (click)="nextPage()">Next</button>
+    </div>
+  </div>
+</div>
+

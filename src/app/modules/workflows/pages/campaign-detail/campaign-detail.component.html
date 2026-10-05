@@ -1,0 +1,129 @@
+<div class="cd-page">
+  <button type="button" class="cd-back" (click)="back()">
+    <lucide-icon name="chevron-left" [size]="14"></lucide-icon>
+    <span>All campaigns</span>
+  </button>
+
+  @if (loading()) {
+    <div class="cd-empty">Loading campaign…</div>
+  } @else if (campaign(); as c) {
+    <div class="cd-header">
+      <div>
+        <h1 class="cd-title">{{ c.originalFilename || c.id }}</h1>
+        <p class="cd-subtitle">
+          <span class="cd-state" [attr.data-state]="state().cls" [title]="rule(state().cls)">{{ state().label }}</span>
+          {{ c.templateName || 'Unknown agent' }} · uploaded by {{ c.uploadedBy || 'unknown' }}
+          @if (c.createdAt) { · {{ c.createdAt | date: 'd MMM, h:mm a' }} }
+        </p>
+      </div>
+      <div class="cd-header-actions">
+        <!-- Quick actions as icons; Stop stays a labelled button because it cannot be undone. -->
+        <button type="button" class="cd-icon" (click)="downloadInput()" [disabled]="!c.fileUrl" [title]="c.fileUrl ? 'Uploaded sheet' : 'The uploaded sheet is not stored for this campaign'" aria-label="Download the uploaded sheet">
+          <lucide-icon name="file-spreadsheet" [size]="16"></lucide-icon>
+        </button>
+        <button type="button" class="cd-icon" (click)="openAgent()" [disabled]="!c.templateId" title="Open the agent" aria-label="Open the agent">
+          <lucide-icon name="bot" [size]="16"></lucide-icon>
+        </button>
+        <button type="button" class="cd-icon" (click)="downloadOutput()" [disabled]="downloadingOutput()" title="Download report" aria-label="Download report">
+          @if (downloadingOutput()) { <lucide-icon name="loader-circle" [size]="16" class="cd-spin"></lucide-icon> } @else { <lucide-icon name="download" [size]="16"></lucide-icon> }
+        </button>
+        @if ((progress()?.inProgress ?? 0) > 0) {
+          <button type="button" class="cd-btn cd-btn-danger" (click)="stop()" [disabled]="stopping()">
+            <lucide-icon name="phone-off" [size]="14"></lucide-icon>
+            <span>{{ stopping() ? 'Stopping…' : 'Stop campaign' }}</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Progress by Echo's outcome groups, the numbers that matter, and how long it has run. -->
+    <div class="cd-progress">
+      <div class="cd-progress-top">
+        <div class="cd-progress-main"><b>{{ doneCount() }}</b> of {{ calls().length }} calls done</div>
+        <div class="cd-facts">
+          <span>Dials <b>{{ dials() }}</b></span>
+          <span>Talk time <b>{{ mss(talkSeconds()) }}</b></span>
+          <span [title]="c.firstDialAt ? 'From the first dial to the end of the last call' : 'Starts at the first dial'">Run time <b>{{ runTime(c.runSeconds) }}</b>{{ state().cls === 'live' ? ' so far' : '' }}</span>
+        </div>
+      </div>
+      <div class="cd-bar" role="img" [attr.aria-label]="barLabel()">
+        @for (g of groupCounts(); track g.key) { @if (g.count) { <span [class]="'cd-seg cd-seg--' + g.key" [style.width.%]="g.count / (calls().length || 1) * 100" [title]="g.label + ': ' + g.count"></span> } }
+      </div>
+      <div class="cd-chips" aria-label="Filter by group">
+        @for (g of groupCounts(); track g.key) { @if (g.count) {
+          <button type="button" class="cd-chip" [class.active]="group() === g.key" (click)="group.set(group() === g.key ? '' : g.key)">
+            <i [class]="'cd-dot cd-seg--' + g.key"></i><b>{{ g.count }}</b> {{ g.label }}
+          </button>
+        } }
+      </div>
+    </div>
+
+    <div class="cd-panel">
+      <!-- Call status drives the page: one chip per status, with counts. -->
+      <div class="cd-status-bar" role="group" aria-label="Filter by call status">
+        <button type="button" class="cd-st" [class.on]="!outcomeFilter()" (click)="outcomeFilter.set('')"><b>{{ calls().length }}</b> All</button>
+        @for (o of outcomeCounts(); track o.key) {
+          <button type="button" class="cd-st" [class.on]="outcomeFilter() === o.key" (click)="outcomeFilter.set(outcomeFilter() === o.key ? '' : o.key)" [title]="hover(o.key)">
+            <i [class]="'cd-dot cd-seg--' + o.group"></i><b>{{ o.count }}</b> {{ o.label }}
+          </button>
+        }
+        <span style="flex: 1"></span>
+        <app-call-status-reference></app-call-status-reference>
+      </div>
+      <div class="cd-filters">
+        <label class="cd-search">
+          <lucide-icon name="search" [size]="15"></lucide-icon>
+          <input type="search" placeholder="Search name or number" [value]="q()" (input)="q.set($any($event.target).value)" aria-label="Search calls" />
+        </label>
+        @if (filtersOn()) { <button type="button" class="cd-clear" (click)="clearFilters()"><lucide-icon name="x" [size]="14"></lucide-icon> Clear all</button> }
+        <span class="cd-count">{{ shownCalls().length }} shown</span>
+      </div>
+      @if (downloads.error()) { <div class="cd-note">{{ downloads.error() }}</div> }
+      <div class="cd-table-card">
+        <table class="cd-table">
+          <thead>
+            <tr><th>Contact</th><th>Call status</th><th>Dials</th><th>Talk</th><th>Last update</th><th class="cd-act-h"><span class="cd-sr">Actions</span></th></tr>
+          </thead>
+          <tbody>
+            @if (callsLoading()) {
+              <tr><td colspan="6" class="cd-empty-row">Loading calls…</td></tr>
+            } @else if (shownCalls().length === 0) {
+              <tr><td colspan="6" class="cd-empty-row">{{ filtersOn() ? 'No calls match. Clear the filters to see all.' : 'No calls here yet.' }}</td></tr>
+            } @else {
+              @for (call of shownCalls(); track call.id) {
+                @let o = word(call);
+                <tr class="cd-row" (click)="openCall(call)" tabindex="0" (keydown.enter)="openCall(call)" [title]="'Open the call page'">
+                  <td>
+                    <div class="cd-contact-name">{{ call.resolvedContact?.name || '—' }}</div>
+                    <div class="cd-contact-sub">{{ call.resolvedContact?.phone || '—' }}</div>
+                  </td>
+                  <td class="cd-nowrap">
+                    <span class="cd-status" [attr.data-tone]="o.tone">{{ o.label }}</span>
+                    <span (click)="$event.stopPropagation()"><app-info-hint [text]="why(call, o)"></app-info-hint></span>
+                  </td>
+                  <td>
+                    {{ call.attemptNumber || '—' }}
+                    @if (call.nextAttemptAt && call.outcome === 'will_retry') { <div class="cd-contact-sub">next {{ call.nextAttemptAt | date: 'h:mm a' }}</div> }
+                  </td>
+                  <td>{{ call.callStatus === 'COMPLETED' && call.callDurationSeconds ? mss(call.callDurationSeconds) : '—' }}</td>
+                  <td>{{ (call.completedAt || call.updatedAt || call.createdAt) ? ((call.completedAt || call.updatedAt || call.createdAt) | date: 'd MMM, h:mm a') : '—' }}</td>
+                  <td class="cd-row-actions" (click)="$event.stopPropagation()">
+                    <button type="button" class="cd-icon cd-icon--sm" [disabled]="!hasTalk(call) || !!downloads.busy()" (click)="downloads.transcript(call)"
+                      [title]="hasTalk(call) ? 'Download transcript' : 'Nobody talked, so there is no transcript'" aria-label="Download transcript">
+                      <lucide-icon [name]="downloads.busy() === call.id + ':transcript' ? 'loader' : 'file-text'" [size]="15"></lucide-icon>
+                    </button>
+                    <button type="button" class="cd-icon cd-icon--sm" [disabled]="!hasTalk(call) || !!downloads.busy()" (click)="downloads.audio(call)"
+                      [title]="hasTalk(call) ? 'Download audio' : 'Nobody talked, so there is no recording'" aria-label="Download audio">
+                      <lucide-icon [name]="downloads.busy() === call.id + ':audio' ? 'loader' : 'audio-lines'" [size]="15"></lucide-icon>
+                    </button>
+                    <lucide-icon name="chevron-right" [size]="16" class="cd-go" (click)="openCall(call)"></lucide-icon>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+</div>

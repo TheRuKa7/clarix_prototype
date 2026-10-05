@@ -1,0 +1,119 @@
+.rcs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+
+  @media (max-width: 860px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rcs__pane {
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--surface, #fff);
+}
+
+.rcs__title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rcs__hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.rcs__section {
+  margin-bottom: 14px;
+}
+
+.rcs__section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, var(--ds-text-muted));
+  margin-bottom: 6px;
+}
+
+.rcs__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px 12px;
+}
+
+.rcs__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+
+  &--locked {
+    color: var(--text-muted, var(--ds-text-placeholder));
+    cursor: default;
+  }
+
+  input {
+    accent-color: var(--primary, var(--ds-accent));
+  }
+}
+
+.rcs__order {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rcs__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+
+.rcs__handle {
+  display: inline-flex;
+  cursor: grab;
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.rcs__row-section {
+  font-size: 11px;
+  color: var(--text-muted, var(--ds-text-placeholder));
+  min-width: 96px;
+}
+
+.rcs__header-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 6px;
+  background: var(--input-bg, #fff);
+  color: inherit;
+}
+
+.rcs__empty {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-muted, var(--ds-text-placeholder));
+  text-align: center;
+}
+
+.cdk-drag-preview {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.4;
+}

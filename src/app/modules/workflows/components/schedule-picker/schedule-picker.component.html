@@ -1,0 +1,99 @@
+<div class="sp">
+  <div class="sp__head">
+    <span class="sp__icon"><lucide-icon name="clock" [size]="18"></lucide-icon></span>
+    <div>
+      <div class="sp__title">Schedule</div>
+      <div class="sp__subtitle">When should this run?</div>
+    </div>
+  </div>
+
+  <div class="sp__label">REPEAT</div>
+  <div class="sp__pills">
+    @for (r of REPEAT_MODES; track r.mode) {
+      <button
+        type="button"
+        class="sp__pill"
+        [class.sp__pill--active]="state().mode === r.mode"
+        (click)="setMode(r.mode)">
+        {{ r.label }}
+      </button>
+    }
+  </div>
+
+  <!-- Specific days -->
+  @if (state().mode === 'SPECIFIC_DAYS') {
+    <div class="sp__label">ON THESE DAYS</div>
+    <div class="sp__days">
+      @for (d of DOW; track d.key) {
+        <button type="button" class="sp__day" [class.sp__day--active]="isDaySelected(d.key)" (click)="toggleDay(d.key)">
+          {{ d.short }}
+        </button>
+      }
+    </div>
+  }
+
+  <!-- Every week -->
+  @if (state().mode === 'WEEKLY') {
+    <div class="sp__label">ON WHICH DAY</div>
+    <div class="sp__days">
+      @for (d of DOW; track d.key) {
+        <button type="button" class="sp__day" [class.sp__day--active]="state().weeklyDay === d.key" (click)="setWeeklyDay(d.key)">
+          {{ d.short }}
+        </button>
+      }
+    </div>
+  }
+
+  <!-- Every month -->
+  @if (state().mode === 'MONTHLY') {
+    <div class="sp__label">DAY OF THE MONTH</div>
+    <select class="sp__select sp__select--wide" [value]="state().dayOfMonth" (change)="setDayOfMonth(+$any($event.target).value)">
+      @for (d of domOptions; track d) {
+        <option [value]="d">{{ ordinal(d) }}</option>
+      }
+    </select>
+  }
+
+  <!-- Every few hours -->
+  @if (state().mode === 'HOURLY') {
+    <div class="sp__label">RUN EVERY</div>
+    <div class="sp__stepper">
+      <button type="button" class="sp__step" (click)="changeInterval(-1)" [disabled]="state().intervalHours <= 1">
+        <lucide-icon name="minus" [size]="16"></lucide-icon>
+      </button>
+      <span class="sp__interval"><strong>{{ state().intervalHours }}</strong> hours</span>
+      <button type="button" class="sp__step" (click)="changeInterval(1)">
+        <lucide-icon name="plus" [size]="16"></lucide-icon>
+      </button>
+    </div>
+  }
+
+  <!-- Just once -->
+  @if (state().mode === 'ONCE') {
+    <div class="sp__label">ON THIS DATE</div>
+    <input class="sp__select sp__select--wide" type="date" [value]="state().onceDate" (change)="setOnceDate($any($event.target).value)" />
+  }
+
+  <!-- Time picker (all modes except hourly) -->
+  @if (state().mode !== 'HOURLY') {
+    <div class="sp__label">AT WHAT TIME</div>
+    <div class="sp__time">
+      <select class="sp__select" [value]="state().hour" (change)="setHour(+$any($event.target).value)">
+        @for (h of hourOptions; track h) { <option [value]="h">{{ h }}</option> }
+      </select>
+      <span class="sp__colon">:</span>
+      <select class="sp__select" [value]="state().minute" (change)="setMinute(+$any($event.target).value)">
+        @for (m of minuteOptions; track m) { <option [value]="m">{{ m < 10 ? '0' + m : m }}</option> }
+      </select>
+      <div class="sp__ampm">
+        <button type="button" class="sp__ampm-btn" [class.sp__ampm-btn--active]="state().ampm === 'AM'" (click)="setAmpm('AM')">AM</button>
+        <button type="button" class="sp__ampm-btn" [class.sp__ampm-btn--active]="state().ampm === 'PM'" (click)="setAmpm('PM')">PM</button>
+      </div>
+    </div>
+  }
+
+  <div class="sp__summary">
+    <lucide-icon name="check" [size]="16"></lucide-icon>
+    <span>{{ summary() }}</span>
+  </div>
+</div>

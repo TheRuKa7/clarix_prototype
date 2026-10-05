@@ -1,0 +1,298 @@
+<div class="dashboard-overview">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-text">
+      <h2>Clarix Dashboard</h2>
+      <p>Real-time monitoring and analytics</p>
+    </div>
+    <div class="header-actions">
+      <span class="live-badge" aria-label="Live data">
+        <span class="live-dot" aria-hidden="true"></span>
+        Live
+      </span>
+      <button class="btn-refresh" (click)="refresh()" [disabled]="dashboardResource.isLoading()"
+        aria-label="Refresh dashboard data">
+        <lucide-icon name="refresh-cw" [size]="15"></lucide-icon>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  @if (dashboardResource.isLoading()) {
+  <div class="loading-state" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <p>Loading dashboard…</p>
+  </div>
+  }
+
+  <!-- Error -->
+  @if (dashboardResource.error()) {
+  <div class="error-state" role="alert">
+    <lucide-icon name="circle-alert" [size]="36"></lucide-icon>
+    <p>Failed to load dashboard data. Please try again.</p>
+    <button class="btn btn-primary" (click)="refresh()">Retry</button>
+  </div>
+  }
+
+  <!-- Dashboard -->
+  @if (data(); as d) {
+
+  <!-- ── Top KPIs ── -->
+  <div class="kpi-grid">
+
+    <div class="kpi-card kpi-card--indigo">
+      <div class="kpi-icon">
+        <lucide-icon name="git-branch" [size]="22"></lucide-icon>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-value">{{ d.topKpis.numberOfWorkflows }}</span>
+        <span class="kpi-label">Active Workflows</span>
+      </div>
+    </div>
+
+    <div class="kpi-card kpi-card--green">
+      <div class="kpi-icon">
+        <lucide-icon name="phone-call" [size]="22"></lucide-icon>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-value">{{ d.topKpis.activeCalls }}</span>
+        <span class="kpi-label">Active Calls</span>
+      </div>
+      <span class="live-dot kpi-live-dot" aria-hidden="true"></span>
+    </div>
+
+    <div class="kpi-card kpi-card--amber">
+      <div class="kpi-icon">
+        <lucide-icon name="clock" [size]="22"></lucide-icon>
+      </div>
+      <div class="kpi-body">
+        <span class="kpi-value">{{ d.topKpis.callsInQueue }}</span>
+        <span class="kpi-label">Calls in Queue</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Call Analytics ── -->
+  <section class="section" aria-labelledby="analytics-title">
+    <h3 class="section-title" id="analytics-title">Call Analytics</h3>
+    <div class="analytics-grid">
+
+      <div class="metric-card">
+        <span class="metric-value">{{ formatCount(d.callAnalytics.totalCalls) }}</span>
+        <span class="metric-label">Total Calls</span>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-value metric-value--green">{{ d.callAnalytics.answerRate }}%</span>
+        <span class="metric-label">Answer Rate</span>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-value metric-value--blue">{{ d.callAnalytics.slaPerformance }}%</span>
+        <span class="metric-label">SLA Performance</span>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-value metric-value--red">{{ d.callAnalytics.abandonRate }}%</span>
+        <span class="metric-label">Abandon Rate</span>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-value">{{ formatTime(d.callAnalytics.avgHandlingTimeSec) }}</span>
+        <span class="metric-label">Avg Handle Time</span>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-value">{{ formatTime(d.callAnalytics.avgWaitTimeSec) }}</span>
+        <span class="metric-label">Avg Wait Time</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Trends + Distribution ── -->
+  <div class="split-grid">
+
+    <!-- Trends & Hourly Chart -->
+    <section class="section" aria-labelledby="trends-title">
+      <div class="section-header">
+        <h3 class="section-title" id="trends-title">Call Trends</h3>
+        <span class="trend-badge" [class.trend-badge--up]="d.trends.growthRate >= 0"
+          [class.trend-badge--down]="d.trends.growthRate < 0">
+          <lucide-icon [name]="d.trends.growthRate >= 0 ? 'trending-up' : 'trending-down'"
+            [size]="13">
+          </lucide-icon>
+          {{ d.trends.growthRate >= 0 ? '+' : '' }}{{ d.trends.growthRate }}%
+        </span>
+      </div>
+
+      <div class="today-vs-yesterday">
+        <div class="tvs-item">
+          <span class="tvs-dot tvs-dot--today" aria-hidden="true"></span>
+          <div class="tvs-text">
+            <span class="tvs-value">{{ d.trends.today }}</span>
+            <span class="tvs-label">Today</span>
+          </div>
+        </div>
+        <div class="tvs-divider" aria-hidden="true"></div>
+        <div class="tvs-item">
+          <span class="tvs-dot tvs-dot--yesterday" aria-hidden="true"></span>
+          <div class="tvs-text">
+            <span class="tvs-value">{{ d.trends.yesterday }}</span>
+            <span class="tvs-label">Yesterday</span>
+          </div>
+        </div>
+        <div class="tvs-divider" aria-hidden="true"></div>
+        <div class="tvs-item">
+          <div class="tvs-text">
+            <span class="tvs-value" [class.trend-up]="d.trends.difference >= 0"
+              [class.trend-down]="d.trends.difference < 0">
+              {{ d.trends.difference >= 0 ? '+' : '' }}{{ d.trends.difference }}
+            </span>
+            <span class="tvs-label">Change</span>
+          </div>
+        </div>
+      </div>
+
+      @if (chartBars().length > 0) {
+      <div class="chart-wrap" role="img"
+        aria-label="Hourly call volume chart comparing today and yesterday">
+        <div class="chart-area">
+          @for (bar of chartBars(); track bar.hour) {
+          <div class="bar-group">
+            <div class="bar-pair">
+              <div class="bar bar--today" [style.height.px]="barHeight(bar.today)"
+                [title]="'Today ' + formatHour(bar.hour) + ': ' + bar.today + ' calls'">
+              </div>
+              <div class="bar bar--yesterday" [style.height.px]="barHeight(bar.yesterday)"
+                [title]="'Yesterday ' + formatHour(bar.hour) + ': ' + bar.yesterday + ' calls'">
+              </div>
+            </div>
+            <span class="bar-label">{{ formatHour(bar.hour) }}</span>
+          </div>
+          }
+        </div>
+        <div class="chart-legend" aria-hidden="true">
+          <span class="legend-item">
+            <span class="legend-dot legend-dot--today"></span> Today
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot legend-dot--yesterday"></span> Yesterday
+          </span>
+        </div>
+      </div>
+      }
+    </section>
+
+    <!-- Call Distribution -->
+    <section class="section" aria-labelledby="dist-title">
+      <h3 class="section-title" id="dist-title">Call Distribution</h3>
+
+      <div class="dist-list">
+        @for (item of d.callDistribution; track item.status) {
+        <div class="dist-item">
+          <div class="dist-header">
+            <span class="dist-label">{{ item.status }}</span>
+            <span class="dist-count">{{ item.count }} · {{ pct(item.count, totalDistribution())
+              }}%</span>
+          </div>
+          <div class="dist-track" role="progressbar"
+            [attr.aria-valuenow]="pct(item.count, totalDistribution())" aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-label]="item.status + ': ' + pct(item.count, totalDistribution()) + '%'">
+            <div class="dist-fill" [style.width.%]="pct(item.count, totalDistribution())"
+              [style.background-color]="statusColor(item.status)">
+            </div>
+          </div>
+        </div>
+        }
+      </div>
+
+      <div class="dist-divider" aria-hidden="true"></div>
+      <h4 class="subsection-title">Inbound vs Outbound</h4>
+
+      <div class="dist-list">
+        @for (item of d.direction; track item.direction) {
+        <div class="dist-item">
+          <div class="dist-header">
+            <span class="dist-label">{{ capitalize(item.direction) }}</span>
+            <span class="dist-count">{{ item.count }} · {{ pct(item.count, totalDirection())
+              }}%</span>
+          </div>
+          <div class="dist-track" role="progressbar"
+            [attr.aria-valuenow]="pct(item.count, totalDirection())" aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-label]="item.direction + ': ' + pct(item.count, totalDirection()) + '%'">
+            <div class="dist-fill" [style.width.%]="pct(item.count, totalDirection())"
+              [style.background-color]="item.direction === 'inbound' ? 'var(--ds-info)' : 'var(--ds-accent)'">
+            </div>
+          </div>
+        </div>
+        }
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ── Performance Metrics ── -->
+  <section class="section" aria-labelledby="perf-title">
+    <h3 class="section-title" id="perf-title">Performance Metrics</h3>
+    <div class="perf-grid">
+
+      <div class="perf-card">
+        <div class="perf-icon perf-icon--blue">
+          <lucide-icon name="shield-check" [size]="18"></lucide-icon>
+        </div>
+        <span class="perf-value">{{ d.performance.connectionRate }}%</span>
+        <span class="perf-label">Connection Rate</span>
+      </div>
+
+      <div class="perf-card">
+        <div class="perf-icon perf-icon--green">
+          <lucide-icon name="timer" [size]="18"></lucide-icon>
+        </div>
+        <span class="perf-value">{{ formatTime(d.performance.avgHandlingTimeSec) }}</span>
+        <span class="perf-label">Avg Handle Time</span>
+      </div>
+
+      <div class="perf-card">
+        <div class="perf-icon perf-icon--amber">
+          <lucide-icon name="hourglass" [size]="18"></lucide-icon>
+        </div>
+        <span class="perf-value">{{ formatTime(d.performance.avgWaitTimeSec) }}</span>
+        <span class="perf-label">Avg Wait Time</span>
+      </div>
+
+      <div class="perf-card">
+        <div class="perf-icon perf-icon--indigo">
+          <lucide-icon name="users" [size]="18"></lucide-icon>
+        </div>
+        <span class="perf-value">{{ d.performance.queuedCalls }}</span>
+        <span class="perf-label">Queued Calls</span>
+      </div>
+
+      <div class="perf-card">
+        <div class="perf-icon perf-icon--orange">
+          <lucide-icon name="alarm-clock" [size]="18"></lucide-icon>
+        </div>
+        <span class="perf-value">{{ formatTime(d.performance.longestQueueSec) }}</span>
+        <span class="perf-label">Longest Queue</span>
+      </div>
+
+      <div class="perf-card perf-card--highlight">
+        <div class="perf-icon perf-icon--yellow">
+          <lucide-icon name="zap" [size]="18"></lucide-icon>
+        </div>
+        <span class="perf-value perf-value--xl">{{ d.performance.efficiencyScore }}</span>
+        <span class="perf-label">Efficiency Score</span>
+      </div>
+
+    </div>
+  </section>
+
+  }
+
+</div>

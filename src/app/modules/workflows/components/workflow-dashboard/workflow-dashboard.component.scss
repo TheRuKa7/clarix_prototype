@@ -1,0 +1,59 @@
+.dashboard {
+  @apply flex flex-col gap-4 mb-6;
+}
+
+.dashboard-header {
+  @apply flex items-center justify-between gap-3;
+}
+
+.dashboard-title-group {
+  @apply flex items-baseline gap-3 min-w-0;
+}
+
+.dashboard-title {
+  @apply text-base font-semibold text-gray-900 dark:text-gray-100;
+}
+
+.dashboard-meta {
+  @apply text-xs text-gray-500 dark:text-gray-400 truncate;
+}
+
+.dashboard-actions {
+  @apply flex items-center gap-2;
+}
+
+.icon-btn {
+  @apply inline-flex items-center justify-center w-8 h-8 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+}
+
+.dashboard-error {
+  @apply flex items-center gap-2 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm;
+}
+
+.kpi-row {
+  @apply grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6;
+}
+
+.chart-grid {
+  @apply grid gap-3;
+}
+
+.chart-grid-2 {
+  @apply grid-cols-1 lg:grid-cols-2;
+}
+
+.chart-grid-3 {
+  @apply grid-cols-1 md:grid-cols-2 xl:grid-cols-3;
+}
+
+.field-section {
+  @apply flex flex-col gap-2;
+}
+
+.field-section-title {
+  @apply text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mt-2;
+}
+
+.charts-toggle {
+  @apply self-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors;
+}

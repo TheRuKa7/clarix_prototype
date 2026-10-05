@@ -1,0 +1,278 @@
+@use '../../../../../styles/ds' as ds;
+.ol-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ol-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ol-name-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.ol-saved {
+  font-size: 0.78rem;
+  color: var(--success-color);
+}
+
+.ol-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.ol-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ol-lane {
+  display: flex;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.ol-lane-rail {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 24px;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ol-lane-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ol-lane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  input {
+    flex: 1;
+    font-weight: 700;
+  }
+}
+
+.ol-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ol-lane-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ol-lane-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.ol-rule {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.ol-mini-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ol-input {
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-color);
+  font-size: 0.78rem;
+}
+
+.ol-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.ol-btn-primary {
+  background: var(--primary-color);
+  color: var(--text-inverse);
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.btn(primary);
+}
+
+.ol-btn-secondary {
+  background: var(--bg-primary);
+  color: var(--text-color);
+  border-color: var(--border-color);
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.btn(secondary);
+}
+
+.ol-add-lane {
+  align-self: flex-start;
+}
+
+.ol-add-btn {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--ds-accent-fg);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.ol-icon-btn {
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--error-color);
+  }
+}
+
+.ol-side {
+  position: sticky;
+  top: 0;
+}
+
+.ol-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.ol-block-head {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.ol-block-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.ol-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-color);
+  font-size: 0.78rem;
+  resize: vertical;
+}
+
+.ol-preview-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.ol-preview-lane-name {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.ol-match-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ol-match {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.72rem;
+  padding: 3px 6px;
+  border-radius: 4px;
+
+  code {
+    color: var(--text-color);
+  }
+
+  span {
+    color: var(--text-muted);
+  }
+
+  &.exact {
+    background: var(--success-bg);
+  }
+
+  &.guess {
+    background: var(--warning-bg);
+  }
+
+  &.none {
+    background: var(--error-bg);
+  }
+}
+
+@media (max-width: 1000px) {
+  .ol-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ol-lane-grid {
+    grid-template-columns: 1fr;
+  }
+}

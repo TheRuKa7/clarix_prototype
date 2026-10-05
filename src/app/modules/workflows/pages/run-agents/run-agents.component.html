@@ -1,0 +1,90 @@
+<div class="ra-page">
+  <div class="ra-header">
+    <div>
+      <h1 class="ra-title">Agents</h1>
+      <p class="ra-subtitle">Pick an agent, take its sheet, fill it in, upload it back.</p>
+    </div>
+    <button type="button" class="ra-btn ra-btn-secondary" (click)="newCampaignWithoutAgent()">
+      <lucide-icon name="cloud-upload" [size]="16"></lucide-icon>
+      <span>New campaign</span>
+    </button>
+  </div>
+
+  <div class="ra-metric-strip">
+    <div class="ra-metric">
+      <span class="ra-metric-v">{{ summary().agentsLive }}</span>
+      <span class="ra-metric-k">Agents live</span>
+    </div>
+    <div class="ra-metric">
+      <span class="ra-metric-v">{{ summary().campaignsRunning }}</span>
+      <span class="ra-metric-k">Campaigns running</span>
+    </div>
+    <div class="ra-metric">
+      <span class="ra-metric-v">{{ summary().callsPlaced }}</span>
+      <span class="ra-metric-k">Calls placed</span>
+    </div>
+    <div class="ra-metric">
+      <span class="ra-metric-v">{{ summary().answeredPct }}%</span>
+      <span class="ra-metric-k">Reached</span>
+    </div>
+    <div class="ra-metric">
+      <span class="ra-metric-v">{{ summary().commitments }}</span>
+      <span class="ra-metric-k">Calls with answers</span>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="ra-empty">Loading agents…</div>
+  } @else if (agents().length === 0) {
+    <div class="ra-empty">
+      No active agents yet. Agents made in Echo appear in <strong>Build &gt; Agent setup</strong>; switch one on to run it here.
+    </div>
+  } @else {
+    <div class="ra-grid">
+      @for (agent of agents(); track agent.id) {
+        <article class="ra-card" role="button" tabindex="0"
+          [attr.aria-label]="'View executions for ' + agent.name"
+          (click)="openExecutions(agent)"
+          (keydown.enter)="openExecutions(agent)"
+          (keydown.space)="$event.preventDefault(); openExecutions(agent)">
+          <div class="ra-card-top">
+            <span class="ra-card-initial">{{ (agent.name || 'A').charAt(0) }}</span>
+            <div class="ra-card-id">
+              <h3 [title]="agent.name">{{ agent.name }}</h3>
+              <span [title]="agent.templateKey">{{ agent.templateKey }}</span>
+            </div>
+            <button type="button" class="ra-btn-icon" (click)="openReports(agent, $event)"
+              [attr.aria-label]="'Reports for ' + agent.name" title="Reports">
+              <lucide-icon name="file-text" [size]="15"></lucide-icon>
+            </button>
+          </div>
+          <p class="ra-card-desc">{{ agent.description || 'No description yet.' }}</p>
+          <div class="ra-card-stats">
+            <span><b>{{ agent.executionCount ?? 0 }}</b> calls</span>
+            <span><b>{{ agent.completedCount ?? 0 }}</b> reached</span>
+            @if (openCount(agent) > 0) { <span><b>{{ openCount(agent) }}</b> still open</span> }
+          </div>
+          <div class="ra-card-actions" (click)="$event.stopPropagation()">
+            <button type="button" class="ra-btn ra-btn-secondary ra-btn-sm" (click)="getSheet(agent)">
+              Get sheet
+            </button>
+            <button type="button" class="ra-btn ra-btn-primary ra-btn-sm" (click)="uploadAndRun(agent)">
+              Upload &amp; run
+            </button>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</div>
+
+@if (csvUploadTemplate(); as csvTemplate) {
+  <app-csv-bulk-upload
+    [template]="csvTemplate"
+    (closed)="closeCsvUpload()"
+    (completed)="onCsvUploadCompleted()"
+  ></app-csv-bulk-upload>
+}
+@if (uploadWithoutTemplate()) {
+  <app-csv-bulk-upload (closed)="closeCsvUpload()" (completed)="onCsvUploadCompleted()"></app-csv-bulk-upload>
+}

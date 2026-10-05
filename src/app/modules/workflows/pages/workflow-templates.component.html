@@ -1,0 +1,282 @@
+<div class="templates-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <h1 class="page-title">Agent setup</h1>
+      <p class="page-description">How each agent runs in Clarix: which sheet columns feed it and what its report shows. Agents made in Echo arrive here by themselves.</p>
+    </div>
+    <div class="header-actions">
+      <button class="refresh-btn" (click)="refresh(); $event.stopPropagation()"
+        [disabled]="loading()">
+        <lucide-icon name="refresh-cw" [size]="16" [class.animate-spin]="loading()"></lucide-icon>
+        Refresh
+      </button>
+      <button class="create-btn" *hasPermission="'workflows:template:create'"
+        (click)="openCreate(); $event.stopPropagation()">
+        <lucide-icon name="plus" [size]="16"></lucide-icon>
+        New agent setup
+      </button>
+    </div>
+  </div>
+
+  <!-- Dashboard Stats -->
+  <div class="stats-grid" aria-label="Workflow statistics">
+    <div class="stat-card stat-total">
+      <div class="stat-icon-wrap">
+        <lucide-icon name="git-branch" [size]="20"></lucide-icon>
+      </div>
+      <div class="stat-body">
+        <span class="stat-label">Agents</span>
+        <span class="stat-value">{{ stats().total }}</span>
+      </div>
+    </div>
+
+    <div class="stat-card stat-active">
+      <div class="stat-icon-wrap">
+        <lucide-icon name="circle-check" [size]="20"></lucide-icon>
+      </div>
+      <div class="stat-body">
+        <span class="stat-label">Active</span>
+        <span class="stat-value">{{ stats().active }}</span>
+        <span class="stat-meta">{{ activePct() }}% of total</span>
+      </div>
+    </div>
+
+    <div class="stat-card stat-inactive">
+      <div class="stat-icon-wrap">
+        <lucide-icon name="circle-pause" [size]="20"></lucide-icon>
+      </div>
+      <div class="stat-body">
+        <span class="stat-label">Switched off</span>
+        <span class="stat-value">{{ stats().draft }}</span>
+        <span class="stat-meta">not offered on Run</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-section">
+    <div class="tpl-filter-tabs" role="tablist" aria-label="Filter by status">
+      <button type="button" role="tab" class="tpl-filter-tab" [class.active]="statusFilter === ''"
+        [attr.aria-selected]="statusFilter === ''" (click)="setStatusFilter('')">
+        All <span>{{ stats().total }}</span>
+      </button>
+      <button type="button" role="tab" class="tpl-filter-tab" [class.active]="statusFilter === 'ACTIVE'"
+        [attr.aria-selected]="statusFilter === 'ACTIVE'" (click)="setStatusFilter('ACTIVE')">
+        Active <span>{{ stats().active }}</span>
+      </button>
+      <button type="button" role="tab" class="tpl-filter-tab" [class.active]="statusFilter === 'DRAFT'"
+        [attr.aria-selected]="statusFilter === 'DRAFT'" (click)="setStatusFilter('DRAFT')">
+        Draft <span>{{ stats().draft }}</span>
+      </button>
+    </div>
+    <div class="search-box">
+      <lucide-icon name="search" [size]="16" class="search-icon"></lucide-icon>
+      <input type="text" placeholder="Search by name or key..." [(ngModel)]="searchTerm"
+        (ngModelChange)="onSearchChange()" class="search-input" aria-label="Search templates" />
+    </div>
+  </div>
+
+  <!-- Loading -->
+  @if (loading()) {
+  <div class="loading-state" aria-live="polite">
+    <div class="loading-spinner" role="status" aria-label="Loading templates"></div>
+    <p class="loading-text">Loading templates...</p>
+  </div>
+  }
+
+  <!-- Delete/other action error -->
+  @if (actionError()) {
+  <div class="action-error-banner" role="alert">
+    <span>{{ actionError() }}</span>
+    <button type="button" class="action-error-dismiss" (click)="actionError.set(null)">Dismiss</button>
+  </div>
+  }
+
+  <!-- Pinned-template filter banner (from Execution Reports) -->
+  @if (templateIdFilter()) {
+  <div class="template-filter-banner">
+    <span>
+      Showing report's workflow: <strong>{{ filteredTemplateName() }}</strong>
+    </span>
+    <button type="button" class="template-filter-clear" (click)="clearTemplateFilter()">
+      <lucide-icon name="x" [size]="14"></lucide-icon>
+      Clear filter
+    </button>
+  </div>
+  }
+
+  <!-- Grid -->
+  @if (!loading() && visibleTemplates().length > 0) {
+  <div class="templates-grid">
+    @for (template of visibleTemplates(); track template.id) {
+    <div class="template-card" [class.card-active]="template.status === 'ACTIVE'"
+      [class.card-inactive]="template.status === 'DRAFT'" role="button" tabindex="0"
+      [attr.aria-label]="'Configure ' + template.name" (click)="openEdit(template)"
+      (keydown.enter)="openEdit(template)"
+      (keydown.space)="$event.preventDefault(); openEdit(template)">
+
+      <!-- Card Header -->
+      <div class="card-header">
+        <div class="card-title-row">
+          <span class="card-icon-box">
+            <lucide-icon name="git-branch" [size]="18" class="card-icon"></lucide-icon>
+          </span>
+          <div class="card-title-text">
+            <h3 class="card-name" [title]="template.name">{{ template.name }}</h3>
+            <p class="template-key" [title]="template.templateKey">{{ template.templateKey }}</p>
+          </div>
+        </div>
+        <span class="status-badge" [class.status-active]="template.status === 'ACTIVE'"
+          [class.status-draft]="template.status === 'DRAFT'">
+          {{ template.status }}
+        </span>
+      </div>
+
+      <div class="card-actions" (click)="$event.stopPropagation()">
+
+          <!-- Change it: the definition, and whether it runs at all. The card's own click also
+               opens configuration — Run it (Trigger by CSV / Execution reports) moved to Run > Agents. -->
+          <div class="action-group">
+            <button *hasPermission="'workflows:template:edit'" type="button"
+              class="action-btn action-primary" (click)="openEdit(template)"
+              [attr.aria-label]="'Configure ' + template.name" title="Configure">
+              <lucide-icon name="settings" [size]="15"></lucide-icon>
+            </button>
+            @if (actionLoading() === template.id) {
+            <span class="action-btn action-loading" aria-label="Working…">
+              <lucide-icon name="loader-circle" [size]="15" class="animate-spin"></lucide-icon>
+            </span>
+            } @else if (template.status === 'DRAFT') {
+            <button *hasPermission="'workflows:template:status-change'" type="button"
+              class="action-btn action-success" (click)="activate(template)"
+              [attr.aria-label]="'Activate ' + template.name" title="Activate">
+              <lucide-icon name="circle-play" [size]="15"></lucide-icon>
+            </button>
+            <button *hasPermission="'workflows:template:edit'" type="button"
+              class="action-btn action-danger" (click)="delete(template)"
+              [attr.aria-label]="'Delete ' + template.name" title="Delete draft">
+              <lucide-icon name="trash-2" [size]="15"></lucide-icon>
+            </button>
+            } @else {
+            <button *hasPermission="'workflows:template:status-change'" type="button"
+              class="action-btn action-warn" (click)="deactivate(template)"
+              [attr.aria-label]="'Deactivate ' + template.name" title="Deactivate">
+              <lucide-icon name="circle-pause" [size]="15"></lucide-icon>
+            </button>
+            }
+          </div>
+      </div>
+
+      <!-- Channel -->
+      <div class="card-badges">
+        <span class="channel-badge">
+          <lucide-icon [name]="channelIcon(template.defaultChannelType)" [size]="12"></lucide-icon>
+          {{ template.defaultChannelType }}
+        </span>
+      </div>
+
+      <!-- Description -->
+      @if (template.description) {
+      <p class="card-description">{{ template.description }}</p>
+      }
+
+      <!-- Execution metrics -->
+      <div class="template-metrics" aria-label="Execution metrics">
+        <div class="metric">
+          <span class="metric-label">Calls</span>
+          <span class="metric-value">{{ template.executionCount ?? 0 }}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Reached</span>
+          <span class="metric-value" [title]="successRateTooltip(template)">{{
+            successRateLabel(template) }}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Last call</span>
+          <span class="metric-value" [attr.title]="formatLastRunTooltip(template.lastRunAt)">{{
+            formatLastRun(template.lastRunAt) }}</span>
+        </div>
+      </div>
+
+      <!-- Metadata -->
+      <div class="card-meta">
+        <div class="meta-item">
+          <lucide-icon name="list-checks" [size]="13"></lucide-icon>
+          <span>{{ template.requiredFields.length }} answer{{ template.requiredFields.length !== 1 ?
+            's' : '' }}</span>
+        </div>
+        <div class="meta-item" [attr.title]="createdTooltip(template)">
+          <lucide-icon name="calendar" [size]="13"></lucide-icon>
+          <span>Created {{ formatDate(template.createdAt) }}</span>
+        </div>
+        <div class="meta-item meta-item-wide" [title]="createdByLabel(template)">
+          <lucide-icon name="user" [size]="13"></lucide-icon>
+          <span class="meta-truncate">by {{ createdByLabel(template) }}</span>
+        </div>
+      </div>
+
+
+    </div>
+    }
+  </div>
+  }
+
+  <!-- Pagination -->
+  @if (!loading() && totalElements() > 0 && !templateIdFilter()) {
+  <div class="pagination" aria-label="Pagination">
+    <span class="pagination-info">
+      Showing {{ pageStart() }}–{{ pageEnd() }} of {{ totalElements() }}
+    </span>
+    <div class="pagination-controls">
+      <select class="page-size-select" [ngModel]="pageSize()"
+        (ngModelChange)="onPageSizeChange($event)" aria-label="Items per page">
+        <option [ngValue]="12">12 / page</option>
+        <option [ngValue]="24">24 / page</option>
+        <option [ngValue]="48">48 / page</option>
+      </select>
+      <button class="page-btn" (click)="prevPage()" [disabled]="page() === 0"
+        aria-label="Previous page">
+        <lucide-icon name="chevron-left" [size]="16"></lucide-icon>
+      </button>
+      <span class="page-indicator">
+        Page {{ page() + 1 }} of {{ totalPages() }}
+      </span>
+      <button class="page-btn" (click)="nextPage()" [disabled]="page() + 1 >= totalPages()"
+        aria-label="Next page">
+        <lucide-icon name="chevron-right" [size]="16"></lucide-icon>
+      </button>
+    </div>
+  </div>
+  }
+
+  <!-- Empty State -->
+  @if (!loading() && visibleTemplates().length === 0) {
+  <div class="empty-state">
+    <lucide-icon name="git-branch" [size]="56" class="empty-icon"></lucide-icon>
+    <h3 class="empty-title">
+      {{ stats().total > 0 ? 'No matching templates' : 'No templates yet' }}
+    </h3>
+    <p class="empty-description">
+      {{ stats().total > 0
+      ? 'Try adjusting your search or filter'
+      : 'Create your first workflow template to get started' }}
+    </p>
+    @if (stats().total === 0) {
+    <button class="create-btn" (click)="openCreate()">
+      <lucide-icon name="plus" [size]="16"></lucide-icon>
+      New agent setup
+    </button>
+    }
+  </div>
+  }
+
+</div>
+
+<!-- Form Modal -->
+@if (showForm) {
+<app-workflow-template-form [template]="editingTemplate" (saved)="onFormSaved()"
+  (cancelled)="onFormCancelled()"></app-workflow-template-form>
+}

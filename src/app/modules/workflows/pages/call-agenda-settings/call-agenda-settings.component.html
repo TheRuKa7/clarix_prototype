@@ -1,0 +1,127 @@
+<div class="ca-page">
+  <p class="ca-hint">
+    A supplier with many open lines is not one long call. Choose an agent to set how its calls
+    group multiple lines — this has no effect until multi-line calling ships.
+  </p>
+
+  <div class="ca-picker">
+    <span class="ca-picker-label">For agent</span>
+    <app-template-picker (selected)="onTemplatePicked($event)" placeholder="Select an agent…"></app-template-picker>
+  </div>
+
+  @if (loading()) {
+    <div class="ca-empty">Loading…</div>
+  } @else if (template(); as t) {
+    <div class="ca-grid">
+      <div class="ca-col">
+        <div class="ca-block">
+          <div class="ca-block-head">
+            <span>Order the lines</span>
+            <button type="button" class="ca-add-btn" (click)="addBand()">Add band</button>
+          </div>
+          <p class="ca-block-hint">Highest band first. Everything inside a band keeps its sheet order.</p>
+          <ol class="ca-band-list">
+            @for (band of config().bands; track $index) {
+              <li class="ca-band">
+                <div class="ca-band-rank">{{ $index + 1 }}</div>
+                <div class="ca-band-body">
+                  <input
+                    class="ca-input"
+                    [ngModel]="band.name"
+                    (ngModelChange)="updateBand($index, { name: $event })"
+                    placeholder="Band name"
+                  />
+                  <input
+                    class="ca-input"
+                    [ngModel]="band.rule"
+                    (ngModelChange)="updateBand($index, { rule: $event })"
+                    placeholder="Rule, e.g. target dispatch is in the past"
+                  />
+                </div>
+                <div class="ca-band-actions">
+                  <button type="button" class="ca-icon-btn" [disabled]="$index === 0" (click)="moveBand($index, -1)">↑</button>
+                  <button type="button" class="ca-icon-btn" [disabled]="$index === config().bands.length - 1" (click)="moveBand($index, 1)">↓</button>
+                  <button type="button" class="ca-icon-btn ca-danger" (click)="removeBand($index)">&times;</button>
+                </div>
+              </li>
+            }
+            @if (config().bands.length === 0) {
+              <li class="ca-band-empty">No bands yet — every line is treated with equal priority.</li>
+            }
+          </ol>
+        </div>
+      </div>
+
+      <div class="ca-col">
+        <div class="ca-block">
+          <div class="ca-block-head"><span>Cut the call</span></div>
+          <label class="ca-field">
+            <span>Group lines by</span>
+            <input class="ca-input" [ngModel]="config().groupByKey" (ngModelChange)="updateConfig({ groupByKey: $event })" />
+          </label>
+          <label class="ca-field">
+            <span>Max lines in one call</span>
+            <input class="ca-input" type="number" min="1" max="20"
+              [ngModel]="config().maxLinesPerCall" (ngModelChange)="updateConfig({ maxLinesPerCall: $event })" />
+          </label>
+          <label class="ca-field">
+            <span>Check in with the supplier after line</span>
+            <input class="ca-input" type="number" min="1" max="20"
+              [ngModel]="config().checkInAfterLine" (ngModelChange)="updateConfig({ checkInAfterLine: $event })" />
+          </label>
+          <label class="ca-field">
+            <span>Hard stop at</span>
+            <input class="ca-input" [ngModel]="config().hardStopDuration" (ngModelChange)="updateConfig({ hardStopDuration: $event })" />
+          </label>
+          <label class="ca-field">
+            <span>Lines that do not fit</span>
+            <select class="ca-input" [ngModel]="config().overflowPolicy" (ngModelChange)="updateConfig({ overflowPolicy: $event })">
+              @for (opt of overflowOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="ca-col">
+        <div class="ca-block">
+          <div class="ca-block-head"><span>Close a line only when it adds up</span></div>
+          <div class="ca-formula">ready + committed + quality‑affected + undated = pending</div>
+          <label class="ca-check">
+            <input type="checkbox" [ngModel]="config().reAskOnMismatch" (ngModelChange)="updateConfig({ reAskOnMismatch: $event })" />
+            <span><b>Re-ask inside the call</b> when the numbers do not reconcile</span>
+          </label>
+          <label class="ca-check">
+            <input type="checkbox" [ngModel]="config().capCommitmentAtOpenQuantity" (ngModelChange)="updateConfig({ capCommitmentAtOpenQuantity: $event })" />
+            <span><b>Cap each commitment</b> at the line open quantity</span>
+          </label>
+        </div>
+
+        <div class="ca-block">
+          <div class="ca-block-head">
+            <span>Outcome buckets</span>
+            <span class="ca-count-badge">{{ outcomeBuckets.length }}</span>
+          </div>
+          <p class="ca-block-hint">Fixed vocabulary from PRD‑VOX‑12. Every line closes as exactly one of these.</p>
+          <div class="ca-chip-grid">
+            @for (o of outcomeBuckets; track o) {
+              <span class="ca-chip">{{ o }}</span>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ca-footer">
+      @if (saved()) {
+        <span class="ca-saved">Saved.</span>
+      }
+      <button type="button" class="ca-save-btn" (click)="save()" [disabled]="saving()">
+        {{ saving() ? 'Saving…' : 'Save agenda settings' }}
+      </button>
+    </div>
+  } @else {
+    <div class="ca-empty">Pick an agent above to edit its call agenda.</div>
+  }
+</div>

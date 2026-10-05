@@ -1,0 +1,28 @@
+@if (src(); as s) {
+  <div class="pl" role="group" aria-label="Call recording">
+    <audio #audio [src]="s" preload="metadata" (loadedmetadata)="onMeta()" (timeupdate)="onTime()" (play)="playing.set(true)" (pause)="playing.set(false)" (ended)="playing.set(false)"></audio>
+    <button type="button" class="pl-play" (click)="toggle()" [attr.aria-label]="playing() ? 'Pause' : 'Play'" [title]="playing() ? 'Pause (space)' : 'Play (space)'">
+      <lucide-icon [name]="playing() ? 'pause' : 'play'" [size]="16" [strokeWidth]="2"></lucide-icon>
+    </button>
+    <button type="button" class="pl-btn" (click)="skip(-10)" aria-label="Back 10 seconds" title="Back 10 s"><lucide-icon name="rotate-ccw" [size]="15" [strokeWidth]="1.75"></lucide-icon></button>
+    <button type="button" class="pl-btn" (click)="skip(10)" aria-label="Forward 10 seconds" title="Forward 10 s"><lucide-icon name="rotate-cw" [size]="15" [strokeWidth]="1.75"></lucide-icon></button>
+    <div class="pl-wave" #wave role="slider" tabindex="0" aria-label="Position" [attr.aria-valuemax]="dur()" [attr.aria-valuenow]="t()"
+      (pointerdown)="drag($event)" (keydown.arrowleft)="skip(-5)" (keydown.arrowright)="skip(5)">
+      @for (b of bars(); track $index) {
+        <i [style.height.%]="b.h" [class]="b.who + ($index / bars().length < pct() ? ' on' : '')"></i>
+      }
+    </div>
+    <span class="pl-time">{{ clock(t()) }} / {{ clock(dur()) }}</span>
+    <button type="button" class="pl-btn pl-speed" (click)="speed()" [title]="'Speed ' + rate() + '×'" aria-label="Playback speed">{{ rate() }}×</button>
+    <a class="pl-btn" [href]="s" [download]="downloadName()" title="Download audio" aria-label="Download audio"><lucide-icon name="download" [size]="15" [strokeWidth]="1.75"></lucide-icon></a>
+  </div>
+} @else if (loading()) {
+  <div class="pl pl-empty"><lucide-icon name="loader-circle" [size]="14" class="pl-spin"></lucide-icon> Loading the recording…</div>
+} @else if (error()) {
+  <div class="pl pl-empty pl-bad">
+    <lucide-icon name="circle-alert" [size]="14"></lucide-icon> {{ error() }}
+    <button type="button" class="pl-retry" (click)="retry.emit()"><lucide-icon name="refresh-cw" [size]="12"></lucide-icon> Try again</button>
+  </div>
+} @else {
+  <div class="pl pl-empty"><lucide-icon name="audio-lines" [size]="14"></lucide-icon> No recording for this call.</div>
+}

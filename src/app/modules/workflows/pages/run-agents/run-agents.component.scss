@@ -1,0 +1,228 @@
+@use '../../../../../styles/ds' as ds;
+.ra-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ra-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ra-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0;
+}
+
+.ra-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.ra-metric-strip {
+  // One slim bar of numbers instead of five tall cards.
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.ra-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 1 150px;
+  padding: 10px 16px;
+  border-left: 1px solid var(--border-color);
+
+  &:first-child { border-left: 0; }
+}
+
+.ra-metric-v {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.ra-metric-k {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ra-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.ra-grid {
+  display: grid;
+  // auto-fit: cards share the full width on wide screens instead of leaving empty tracks.
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.ra-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-md);
+  }
+}
+
+.ra-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ra-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+  }
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.icon-btn(32px);
+}
+
+.ra-card-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-bg);
+  color: var(--ds-accent-fg);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ra-card-id {
+  min-width: 0;
+}
+
+.ra-card-id h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ra-card-id span {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ra-card-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.ra-card-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+
+  b {
+    color: var(--text-color);
+  }
+}
+
+.ra-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ra-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
+.ra-btn-sm {
+  flex: 1;
+  justify-content: center;
+  padding: 7px 10px;
+}
+
+.ra-btn-primary {
+  background: var(--primary-color);
+  color: var(--text-inverse);
+
+  &:hover {
+    background: var(--primary-hover);
+  }
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.btn(primary);
+}
+
+.ra-btn-secondary {
+  background: var(--bg-primary);
+  color: var(--text-color);
+  border-color: var(--border-color);
+
+  &:hover {
+    background: var(--hover-bg);
+  }
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.btn(secondary);
+}
+
+@media (max-width: 900px) {
+  .ra-metric { flex-basis: 45%; }
+}

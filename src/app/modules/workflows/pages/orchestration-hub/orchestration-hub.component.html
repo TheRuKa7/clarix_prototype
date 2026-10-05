@@ -1,0 +1,27 @@
+<div class="oh-page">
+  <div class="oh-header">
+    <h1 class="oh-title">Orchestration</h1>
+    <p class="oh-subtitle">
+      One large upload, split by rules into lanes. Each lane feeds a different agent. Rows that
+      match no lane fall through to the next.
+    </p>
+  </div>
+
+  <div class="oh-tabs" role="tablist">
+    <button role="tab" class="oh-tab" [class.active]="activeTab() === 'lanes'" (click)="setTab('lanes')">Lanes</button>
+    <button role="tab" class="oh-tab" [class.active]="activeTab() === 'agenda'" (click)="setTab('agenda')">Call agenda</button>
+    <button role="tab" class="oh-tab" [class.active]="activeTab() === 'boundary'" (click)="setTab('boundary')">Who does what</button>
+  </div>
+
+  @switch (activeTab()) {
+    @case ('lanes') {
+      <app-orchestration-lanes></app-orchestration-lanes>
+    }
+    @case ('agenda') {
+      <app-call-agenda-settings></app-call-agenda-settings>
+    }
+    @default {
+      <app-orchestration-explainer></app-orchestration-explainer>
+    }
+  }
+</div>

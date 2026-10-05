@@ -1,0 +1,303 @@
+/* =================================
+   CLARIX THEME SYSTEM - CSS VARIABLES
+   ================================= */
+
+:root {
+  /* Clarix accent over the shared Cognilix tokens (ds-tokens.css): PANTONE 7672 C violet (#4C4184). */
+  --ds-accent: #4c4184; --ds-accent-hover: #3a3168; --ds-accent-fg: #4c4184;
+  --ds-accent-soft: #f1f0f8; --ds-accent-border: #d3cfe8; --ds-on-accent: #ffffff; --ds-focus: #4c4184;
+
+  /* Older names used across Clarix, now pointing at semantic tokens so light and dark come from one place. */
+  --primary-color: var(--ds-accent);
+  --primary-hover: var(--ds-accent-hover);
+  --primary-bg: var(--ds-accent-soft);
+  --secondary-color: var(--ds-info);
+  --secondary-hover: var(--ds-info-fg);
+
+  --success-color: var(--ds-success-fg);
+  --success-bg: var(--ds-success-bg);
+  --warning-color: var(--ds-warning-fg);
+  --warning-bg: var(--ds-warning-bg);
+  --error-color: var(--ds-danger-fg);
+  --error-bg: var(--ds-danger-bg);
+  --info-color: var(--ds-info-fg);
+  --info-bg: var(--ds-info-bg);
+  --danger-color: var(--ds-danger-fg);
+
+  --text-color: var(--ds-text);
+  --text-secondary: var(--ds-text-2);
+  --text-muted: var(--ds-text-muted);
+  --text-light: var(--ds-text-placeholder);
+  --text-inverse: var(--ds-text-inverse);
+
+  --bg-primary: var(--ds-surface);
+  --bg-secondary: var(--ds-bg);
+  --bg-tertiary: var(--ds-surface-sunken);
+  --bg-inverse: var(--ds-text);
+
+  --border-color: var(--ds-border);
+  --border-light: var(--ds-border-subtle);
+  --border-dark: var(--ds-border-strong);
+
+  --hover-bg: var(--ds-hover);
+  --active-bg: var(--ds-active);
+  --focus-ring: var(--ds-accent-soft);
+  --font-sans: var(--ds-font);
+  --font-mono: var(--ds-mono);
+
+  /* Names some components read but nothing defined; they fell back to hard-coded white. */
+  --surface: var(--ds-surface); --card-bg: var(--ds-surface); --bg-card: var(--ds-surface); --input-bg: var(--ds-input-bg);
+  --surface-hover: var(--ds-hover); --bg-hover: var(--ds-hover); --bg-muted: var(--ds-surface-sunken); --code-bg: var(--ds-surface-sunken); --bg: var(--ds-bg);
+  --text: var(--ds-text); --text-strong: var(--ds-text); --text-primary: var(--ds-text);
+  --primary: var(--ds-accent); --danger: var(--ds-danger-fg); --danger-bg: var(--ds-danger-bg);
+
+  --header-bg: var(--ds-bg);
+  --header-border: var(--ds-border);
+  --sidebar-bg: var(--ds-sidebar);
+  --sidebar-border: var(--ds-border);
+
+  --scrollbar-thumb: var(--ds-border-strong);
+  --scrollbar-thumb-hover: var(--ds-border-input);
+  --scrollbar-track: transparent;
+
+  --shadow-sm: var(--ds-shadow-sm);
+  --shadow-md: var(--ds-shadow-md);
+  --shadow-lg: var(--ds-shadow-lg);
+  --shadow-xl: var(--ds-shadow-lg);
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+
+  /* Z-index layers */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+}
+
+/* Dark: the surfaces and text flip inside ds-tokens.css; only the accent is set here. */
+.dark {
+  /* Buttons keep white text on violet in both themes; violet used as text on dark surfaces is the lighter accent-fg. */
+  --ds-accent: #6a5fc1; --ds-accent-hover: #7b71d0; --ds-accent-fg: #bcb5f5;
+  --ds-accent-soft: rgba(124, 113, 208, 0.16); --ds-accent-border: rgba(150, 140, 230, 0.38); --ds-on-accent: #ffffff; --ds-focus: #bcb5f5;
+}
+
+/* Semi Dark Mode (Sidebar & Header) */
+.semi-dark {
+  --header-bg: #1f2937;
+  --header-border: #374151;
+  --sidebar-bg: #1f2937;
+  --sidebar-border: #374151;
+}
+
+.semi-dark .header,
+.semi-dark .sidebar {
+  --text-color: #f9fafb;
+  --text-muted: #9ca3af;
+  --border-color: #374151;
+  --hover-bg: rgba(255, 255, 255, 0.05);
+}
+
+/* Layout Variations */
+.horizontal .sidebar {
+  position: relative;
+  width: 100%;
+  height: auto;
+  border-right: none;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.horizontal .main-wrapper {
+  margin-left: 0;
+  margin-top: 0;
+}
+
+.box .content-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+/* RTL Support */
+[dir="rtl"] .sidebar {
+  left: auto;
+  right: 0;
+}
+
+[dir="rtl"] .main-wrapper {
+  margin-left: 0;
+  margin-right: 260px;
+}
+
+[dir="rtl"] .main-wrapper.collapsed {
+  margin-right: 80px;
+}
+
+[dir="rtl"] .header {
+  left: 0;
+  right: 260px;
+}
+
+[dir="rtl"] .header.collapsed {
+  right: 80px;
+}
+
+/* Navbar Types */
+.sticky .header {
+  position: sticky;
+  top: 0;
+}
+
+.static .header {
+  position: relative;
+}
+
+.static .main-content {
+  margin-top: 0;
+}
+
+.floating .header {
+  position: fixed;
+  top: 12px;
+  left: 272px;
+  right: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+}
+
+.floating .header.collapsed {
+  left: 92px;
+}
+
+.floating .main-content {
+  margin-top: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .horizontal .sidebar {
+    position: fixed;
+    width: 260px;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+  }
+
+  .horizontal .sidebar.show {
+    transform: translateX(0);
+  }
+
+  .horizontal .main-wrapper {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+    width: 260px !important;
+  }
+
+  .sidebar.show {
+    transform: translateX(0);
+  }
+
+  .main-wrapper,
+  .main-wrapper.collapsed {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .header,
+  .header.collapsed {
+    left: 0 !important;
+    right: 0 !important;
+  }
+
+  .floating .header,
+  .floating .header.collapsed {
+    left: 12px !important;
+    right: 12px !important;
+  }
+
+  [dir="rtl"] .sidebar {
+    transform: translateX(100%);
+  }
+
+  [dir="rtl"] .sidebar.show {
+    transform: translateX(0);
+  }
+}
+
+/* Animation Classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Utility Classes */
+.text-primary { color: var(--primary-color) !important; }
+.text-secondary { color: var(--secondary-color) !important; }
+.text-success { color: var(--success-color) !important; }
+.text-warning { color: var(--warning-color) !important; }
+.text-error { color: var(--error-color) !important; }
+.text-info { color: var(--info-color) !important; }
+.text-muted { color: var(--text-muted) !important; }
+
+.bg-primary { background-color: var(--primary-color) !important; }
+.bg-secondary { background-color: var(--secondary-color) !important; }
+.bg-success { background-color: var(--success-color) !important; }
+.bg-warning { background-color: var(--warning-color) !important; }
+.bg-error { background-color: var(--error-color) !important; }
+.bg-info { background-color: var(--info-color) !important; }
+
+.border-primary { border-color: var(--primary-color) !important; }
+.border-secondary { border-color: var(--secondary-color) !important; }
+.border-success { border-color: var(--success-color) !important; }
+.border-warning { border-color: var(--warning-color) !important; }
+.border-error { border-color: var(--error-color) !important; }
+.border-info { border-color: var(--info-color) !important; }

@@ -1,0 +1,1380 @@
+<!-- Backdrop -->
+<div class="modal-backdrop" (click)="cancel()" aria-hidden="true"></div>
+
+<!-- Modal -->
+<div class="modal" role="dialog" [attr.aria-label]="isEdit ? 'Edit Workflow Template' : 'Create Workflow Template'" aria-modal="true">
+
+  <!-- Modal Header -->
+  <div class="modal-header">
+    <div class="modal-title-row">
+      <span class="modal-icon-box">
+        <lucide-icon name="git-branch" [size]="20" class="modal-icon"></lucide-icon>
+      </span>
+      <div>
+        <h2 class="modal-title">{{ isEdit ? (form.get('name')?.value || 'Edit Template') : 'New Workflow Template' }}</h2>
+        <p class="modal-subtitle">{{ headerSubtitle() }}</p>
+      </div>
+    </div>
+    <button class="close-btn" (click)="cancel()" aria-label="Close">
+      <lucide-icon name="x" [size]="20"></lucide-icon>
+    </button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="modal-tabs" role="tablist">
+    <button
+      role="tab"
+      [attr.aria-selected]="activeTab() === 'basic'"
+      class="tab-btn"
+      [class.tab-active]="activeTab() === 'basic'"
+      (click)="setTab('basic')"
+    >
+      <span class="tab-step">1</span><span>{{ isExchangeTemplate() ? 'Agent' : 'Basic' }}</span>
+    </button>
+    <button
+      role="tab"
+      [attr.aria-selected]="activeTab() === 'input'"
+      class="tab-btn"
+      [class.tab-active]="activeTab() === 'input'"
+      (click)="setTab('input')"
+    >
+      <span class="tab-step">2</span><span>{{ isExchangeTemplate() ? 'Sheet columns' : 'Input' }}</span>
+    </button>
+    <button
+      role="tab"
+      [attr.aria-selected]="activeTab() === 'report'"
+      class="tab-btn"
+      [class.tab-active]="activeTab() === 'report'"
+      (click)="setTab('report')"
+    >
+      <span class="tab-step">3</span><span>Report</span>
+    </button>
+  </div>
+
+  <!-- Form -->
+  <form [formGroup]="form" (ngSubmit)="submit()" class="modal-body">
+
+    <!-- ── Tab: Basic ── -->
+    @if (activeTab() === 'basic') {
+      <div class="tab-panel" role="tabpanel">
+        @if (isExchangeTemplate()) {
+          <div class="echo-card">
+            <div class="echo-card-head">
+              <div>
+                <div class="echo-card-kicker">From Echo</div>
+                <div class="echo-card-title">{{ form.get('name')?.value || 'Echo agent' }}</div>
+              </div>
+              <button type="button" class="btn-secondary btn-xs" (click)="syncFromAgent()" [disabled]="agentSchemaLoading()">
+                <lucide-icon name="refresh-cw" [size]="12" [class.animate-spin]="agentSchemaLoading()"></lucide-icon>
+                {{ agentSchemaLoading() ? 'Syncing…' : 'Sync now' }}
+              </button>
+            </div>
+            @if (syncSummary()) { <p class="echo-card-sync">{{ syncSummary() }}</p> }
+            <dl class="echo-card-grid">
+              <div><dt>What it does</dt><dd>{{ form.get('description')?.value || '—' }}</dd></div>
+              <div><dt>Voice</dt><dd>{{ form.get('providerAgentSpec.voice')?.value || 'Default' }}</dd></div>
+              <div><dt>Calls go out on</dt><dd>{{ agentSchema()?.ozonetelCampaign || '—' }}</dd></div>
+              <div><dt>Direction</dt><dd>{{ form.get('providerAgentSpec.direction')?.value || 'Outbound' }}</dd></div>
+              <div><dt>Asks for</dt><dd>{{ agentBindings.length }} fields from the sheet</dd></div>
+              <div><dt>Records</dt><dd>{{ requiredFields.length }} answers</dd></div>
+            </dl>
+            <p class="section-hint">The prompt, voice, fields and answers are edited in Echo. Every save there updates this agent here. Retries and calling hours are set in Echo too.</p>
+          </div>
+        } @else {
+
+          <div class="form-group" style="max-width:520px;">
+            <label for="name" class="form-label">Template name <span class="required">*</span></label>
+            <input
+              id="name"
+              type="text"
+              formControlName="name"
+              class="form-input"
+              [class.input-error]="isFieldInvalid('name')"
+              placeholder="Human-readable name"
+            />
+            @if (isFieldInvalid('name')) {
+              <p class="field-error" role="alert">Name is required.</p>
+            }
+            <span class="form-hint">Shown to operators on the Agents grid — everything below is setup Clarix uses to run it.</span>
+          </div>
+
+          <div class="config-block">
+            <div class="config-block-head">
+              <lucide-icon name="phone-call" [size]="15"></lucide-icon>
+              <span>Provider &amp; call setup</span>
+            </div>
+            <div class="config-block-grid three">
+              <div class="form-group">
+                <label for="callProviderKey" class="form-label">Call Provider</label>
+                @if (isExchangeTemplate()) {
+                  <input
+                    id="callProviderKey"
+                    type="text"
+                    class="form-input"
+                    [value]="callProviderDisplayName()"
+                    readonly
+                    title="Set by Exchange agent sync — not editable"
+                  />
+                } @else {
+                  <select id="callProviderKey" formControlName="callProviderKey" class="form-input form-select">
+                    <option value="">Default (Voxera)</option>
+                    @for (p of callProviders(); track p.key) {
+                      <option [value]="p.key">{{ p.displayName }}</option>
+                    }
+                  </select>
+                }
+              </div>
+
+              <div class="form-group">
+                <label for="providerAgentId" class="form-label">Provider Agent ID <span class="required">*</span></label>
+                <input
+                  id="providerAgentId"
+                  type="text"
+                  formControlName="providerAgentId"
+                  class="form-input"
+                  [class.input-error]="isFieldInvalid('providerAgentId')"
+                  [readOnly]="isExchangeTemplate()"
+                  [title]="isExchangeTemplate() ? 'The synced agent\'s id in exchange_agents — not editable' : ''"
+                  placeholder="e.g. group_m8fz5"
+                  autocomplete="off"
+                />
+                @if (isFieldInvalid('providerAgentId')) {
+                  <p class="field-error" role="alert">Provider Agent ID is required.</p>
+                }
+              </div>
+
+              <div class="form-group">
+                <label for="defaultChannelType" class="form-label">Default Channel <span class="required">*</span></label>
+                <select id="defaultChannelType" formControlName="defaultChannelType" class="form-input form-select">
+                  @for (ch of defaultChannelOptions; track ch) {
+                    <option [value]="ch">{{ ch }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            <!-- Descriptive metadata about the provider agent — entered manually for now; will be
+                 back-filled from Exchange agent sync once that agent data exists. -->
+            <div formGroupName="providerAgentSpec">
+              <div class="config-block-subhead">
+                <span>Agent spec</span>
+                <button
+                  type="button"
+                  class="btn-secondary btn-xs"
+                  disabled
+                  title="Will sync from Exchange Agent once available"
+                >
+                  <lucide-icon name="refresh-cw" [size]="12"></lucide-icon>
+                  Re-fetch
+                </button>
+              </div>
+              <div class="config-block-grid two">
+                <div class="form-group">
+                  <label for="specVoice" class="form-label">Voice</label>
+                  <input id="specVoice" type="text" formControlName="voice" class="form-input" placeholder="e.g. Warm professional, female" />
+                </div>
+                <div class="form-group">
+                  <label for="specDirection" class="form-label">Direction</label>
+                  <input id="specDirection" type="text" formControlName="direction" class="form-input" placeholder="e.g. Outbound" />
+                </div>
+              </div>
+              <p class="section-hint">Entered manually for now — will be kept in sync from the Exchange agent once that data exists there.</p>
+            </div>
+          </div>
+
+          <div class="config-block">
+            <div class="config-block-head">
+              <lucide-icon name="repeat" [size]="15"></lucide-icon>
+              <span>Trigger &amp; retry</span>
+            </div>
+
+            <div class="form-group">
+              <label for="triggerEventTypesRaw" class="form-label">Trigger Event Types <span class="required">*</span></label>
+              <input
+                id="triggerEventTypesRaw"
+                type="text"
+                formControlName="triggerEventTypesRaw"
+                class="form-input"
+                [class.input-error]="isFieldInvalid('triggerEventTypesRaw')"
+                placeholder="PO_CREATED, PO_UPDATED (comma-separated)"
+              />
+              @if (isFieldInvalid('triggerEventTypesRaw')) {
+                <p class="field-error" role="alert">At least one event type is required.</p>
+              }
+            </div>
+
+            <div class="config-block-grid two">
+              <div class="form-group">
+                <label for="maxRetries" class="form-label">Max Retries</label>
+                <input
+                  id="maxRetries"
+                  type="number"
+                  formControlName="maxRetries"
+                  class="form-input"
+                  min="0"
+                  max="10"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="retryDelayMinutes" class="form-label">Retry Delay (minutes)</label>
+                <input
+                  id="retryDelayMinutes"
+                  type="number"
+                  formControlName="retryDelayMinutes"
+                  class="form-input"
+                  min="1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="templateKey" class="form-label">Template Key <span class="required">*</span></label>
+            <input
+              id="templateKey"
+              type="text"
+              formControlName="templateKey"
+              class="form-input"
+              [class.input-error]="isFieldInvalid('templateKey')"
+              placeholder="e.g. PO_CONFIRMATION"
+              autocomplete="off"
+              style="max-width:320px;"
+            />
+            @if (isFieldInvalid('templateKey')) {
+              <p class="field-error" role="alert">Required. Use UPPERCASE letters, numbers and underscores only.</p>
+            }
+            <span class="form-hint">The internal key used by triggers and integrations. Set once, rarely changed.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="description" class="form-label">Description</label>
+            <textarea
+              id="description"
+              formControlName="description"
+              class="form-input form-textarea"
+              placeholder="What does this workflow do?"
+              rows="2"
+            ></textarea>
+          </div>
+
+
+        }
+      </div>
+    }
+
+    <!-- ── Tab: Input (Contact/Context mapping or Input Parameters, Data Enrichments, Steps) ── -->
+    @if (activeTab() === 'input') {
+      <div class="tab-panel" role="tabpanel">
+
+        @if (!isExchangeTemplate()) {
+          <div class="section-divider">
+            <span>Contact Extraction Config</span>
+          </div>
+          <p class="section-hint">JSON paths used to extract contact info from the event payload.</p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="contactPhone" class="form-label">Phone JSON Path</label>
+              <input
+                id="contactPhone"
+                type="text"
+                formControlName="contactPhone"
+                class="form-input"
+                placeholder="$.supplier.phone"
+              />
+            </div>
+            <div class="form-group">
+              <label for="contactEmail" class="form-label">Email JSON Path</label>
+              <input
+                id="contactEmail"
+                type="text"
+                formControlName="contactEmail"
+                class="form-input"
+                placeholder="$.supplier.email"
+              />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="contactName" class="form-label">Name JSON Path</label>
+              <input
+                id="contactName"
+                type="text"
+                formControlName="contactName"
+                class="form-input"
+                placeholder="$.supplier.name"
+              />
+            </div>
+          </div>
+        }
+
+        @if (isExchangeTemplate()) {
+
+          <!-- Input Parameters: fixed by the synced agent — resolved from the sheet or an enrichment -->
+          <div class="section-divider">
+            <span>Fields the agent needs</span>
+          </div>
+          <p class="section-hint">
+            These are the fields the Echo agent asks for. For each one, choose whether it comes from a
+            column in the uploaded sheet or from a data lookup below. Phone, name and email are matched
+            automatically.
+          </p>
+
+          @if (agentBindings.controls.length === 0) {
+            <p class="empty-hint">No agent input parameters found yet.</p>
+          }
+
+          @if (agentBindings.controls.length > 0) {
+            <div class="input-params-table">
+              <div class="input-params-row input-params-head">
+                <span>Echo input</span>
+                <span>Sheet Column</span>
+                <span>Or fetched by</span>
+                <span class="status-col">Status</span>
+              </div>
+              @for (fg of agentBindings.controls; track fg) {
+                @let agentField = fg.get('agentField')?.value;
+                @let spec = agentFieldSpec(agentField);
+                @let enrichedBy = enrichmentSourceFor(agentField);
+                <div class="input-params-row">
+                  <div class="input-param-cell">
+                    <span class="badge-code">
+                      {{ agentField }}
+                      @if (spec?.required) {
+                        <em class="req-star" title="Required">*</em>
+                      }
+                    </span>
+                    @if (spec?.description) {
+                      <p class="cell-sub">{{ spec?.description }}</p>
+                    }
+                  </div>
+                  <div class="input-param-cell">
+                    <select
+                      class="sheet-col-select"
+                      [disabled]="!!enrichedBy"
+                      (change)="onAgentFieldSheetToggle(agentField, $any($event.target).value === 'sheet')"
+                    >
+                      @if (enrichedBy) {
+                        @if (isAgentFieldFromSheet(agentField)) {
+                          <option value="dual" selected>{{ sheetColumnLabel(agentField) }} (or via enrichment)</option>
+                        } @else {
+                          <option value="enrichment" selected>— filled by enrichment —</option>
+                        }
+                      } @else {
+                        <option value="none" [selected]="!isAgentFieldFromSheet(agentField)">— not in the sheet —</option>
+                        <option value="sheet" [selected]="isAgentFieldFromSheet(agentField)">{{ sheetColumnLabel(agentField) }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="input-param-cell">
+                    @if (enrichedBy) {
+                      <span class="via-chip">{{ enrichedBy }}</span>
+                    } @else {
+                      <span class="opt-note">—</span>
+                    }
+                  </div>
+                  <div class="input-param-cell status-col">
+                    @switch (agentFieldStatus(agentField, spec?.required)) {
+                      @case ('resolved') {
+                        <lucide-icon name="check" [size]="16" class="status-ok-icon"></lucide-icon>
+                      }
+                      @case ('missing') {
+                        <span class="badge-status no-ans">Missing</span>
+                      }
+                      @default {
+                        <span class="opt-note">skipped</span>
+                      }
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+        } @else {
+
+          <!-- Context Mapping: JSON-path extraction from the trigger payload -->
+          <div class="section-divider">
+            <span>Context Mapping</span>
+          </div>
+          <p class="section-hint">
+            Field name → JSON path. Required fields must be present in the trigger payload. Data type
+            determines the operators offered when this field is filtered on in a report.
+          </p>
+
+          @if (contextMappings.controls.length === 0) {
+            <p class="empty-hint">No context mappings yet. Click "Add Mapping" to start.</p>
+          }
+
+          <div class="fields-list" formArrayName="contextMappings">
+            @for (fg of contextMappings.controls; track fg; let i = $index) {
+              <div class="field-row" [formGroupName]="i">
+                <div class="field-row-grid">
+                  <div class="form-group">
+                    <label [for]="'cmField-' + i" class="form-label">Field Name <span class="required">*</span></label>
+                    <input
+                      [id]="'cmField-' + i"
+                      type="text"
+                      formControlName="fieldName"
+                      class="form-input"
+                      placeholder="po_number"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label [for]="'cmPath-' + i" class="form-label">JSON Path <span class="required">*</span></label>
+                    <input
+                      [id]="'cmPath-' + i"
+                      type="text"
+                      formControlName="jsonPath"
+                      class="form-input"
+                      placeholder="$.purchaseOrder.poNumber"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label [for]="'cmDataType-' + i" class="form-label">Data Type</label>
+                    <select [id]="'cmDataType-' + i" formControlName="dataType" class="form-input form-select">
+                      @for (dt of fieldDataTypeOptions; track dt) {
+                        <option [value]="dt">{{ dt }}</option>
+                      }
+                    </select>
+                  </div>
+
+                  <div class="form-group form-group-center">
+                    <label [for]="'cmReq-' + i" class="form-label">Required</label>
+                    <input
+                      [id]="'cmReq-' + i"
+                      type="checkbox"
+                      formControlName="required"
+                      class="form-checkbox"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="remove-field-btn"
+                  (click)="removeContextMapping(i)"
+                  [attr.aria-label]="'Remove mapping ' + i"
+                >
+                  <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                </button>
+              </div>
+            }
+          </div>
+
+          <div class="add-row-footer">
+            <button type="button" class="add-row-btn" (click)="addContextMapping()">
+              <lucide-icon name="plus" [size]="14"></lucide-icon>
+              Add Mapping
+            </button>
+          </div>
+        }
+
+        <!-- Data Enrichments: shared by every provider -->
+        <div class="enrichment-section-head">
+          <div>
+            <h3 class="enrichment-title">Data enrichment</h3>
+            <p class="section-hint">
+              One lookup can fill several inputs at once. Give it a key and pick what to take from
+              the result.
+            </p>
+          </div>
+          <button type="button" class="add-row-btn" (click)="addEnrichment()" [disabled]="dataFunctions().length === 0">
+            <lucide-icon name="plus" [size]="14"></lucide-icon>
+            Add enrichment
+          </button>
+        </div>
+
+        @if (dataFunctions().length === 0) {
+          <p class="empty-hint">
+            No data functions are available. Create them under Data Functions (admin), then they can
+            be wired in here.
+          </p>
+        }
+
+        @if (enrichments.controls.length === 0) {
+          <p class="empty-hint">No enrichments yet. Click "Add enrichment" to start.</p>
+        }
+
+        <div class="enrichment-list" formArrayName="enrichments">
+          @for (eg of enrichments.controls; track eg; let i = $index) {
+            <div class="enrichment-card" [formGroupName]="i">
+              <p class="enrichment-card-label">Lookup</p>
+              <div class="enrichment-lookup-row">
+                <select
+                  formControlName="dataFunctionId"
+                  class="form-input form-select enrichment-fn-select"
+                  (change)="onEnrichmentFunctionChange(i)"
+                >
+                  <option value="">Select a function…</option>
+                  @for (fn of dataFunctions(); track fn.id) {
+                    <option [value]="fn.id" [disabled]="!fn.enabled">
+                      {{ fn.name }}{{ fn.enabled ? '' : ' — disabled' }}
+                    </option>
+                  }
+                </select>
+
+                @if (enrichmentInputs(i).controls.length > 0) {
+                  <div class="enrichment-keyed-by">
+                    <span class="enrichment-keyed-label">keyed by</span>
+                    @for (ig of enrichmentInputs(i).controls; track ig) {
+                      <span class="enrichment-key-badge">{{ ig.get('param')?.value }}</span>
+                    }
+                  </div>
+                }
+
+                <label class="enrichment-required-toggle" [attr.title]="'Required'">
+                  <input type="checkbox" formControlName="required" class="form-checkbox" />
+                  <span>Required</span>
+                </label>
+
+                <label class="enrichment-required-toggle"
+                  [attr.title]="'Also keep each fetched field\'s own sheet column — a row supplies either the value or the lookup key, never both'">
+                  <input type="checkbox" formControlName="acceptInputs" class="form-checkbox"
+                    (change)="onEnrichmentAcceptInputsToggle(i, $any($event.target).checked)" />
+                  <span>Accept Inputs</span>
+                </label>
+
+                <button
+                  type="button"
+                  class="enrichment-remove-btn"
+                  (click)="removeEnrichment(i)"
+                  [attr.aria-label]="'Remove enrichment ' + i"
+                >
+                  <lucide-icon name="x" [size]="16"></lucide-icon>
+                </button>
+              </div>
+
+              @if (enrichmentFunction(i)) {
+                <div class="enrichment-divider"></div>
+                <p class="enrichment-card-label">Fetch these fields</p>
+                <div class="enrichment-fields-row" formArrayName="outputs">
+                  @for (og of enrichmentOutputs(i).controls; track og; let k = $index) {
+                    <div class="enrichment-field-row" [formGroupName]="k">
+                      <span class="enrichment-field-name">{{ og.get('output')?.value }}</span>
+                      <lucide-icon name="arrow-right" [size]="12" class="enrichment-field-arrow"></lucide-icon>
+                      <select
+                        formControlName="target"
+                        class="form-input form-select enrichment-field-target-select"
+                      >
+                        <option value="">Map to agent param…</option>
+                        @for (opt of agentParamTargetOptions(); track opt.value) {
+                          <option [value]="opt.value">{{ opt.label }}</option>
+                        }
+                      </select>
+                      <button
+                        type="button"
+                        class="enrichment-field-remove"
+                        (click)="removeEnrichmentOutput(i, k)"
+                        aria-label="Remove fetched field"
+                      >
+                        <lucide-icon name="x" [size]="12"></lucide-icon>
+                      </button>
+                    </div>
+                  }
+                  @if (availableEnrichmentOutputs(i).length > 0) {
+                    <select
+                      class="enrichment-add-field-select"
+                      #addFieldSelect
+                      (change)="addEnrichmentOutputField(i, addFieldSelect.value); addFieldSelect.value = ''"
+                    >
+                      <option value="" disabled selected>+ Add field</option>
+                      @for (o of availableEnrichmentOutputs(i); track o.name) {
+                        <option [value]="o.name">{{ o.name }}</option>
+                      }
+                    </select>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        @if (!isExchangeTemplate()) {
+
+          <!-- Steps & Config: Exchange's own agent runs the call, so there's no Clarix-side step
+               tree to author there — this section is Voxera/other-provider only. -->
+          <div class="section-divider">
+            <span>Conversation Steps</span>
+          </div>
+          <div class="tab-toolbar">
+            <p class="section-hint">Define the ordered list of steps the workflow will execute.</p>
+            <button type="button" class="add-row-btn" (click)="addStep()">
+              <lucide-icon name="plus" [size]="14"></lucide-icon>
+              Add Step
+            </button>
+          </div>
+
+          @if (steps.controls.length === 0) {
+            <p class="empty-hint">No steps yet. Click "Add Step" to start.</p>
+          }
+
+          <div class="steps-list" formArrayName="steps">
+            @for (stepCtrl of steps.controls; track $index; let stepIdx = $index, isFirst = $first, isLast = $last) {
+              <div class="step-card" [formGroupName]="stepIdx">
+
+                <div class="step-card-header">
+                  <div class="step-card-title">
+                    <span class="step-index">Step {{ stepIdx + 1 }}</span>
+                    <input
+                      type="text"
+                      formControlName="stepId"
+                      class="form-input step-id-input"
+                      placeholder="step_1"
+                      [attr.aria-label]="'Step ID for step ' + (stepIdx + 1)"
+                    />
+                  </div>
+                  <div class="step-card-actions">
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      (click)="moveStep(stepIdx, stepIdx - 1)"
+                      [disabled]="isFirst"
+                      [attr.aria-label]="'Move step ' + (stepIdx + 1) + ' up'"
+                      title="Move up"
+                    >
+                      <lucide-icon name="arrow-up" [size]="14"></lucide-icon>
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      (click)="moveStep(stepIdx, stepIdx + 1)"
+                      [disabled]="isLast"
+                      [attr.aria-label]="'Move step ' + (stepIdx + 1) + ' down'"
+                      title="Move down"
+                    >
+                      <lucide-icon name="arrow-down" [size]="14"></lucide-icon>
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn icon-btn-danger"
+                      (click)="removeStep(stepIdx)"
+                      [attr.aria-label]="'Remove step ' + (stepIdx + 1)"
+                      title="Remove step"
+                    >
+                      <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label [for]="'step-desc-' + stepIdx" class="form-label">Description</label>
+                  <input
+                    [id]="'step-desc-' + stepIdx"
+                    type="text"
+                    formControlName="description"
+                    class="form-input"
+                    placeholder="Optional human-readable description"
+                  />
+                </div>
+
+                <!-- Action -->
+                <div class="section-divider">
+                  <span>Action</span>
+                </div>
+                <div formGroupName="action" class="step-action-section">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label [for]="'step-action-type-' + stepIdx" class="form-label">Action Type <span class="required">*</span></label>
+                      <select
+                        [id]="'step-action-type-' + stepIdx"
+                        formControlName="actionType"
+                        class="form-input form-select"
+                      >
+                        @for (a of actionTypeOptions; track a) {
+                          <option [value]="a">{{ a }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    @if (isActionFieldVisible(stepIdx, 'channelType')) {
+                      <div class="form-group">
+                        <label [for]="'step-channel-' + stepIdx" class="form-label">Channel</label>
+                        <select
+                          [id]="'step-channel-' + stepIdx"
+                          formControlName="channelType"
+                          class="form-input form-select"
+                        >
+                          @for (c of channelOptions; track c) {
+                            <option [value]="c">{{ c }}</option>
+                          }
+                        </select>
+                      </div>
+                    }
+                  </div>
+
+                  @if (isActionFieldVisible(stepIdx, 'questionTemplate')) {
+                    <div class="form-group">
+                      <label [for]="'step-question-' + stepIdx" class="form-label">Question / Prompt Template</label>
+                      <textarea
+                        [id]="'step-question-' + stepIdx"
+                        formControlName="questionTemplate"
+                        class="form-input form-textarea"
+                        rows="3"
+                        placeholder="Hi {supplier_name}, this is a call regarding PO #{po_number}. Do you accept this order?"
+                      ></textarea>
+                      <p class="section-hint">Use <code>{{ '{field_name}' }}</code> placeholders that resolve from the trigger context.</p>
+                    </div>
+                  }
+
+                  @if (isActionFieldVisible(stepIdx, 'fieldsToExtract')) {
+                    <div class="form-group">
+                      <label [for]="'step-extract-' + stepIdx" class="form-label">Fields To Extract</label>
+                      <input
+                        [id]="'step-extract-' + stepIdx"
+                        type="text"
+                        formControlName="fieldsToExtractRaw"
+                        class="form-input"
+                        placeholder="supplier_consent, eta_date (comma-separated)"
+                      />
+                    </div>
+                  }
+
+                  @if (isActionFieldVisible(stepIdx, 'providerAgentId')) {
+                    <div class="form-group">
+                      <label [for]="'step-provider-agent-' + stepIdx" class="form-label">Provider Agent ID</label>
+                      <input
+                        [id]="'step-provider-agent-' + stepIdx"
+                        type="text"
+                        formControlName="providerAgentId"
+                        class="form-input"
+                        placeholder="Overrides the template default (e.g. group_m8fy5)"
+                      />
+                    </div>
+                  }
+
+                  @if (isActionFieldVisible(stepIdx, 'jumpToStepId')) {
+                    <div class="form-group">
+                      <label [for]="'step-jump-' + stepIdx" class="form-label">Jump To Step ID <span class="required">*</span></label>
+                      <input
+                        [id]="'step-jump-' + stepIdx"
+                        type="text"
+                        formControlName="jumpToStepId"
+                        class="form-input"
+                        placeholder="step_3"
+                        [attr.list]="'step-id-options-' + stepIdx"
+                      />
+                      <datalist [id]="'step-id-options-' + stepIdx">
+                        @for (sid of availableStepIds(); track sid) {
+                          <option [value]="sid"></option>
+                        }
+                      </datalist>
+                    </div>
+                  }
+
+                  @if (isActionFieldVisible(stepIdx, 'childWorkflowTemplateId')) {
+                    <div class="form-group">
+                      <label [for]="'step-child-' + stepIdx" class="form-label">Child Workflow Template ID <span class="required">*</span></label>
+                      <input
+                        [id]="'step-child-' + stepIdx"
+                        type="text"
+                        formControlName="childWorkflowTemplateId"
+                        class="form-input"
+                        placeholder="UUID of child workflow template"
+                      />
+                    </div>
+                  }
+
+                  <!--
+                    TEMPORARY: language/voice are no longer sent to the provider, which applies the
+                    agent's own configured defaults instead — so offering them here would be a control
+                    that does nothing. The providerParams form group stays live behind this (see the
+                    form builder), so values already saved on a template round-trip untouched and come
+                    back when this is uncommented. Restore alongside SUPPRESSED_PROVIDER_PARAMS in
+                    WorkflowEngineServiceImpl.
+                  -->
+                  <!-- @if (isActionFieldVisible(stepIdx, 'providerParams')) {
+                    <div formGroupName="providerParams" class="form-row">
+                      <div class="form-group">
+                        <label [for]="'step-provider-lang-' + stepIdx" class="form-label">Provider Language</label>
+                        <input
+                          [id]="'step-provider-lang-' + stepIdx"
+                          type="text"
+                          formControlName="language"
+                          class="form-input"
+                          placeholder="hinglish"
+                          list="provider-language-options"
+                        />
+                      </div>
+                      <div class="form-group">
+                        <label [for]="'step-provider-voice-' + stepIdx" class="form-label">Provider Voice</label>
+                        <input
+                          [id]="'step-provider-voice-' + stepIdx"
+                          type="text"
+                          formControlName="voice"
+                          class="form-input"
+                          placeholder="Ferris"
+                          list="provider-voice-options"
+                        />
+                      </div>
+                    </div>
+                  } -->
+
+
+                </div>
+
+                <!-- Conditions -->
+                <div class="section-divider">
+                  <span>Conditions <span class="label-hint">(optional — all must match)</span></span>
+                </div>
+                <div class="step-conditions">
+                  <div class="tab-toolbar">
+                    <p class="section-hint">Gate this step on values already present in execution context.</p>
+                    <button type="button" class="add-row-btn" (click)="addCondition(stepIdx)">
+                      <lucide-icon name="plus" [size]="14"></lucide-icon>
+                      Add Condition
+                    </button>
+                  </div>
+
+                  @if (conditionsArray(stepIdx).controls.length === 0) {
+                    <p class="empty-hint">No conditions — step always runs.</p>
+                  }
+
+                  <div formArrayName="conditions">
+                    @for (cond of conditionsArray(stepIdx).controls; track $index; let condIdx = $index) {
+                      <div class="condition-row" [formGroupName]="condIdx">
+                        <div class="form-group">
+                          <label class="form-label">Field</label>
+                          <input
+                            type="text"
+                            formControlName="field"
+                            class="form-input"
+                            placeholder="supplier_consent"
+                          />
+                        </div>
+                        <div class="form-group">
+                          <label class="form-label">Operator</label>
+                          <select formControlName="operator" class="form-input form-select">
+                            @for (op of conditionOperatorOptions; track op) {
+                              <option [value]="op">{{ op }}</option>
+                            }
+                          </select>
+                        </div>
+                        <div class="form-group">
+                          <label class="form-label">Value</label>
+                          <input
+                            type="text"
+                            formControlName="value"
+                            class="form-input"
+                            placeholder="yes"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          class="icon-btn icon-btn-danger condition-remove-btn"
+                          (click)="removeCondition(stepIdx, condIdx)"
+                          [attr.aria-label]="'Remove condition ' + (condIdx + 1)"
+                        >
+                          <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                        </button>
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <!-- Flow control -->
+                <div class="section-divider">
+                  <span>Flow Control</span>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label [for]="'step-success-' + stepIdx" class="form-label">On Success</label>
+                    <input
+                      [id]="'step-success-' + stepIdx"
+                      type="text"
+                      formControlName="onSuccessStepId"
+                      class="form-input"
+                      placeholder="step_2 or COMPLETE"
+                      [attr.list]="'next-step-options-' + stepIdx"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label [for]="'step-failure-' + stepIdx" class="form-label">On Failure</label>
+                    <input
+                      [id]="'step-failure-' + stepIdx"
+                      type="text"
+                      formControlName="onFailureStepId"
+                      class="form-input"
+                      placeholder="COMPLETE or FAIL"
+                      [attr.list]="'next-step-options-' + stepIdx"
+                    />
+                  </div>
+                  <datalist [id]="'next-step-options-' + stepIdx">
+                    @for (sid of availableStepIds(); track sid) {
+                      <option [value]="sid"></option>
+                    }
+                    @for (sid of specialStepIds; track sid) {
+                      <option [value]="sid"></option>
+                    }
+                  </datalist>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label [for]="'step-retries-' + stepIdx" class="form-label">Max Retries</label>
+                    <input
+                      [id]="'step-retries-' + stepIdx"
+                      type="number"
+                      formControlName="maxRetries"
+                      class="form-input"
+                      min="0"
+                      max="10"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label [for]="'step-retry-delay-' + stepIdx" class="form-label">Retry Delay (minutes)</label>
+                    <input
+                      [id]="'step-retry-delay-' + stepIdx"
+                      type="number"
+                      formControlName="retryDelayMinutes"
+                      class="form-input"
+                      min="1"
+                    />
+                  </div>
+                </div>
+
+              </div>
+            }
+          </div>
+
+          <!-- Fed only the commented-out provider language/voice inputs above; restore together. -->
+          <!-- <datalist id="provider-language-options">
+            @for (lang of providerLanguageOptions; track lang) {
+              <option [value]="lang"></option>
+            }
+          </datalist>
+          <datalist id="provider-voice-options">
+            @for (v of providerVoiceOptions; track v) {
+              <option [value]="v"></option>
+            }
+          </datalist> -->
+        }
+
+      </div>
+    }
+
+    <!-- ── Tab: Report (Required Fields or Agent output params, plus Report Columns/Fields/Order) ── -->
+    @if (activeTab() === 'report') {
+      <div class="tab-panel" role="tabpanel">
+
+        @if (isExchangeTemplate()) {
+
+          <!-- Agent Fields: Output Parameters -->
+          <div class="section-divider">
+            <span>Answers the agent records</span>
+          </div>
+          <div class="tab-toolbar">
+            <p class="section-hint">
+              The answers the Echo agent records on each call. They come from Echo and appear as report columns.
+            </p>
+            <button type="button" class="add-row-btn" (click)="syncFromAgent()" [disabled]="agentSchemaLoading()">
+              <lucide-icon name="refresh-cw" [size]="14" [class.animate-spin]="agentSchemaLoading()"></lucide-icon>
+              Sync from Echo
+            </button>
+          </div>
+
+          @if (requiredFields.controls.length === 0) {
+            <p class="empty-hint">No answers yet. Try "Sync from Echo".</p>
+          }
+
+          <div class="fields-list">
+            @for (fg of requiredFields.controls; track $index; let i = $index) {
+              <div class="field-row">
+                <div class="field-row-grid">
+                  <div class="form-group">
+                    <label class="form-label">Key</label>
+                    <input type="text" [value]="fg.get('fieldKey')?.value" class="form-input" disabled />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Label</label>
+                    <input type="text" [value]="fg.get('fieldLabel')?.value" class="form-input" disabled />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Data Type</label>
+                    <input type="text" [value]="fg.get('dataType')?.value" class="form-input" disabled />
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+
+        } @else {
+
+          <!-- Required Fields: what the AI must collect during the conversation -->
+          <div class="tab-toolbar">
+            <p class="section-hint">Fields the AI must collect during the conversation.</p>
+            <button type="button" class="add-row-btn" (click)="addRequiredField()">
+              <lucide-icon name="plus" [size]="14"></lucide-icon>
+              Add Field
+            </button>
+          </div>
+
+          @if (requiredFields.controls.length === 0) {
+            <p class="empty-hint">No required fields yet. Click "Add Field" to start.</p>
+          }
+
+          <div class="fields-list" formArrayName="requiredFields">
+            @for (fg of requiredFields.controls; track $index; let i = $index) {
+              <div class="field-row" [formGroupName]="i">
+
+                <div class="field-row-grid">
+                  <div class="form-group">
+                    <label [for]="'fieldKey-' + i" class="form-label">Key <span class="required">*</span></label>
+                    <input
+                      [id]="'fieldKey-' + i"
+                      type="text"
+                      formControlName="fieldKey"
+                      class="form-input"
+                      placeholder="confirm_order"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label [for]="'fieldLabel-' + i" class="form-label">Label <span class="required">*</span></label>
+                    <input
+                      [id]="'fieldLabel-' + i"
+                      type="text"
+                      formControlName="fieldLabel"
+                      class="form-input"
+                      placeholder="Confirm Order"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label [for]="'dataType-' + i" class="form-label">Data Type</label>
+                    <select [id]="'dataType-' + i" formControlName="dataType" class="form-input form-select">
+                      @for (dt of fieldDataTypeOptions; track dt) {
+                        <option [value]="dt">{{ dt }}</option>
+                      }
+                    </select>
+                  </div>
+
+                  <div class="form-group field-toggles">
+                    <label [for]="'required-' + i" class="toggle-option">
+                      <input
+                        [id]="'required-' + i"
+                        type="checkbox"
+                        formControlName="required"
+                        class="form-checkbox"
+                      />
+                      <span>Required</span>
+                    </label>
+                    <label [for]="'showOnDashboard-' + i" class="toggle-option">
+                      <input
+                        [id]="'showOnDashboard-' + i"
+                        type="checkbox"
+                        formControlName="showOnDashboard"
+                        class="form-checkbox"
+                      />
+                      <span>Show on Dashboard</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-group hint-row">
+                  <label [for]="'hint-' + i" class="form-label">AI Extraction Hint</label>
+                  <input
+                    [id]="'hint-' + i"
+                    type="text"
+                    formControlName="extractionHint"
+                    class="form-input"
+                    placeholder="Guide the AI on how to ask for this field"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  class="remove-field-btn"
+                  (click)="removeRequiredField(i)"
+                  [attr.aria-label]="'Remove field ' + i"
+                >
+                  <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                </button>
+
+              </div>
+            }
+          </div>
+        }
+
+        <!--
+          The template's own report config, used by the Download button on the executions list.
+          Saved reports (Execution Reports page) carry their own independent selection.
+        -->
+        <div class="section-divider">
+          <span>Report Columns</span>
+        </div>
+        <p class="section-hint">
+          Pick which columns appear in the downloaded executions report. Unchecked columns are
+          omitted. By default every column is included.
+        </p>
+
+        <div class="report-columns">
+          <div class="report-columns-group">
+            <p class="section-sublabel">Contact</p>
+            <div class="report-columns-grid">
+              @for (opt of contactColumnOptions; track opt.key) {
+                <label class="column-toggle">
+                  <input
+                    type="checkbox"
+                    [checked]="isContactColumnSelected(opt.key)"
+                    (change)="toggleContactColumn(opt.key, $any($event.target).checked)"
+                  />
+                  <span>{{ opt.label }}</span>
+                </label>
+              }
+            </div>
+          </div>
+
+          <div class="report-columns-group">
+            <p class="section-sublabel">Execution Details</p>
+            <div class="report-columns-grid">
+              @for (opt of executionDetailColumnOptions; track opt.key) {
+                <label class="column-toggle">
+                  <input
+                    type="checkbox"
+                    [checked]="isExecutionDetailColumnSelected(opt.key)"
+                    (change)="toggleExecutionDetailColumn(opt.key, $any($event.target).checked)"
+                  />
+                  <span>{{ opt.label }}</span>
+                </label>
+              }
+            </div>
+          </div>
+
+          <div class="report-columns-group">
+            <p class="section-sublabel">Context Params</p>
+            @if (contextParamColumnOptions().length === 0) {
+              <p class="empty-hint">No context params defined for this template. Add them under the Input tab.</p>
+            } @else {
+              <div class="report-columns-grid">
+                @for (key of contextParamColumnOptions(); track key) {
+                  <label class="column-toggle">
+                    <input
+                      type="checkbox"
+                      [checked]="isContextParamColumnSelected(key)"
+                      (change)="toggleContextParamColumn(key, $any($event.target).checked)"
+                    />
+                    <span>{{ key }}</span>
+                  </label>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="report-columns-group">
+            <p class="section-sublabel">Data Function Inputs</p>
+            @if (enrichmentInputColumnOptions().length === 0) {
+              <p class="empty-hint">No Data Function inputs for this template. Add enrichments under the Input tab.</p>
+            } @else {
+              <div class="report-columns-grid">
+                @for (key of enrichmentInputColumnOptions(); track key) {
+                  <label class="column-toggle">
+                    <input
+                      type="checkbox"
+                      [checked]="isEnrichmentInputColumnSelected(key)"
+                      (change)="toggleEnrichmentInputColumn(key, $any($event.target).checked)"
+                    />
+                    <span>{{ key }}</span>
+                  </label>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="report-columns-group">
+            <p class="section-sublabel">Execution Outcome</p>
+            @if (executionOutcomeColumnOptions().length === 0) {
+              <p class="empty-hint">No required fields defined. Add them above.</p>
+            } @else {
+              <div class="report-columns-grid">
+                @for (opt of executionOutcomeColumnOptions(); track opt.key) {
+                  <label class="column-toggle">
+                    <input
+                      type="checkbox"
+                      [checked]="isExecutionOutcomeColumnSelected(opt.key)"
+                      (change)="toggleExecutionOutcomeColumn(opt.key, $any($event.target).checked)"
+                    />
+                    <span>{{ opt.label || opt.key }}</span>
+                  </label>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="report-columns-group report-columns-locked">
+            <p class="section-sublabel">Additional Fields</p>
+            <p class="section-hint">
+              All entries in <strong>Additional Report Fields</strong> below are always included in
+              the report. Edit them in that section if you want to add or remove columns here.
+            </p>
+          </div>
+        </div>
+
+        <div class="section-divider">
+          <span>Additional Report Fields</span>
+        </div>
+        <p class="section-hint">
+          Extra columns to attach per execution on bulk CSV trigger. These are not used by the
+          workflow — they are only included in the executions report.
+        </p>
+
+        @if (reportFields.controls.length === 0) {
+          <p class="empty-hint">No report fields yet. Click "Add Field" to start.</p>
+        }
+
+        <div class="fields-list" formArrayName="reportFields">
+          @for (fg of reportFields.controls; track fg; let i = $index) {
+            <div class="field-row" [formGroupName]="i">
+              <div class="form-row">
+                <div class="form-group">
+                  <label [for]="'rfHeader-' + i" class="form-label">Header <span class="required">*</span></label>
+                  <input
+                    [id]="'rfHeader-' + i"
+                    type="text"
+                    formControlName="header"
+                    class="form-input"
+                    placeholder="Invoice Date"
+                    (input)="onReportHeaderInput(i)"
+                    [readOnly]="isReportRemovalPending(i)"
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label [for]="'rfDataType-' + i" class="form-label">Data Type</label>
+                  <select [id]="'rfDataType-' + i" formControlName="dataType" class="form-input form-select">
+                    @for (dt of fieldDataTypeOptions; track dt) {
+                      <option [value]="dt">{{ dt }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="remove-field-btn"
+                (click)="removeReportField(i)"
+                [attr.aria-label]="'Remove report field ' + i"
+                [hidden]="isReportRemovalPending(i)"
+              >
+                <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+              </button>
+
+              @if (isReportRemovalPending(i)) {
+                <div class="remove-confirm" role="alert">
+                  <div class="remove-confirm-msg">
+                    <lucide-icon name="triangle-alert" [size]="16"></lucide-icon>
+                    <span>
+                      Removing <strong>{{ fg.get('originalFieldName')?.value }}</strong> will hide
+                      data already collected under this key from future reports. The data stays in
+                      the database but won't appear in the CSV. This cannot be undone from the UI.
+                    </span>
+                  </div>
+                  <div class="remove-confirm-actions">
+                    <button type="button" class="btn-secondary btn-xs" (click)="cancelRemoveReportField(i)">
+                      Cancel
+                    </button>
+                    <button type="button" class="btn-danger btn-xs" (click)="confirmRemoveReportField(i)">
+                      <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                      Remove anyway
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        @if (duplicateReportFieldNames()) {
+          <p class="field-error">Headers must be unique.</p>
+        }
+
+        <div class="add-row-footer">
+          <button type="button" class="add-row-btn" (click)="addReportField()">
+            <lucide-icon name="plus" [size]="14"></lucide-icon>
+            Add Field
+          </button>
+          <button type="button" class="add-row-btn" (click)="csvHeaderInput.click()">
+            <lucide-icon name="cloud-upload" [size]="14"></lucide-icon>
+            Pick From CSV File
+          </button>
+          <input
+            #csvHeaderInput
+            type="file"
+            accept=".csv,text/csv"
+            class="hidden"
+            (change)="pickHeadersFromCsv($event)"
+          />
+        </div>
+
+        <div class="section-divider">
+          <span>Column Order</span>
+        </div>
+        <p class="section-hint">
+          Drag to arrange the order columns appear in the downloaded report, and edit any header to
+          rename its CSV column (useful when two columns would otherwise share a name). The list
+          reflects the columns enabled above; newly enabled columns are added to the end.
+        </p>
+
+        @if (orderedColumns().length === 0) {
+          <p class="empty-hint">No columns enabled yet. Select columns above to arrange them here.</p>
+        } @else {
+          <div class="column-order-list" cdkDropList (cdkDropListDropped)="dropColumn($event)">
+            @for (col of orderedColumns(); track col.id) {
+              <div class="column-order-item" cdkDrag [class.column-order-dup]="isDuplicateHeader(col)">
+                <span class="column-order-handle" cdkDragHandle aria-hidden="true">
+                  <lucide-icon name="grip-vertical" [size]="16"></lucide-icon>
+                </span>
+                <input
+                  class="column-order-input"
+                  type="text"
+                  [value]="effectiveHeader(col)"
+                  [placeholder]="col.label"
+                  [attr.aria-label]="'Header for ' + col.label + ' (' + col.section + ')'"
+                  (change)="setColumnHeader(col.id, col.label, $any($event.target).value)"
+                />
+                @if (isDuplicateHeader(col)) {
+                  <lucide-icon
+                    name="triangle-alert"
+                    [size]="14"
+                    class="column-order-dup-icon"
+                    aria-label="Duplicate header — another column uses this name"
+                  ></lucide-icon>
+                }
+                <span class="column-order-section">{{ col.section }}</span>
+              </div>
+            }
+          </div>
+        }
+
+      </div>
+    }
+
+    <!-- Error Banner -->
+    @if (errorMessage()) {
+      <div class="error-banner" role="alert">
+        <lucide-icon name="circle-alert" [size]="16"></lucide-icon>
+        <span>{{ errorMessage() }}</span>
+      </div>
+    }
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" (click)="cancel()" [disabled]="submitting()">
+        Cancel
+      </button>
+      <button type="submit" class="btn-primary" [disabled]="submitting()">
+        @if (submitting()) {
+          <lucide-icon name="loader-circle" [size]="16" class="animate-spin"></lucide-icon>
+          Saving...
+        } @else {
+          <lucide-icon name="save" [size]="16"></lucide-icon>
+          {{ isEdit ? 'Save' : 'Create' }}
+        }
+      </button>
+    </div>
+
+  </form>
+</div>

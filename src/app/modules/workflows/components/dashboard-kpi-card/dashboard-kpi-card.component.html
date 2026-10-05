@@ -1,0 +1,12 @@
+<div class="kpi-card" [attr.data-tone]="tone()">
+  <div class="kpi-card-header">
+    <span class="kpi-card-label">{{ label() }}</span>
+    @if (icon()) {
+      <lucide-icon [name]="icon()" [size]="16" class="kpi-card-icon"></lucide-icon>
+    }
+  </div>
+  <div class="kpi-card-value">{{ value() }}</div>
+  @if (hint()) {
+    <div class="kpi-card-hint">{{ hint() }}</div>
+  }
+</div>

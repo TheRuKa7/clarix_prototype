@@ -1,0 +1,424 @@
+/* =================================
+   CLARIX UI - GLOBAL STYLES
+   ================================= */
+
+@use './styles/ds-tokens.css';
+@use './styles/theme.scss';
+
+/* Tailwind CSS imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset and Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  font-size: 16px;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-primary);
+  color: var(--text-color);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
+  overflow-x: hidden;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-color);
+}
+
+p {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+
+a {
+  color: var(--ds-accent-fg);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--primary-hover);
+}
+
+/* Form Elements */
+input, textarea, select {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-color);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Button Variants */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.btn-primary {
+  background: var(--primary-color);
+  color: var(--ds-on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: var(--hover-bg);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--ds-accent-fg);
+  border-color: var(--primary-color);
+}
+
+.btn-outline:hover {
+  background: var(--primary-color);
+  color: var(--ds-on-accent);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-lg {
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+/* Card Component */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-fast);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+.card-body {
+  padding: 20px;
+}
+
+.card-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+/* Loading Spinner */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top: 2px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Utilities */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.gap-6 { gap: 24px; }
+
+.p-2 { padding: 8px; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.p-6 { padding: 24px; }
+
+.m-2 { margin: 8px; }
+.m-3 { margin: 12px; }
+.m-4 { margin: 16px; }
+.m-6 { margin: 24px; }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 14px; }
+.text-base { font-size: 16px; }
+.text-lg { font-size: 18px; }
+.text-xl { font-size: 20px; }
+
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.rounded { border-radius: 6px; }
+.rounded-lg { border-radius: 12px; }
+.rounded-full { border-radius: 50%; }
+
+/* Responsive Utilities */
+@media (max-width: 640px) {
+  .hidden-mobile {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .hidden-tablet {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .hidden-desktop {
+    display: none !important;
+  }
+}
+
+/* View Transition Animations */
+@keyframes vt-fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-8px); }
+}
+
+@keyframes vt-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+::view-transition-old(root) {
+  animation: 160ms cubic-bezier(0.4, 0, 1, 1) both vt-fade-out;
+}
+
+::view-transition-new(root) {
+  animation: 260ms cubic-bezier(0, 0, 0.2, 1) 160ms both vt-fade-in;
+}
+
+/* Lucide Icon Fixes */
+lucide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+lucide-icon svg {
+  display: block;
+}
+
+/* GenBi gradient animation */
+@keyframes logo-shift {
+  0%   { background-position: 0% center; }
+  100% { background-position: 250% center; }
+}
+
+.genbi-fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 18px rgba(66, 133, 244, 0.35);
+  transition: box-shadow 200ms, transform 100ms;
+  background: linear-gradient(90deg, #4285F4, #EA4335, #FBBC05, #34A853, #4285F4);
+  background-size: 250% auto;
+  animation: logo-shift 5s linear infinite;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  color: var(--ds-on-accent);
+
+  &:hover {
+    box-shadow: 0 6px 24px rgba(66, 133, 244, 0.5);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ds-accent-border);
+    outline-offset: 2px;
+  }
+}
+
+/* =================================
+   Tailwind to semantic tokens bridge
+   ---------------------------------
+   Utility classes in older templates (text-gray-500, bg-white, border-gray-200...)
+   follow the shared tokens here, in one place, so they read correctly in light
+   and dark and meet contrast, without editing every template. Placed after the
+   utilities so it wins at equal specificity.
+   ================================= */
+.text-gray-400, .text-gray-500, .text-slate-400, .text-slate-500 { color: var(--ds-text-muted); }
+.text-gray-600, .text-slate-600 { color: var(--ds-text-2); }
+.text-gray-700, .text-gray-800, .text-gray-900, .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--ds-text); }
+.placeholder-gray-400::placeholder, .placeholder-gray-500::placeholder { color: var(--ds-text-placeholder); }
+.dark .bg-white, .dark .bg-gray-800, .dark .dark\:bg-gray-800 { background-color: var(--ds-surface); }
+.dark .bg-gray-50, .dark .bg-gray-100, .dark .bg-gray-900, .dark .dark\:bg-gray-900 { background-color: var(--ds-surface-sunken); }
+.dark .bg-gray-700, .dark .dark\:bg-gray-700 { background-color: var(--ds-surface-raised); }
+.dark .text-gray-900, .dark .text-gray-800, .dark .text-gray-700, .dark .dark\:text-white, .dark .dark\:text-gray-100 { color: var(--ds-text); }
+.dark .text-gray-600, .dark .dark\:text-gray-300, .dark .dark\:text-gray-200 { color: var(--ds-text-2); }
+.dark .text-gray-500, .dark .text-gray-400, .dark .dark\:text-gray-400, .dark .dark\:text-gray-500 { color: var(--ds-text-muted); }
+.dark .border-gray-100, .dark .border-gray-200, .dark .border-gray-300, .dark .dark\:border-gray-700, .dark .dark\:border-gray-600 { border-color: var(--ds-border); }
+.bg-white { background-color: var(--ds-surface); }
+.border-gray-200, .border-gray-100 { border-color: var(--ds-border); }
+
+/* ============================================================================
+   Neo-minimal layer (Oct 2026), the same rules as Echo's styles.css layer:
+   white and black pages, Cloud Dancer wells, hairline cards, mono micro labels,
+   big tabular numbers, status dots, small physical feedback.
+   ========================================================================== */
+body { background: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-font); letter-spacing: -0.006em; }
+.page-title { font-size: 26px !important; font-weight: 650 !important; letter-spacing: -0.035em !important; line-height: 1.15; color: var(--ds-text); }
+.section-title, .chart-title, .card__title {
+  font-family: var(--ds-mono); font-size: 11px !important; font-weight: 500 !important; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ds-text-muted) !important;
+}
+.modal-title { font-size: 16px; font-weight: 650; letter-spacing: -0.02em; }
+/* Tailwind card utilities become flat hairline cards. */
+.shadow-sm, .shadow, .shadow-md { box-shadow: none !important; }
+.rounded-xl, .rounded-2xl { border-radius: var(--ds-r-lg) !important; }
+.empty-title { color: var(--ds-text); font-weight: 600; }
+@keyframes dsLift { from { opacity: 0; transform: translateY(4px) scale(.985); } to { opacity: 1; transform: none; } }
+/* Dialogs fade in. Opacity only: many dialogs are centred with a transform, which an entry transform would override. */
+@keyframes dsFade { from { opacity: 0; } to { opacity: 1; } }
+[role="dialog"], .modal, .modal-content { animation: dsFade .16s ease both; }
+/* Accent text utilities: the deep violet is for light pages; on black they use the lighter accent text. */
+.dark .text-primary-600, .dark .text-primary-700, .dark .text-indigo-600, .dark .text-indigo-700, .dark .text-blue-600, .dark .text-blue-700 { color: var(--ds-accent-fg) !important; }
+.dark .bg-blue-600, .dark .bg-indigo-600, .dark .bg-primary-600 { background-color: var(--ds-accent) !important; }
+.bg-blue-600, .bg-indigo-600 { background-color: var(--ds-accent); }
+.hover\:bg-blue-700:hover { background-color: var(--ds-accent-hover); }
+.text-blue-600 { color: var(--ds-accent-fg); }
+/* Stock Tailwind hues on older screens (GenBI tiles, chips) become the token tints, so colour still means status. */
+.bg-blue-50, .bg-blue-100, .bg-indigo-50, .bg-indigo-100, .bg-purple-50, .bg-purple-100 { background-color: var(--ds-info-bg) !important; }
+.bg-green-50, .bg-green-100, .bg-emerald-50, .bg-emerald-100 { background-color: var(--ds-success-bg) !important; }
+.bg-yellow-50, .bg-yellow-100, .bg-amber-50, .bg-amber-100, .bg-orange-50, .bg-orange-100 { background-color: var(--ds-warning-bg) !important; }
+.bg-red-50, .bg-red-100 { background-color: var(--ds-danger-bg) !important; }
+.bg-blue-500, .bg-indigo-500, .bg-purple-500 { background-color: var(--ds-accent) !important; }
+.bg-green-500, .bg-emerald-500 { background-color: var(--ds-success) !important; }
+.bg-yellow-500, .bg-amber-500, .bg-orange-500 { background-color: var(--ds-warning) !important; }
+.bg-red-500 { background-color: var(--ds-danger) !important; }
+.text-blue-500, .text-blue-600, .text-blue-700, .text-indigo-500, .text-purple-500, .text-purple-600 { color: var(--ds-info-fg) !important; }
+.text-green-500, .text-green-600, .text-green-700, .text-emerald-600 { color: var(--ds-success-fg) !important; }
+.text-yellow-500, .text-yellow-600, .text-yellow-700, .text-amber-600, .text-orange-600 { color: var(--ds-warning-fg) !important; }
+.text-red-500, .text-red-600, .text-red-700 { color: var(--ds-danger-fg) !important; }
+.bg-blue-500 *, .bg-green-500 *, .bg-purple-500 *, .bg-indigo-500 *, .bg-red-500 * { color: #fff; }
+/* Native selects and pager buttons: the same hover edge as inputs. */
+select:not(:disabled) { cursor: pointer; }
+select:not(:disabled):hover { border-color: var(--ds-border-input) !important; }
+.cl-page-btn:not(:disabled):hover { background: var(--ds-hover); color: var(--ds-text); }
+a.view-all-link, button.mt-3.text-sm { display: inline-flex; align-items: center; min-height: 24px; }

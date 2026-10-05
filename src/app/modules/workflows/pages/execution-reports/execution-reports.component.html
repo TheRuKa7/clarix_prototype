@@ -1,0 +1,79 @@
+<div class="er">
+  <div class="er__header">
+    <div>
+      <h1 class="er__title">Execution Reports</h1>
+      <p class="er__subtitle">Saved, filtered views of a workflow's executions.</p>
+    </div>
+    <button type="button" class="er__new" (click)="newReport()">
+      <lucide-icon name="plus" [size]="16"></lucide-icon>
+      New Report
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="er__error">{{ error() }}</div>
+  }
+
+  @if (templateIdFilter()) {
+    <div class="er__filter-banner">
+      <span>Showing reports for workflow: <strong>{{ filteredTemplateName() }}</strong></span>
+      <button type="button" class="er__filter-clear" (click)="clearFilter()">
+        <lucide-icon name="x" [size]="14"></lucide-icon>
+        Clear filter
+      </button>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="er__state">Loading…</div>
+  } @else if (reports().length === 0) {
+    <div class="er__state">No reports yet. Create one to get started.</div>
+  } @else {
+    <div class="er__table-wrap">
+    <table class="er__table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Workflow Template</th>
+          <th>Created By</th>
+          <th>Created</th>
+          <th class="er__actions-col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (report of reports(); track report.id) {
+          <tr>
+            <td>
+              <div class="er__report-title">{{ report.title }}</div>
+              @if (report.description) {
+                <div class="er__report-desc">{{ report.description }}</div>
+              }
+            </td>
+            <td>
+              <a
+                class="er__template-link"
+                [routerLink]="['/workflows/templates']"
+                [queryParams]="{ templateId: report.templateId }">
+                {{ templateName(report.templateId) }}
+              </a>
+            </td>
+            <td>{{ report.createdBy || '—' }}</td>
+            <td>{{ report.createdAt ? (report.createdAt | date: 'medium') : '—' }}</td>
+            <td class="er__actions">
+              <button type="button" title="Download CSV" (click)="download(report)" [disabled]="downloadingId() === report.id">
+                <lucide-icon name="download" [size]="16"></lucide-icon>
+              </button>
+              <button type="button" title="Edit" (click)="edit(report)">
+                <lucide-icon name="pencil" [size]="16"></lucide-icon>
+              </button>
+              <button type="button" title="Delete" class="er__danger" (click)="remove(report)">
+                <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    </div>
+  }
+</div>

@@ -1,0 +1,93 @@
+.tf-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tf-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 640px;
+}
+
+.tf-empty {
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+.tf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.tf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.tf-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+
+  h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+  }
+}
+
+.tf-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success-color);
+
+  &.is-planned {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+  }
+}
+
+.tf-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.tf-io {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+
+  div {
+    display: flex;
+    gap: 6px;
+  }
+
+  dt {
+    color: var(--text-light);
+    font-weight: 600;
+    min-width: 28px;
+  }
+
+  dd {
+    margin: 0;
+    color: var(--text-color);
+  }
+}

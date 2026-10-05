@@ -1,0 +1,68 @@
+.app-layout {
+  min-height: 100vh;
+  position: relative;
+  --rail: 68px;
+  &.sn-pinned { --rail: 248px; }
+}
+
+.main-wrapper {
+  margin-left: var(--rail);
+  min-height: 100vh;
+  transition: margin-left 0.2s cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+
+/* Phones only: slim bar with the menu button and the page name. */
+.tb {
+  display: none;
+  position: sticky; top: 0; z-index: 900; height: 52px; align-items: center; gap: 10px; padding: 0 12px;
+  background: color-mix(in srgb, var(--ds-bg) 86%, transparent); backdrop-filter: blur(10px) saturate(1.4);
+  border-bottom: 1px solid var(--ds-border);
+}
+.tb-menu {
+  width: 36px; height: 36px; border-radius: var(--ds-r-md); border: 1px solid transparent; background: transparent;
+  color: var(--ds-text-2); display: grid; place-items: center; cursor: pointer;
+  &:hover { background: var(--ds-hover); color: var(--ds-text); }
+  &:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+}
+.tb-mark { width: 26px; height: 26px; border-radius: 7px; }
+.tb-title { font-size: 14px; font-weight: 600; color: var(--ds-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Page tabs for sections with several pages: an ink underline on the current page. */
+.sub-tabs {
+  display: flex; gap: 20px; margin: 0 0 16px; border-bottom: 1px solid var(--ds-border);
+  overflow-x: auto; scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+.sub-tab {
+  display: flex; align-items: center; min-height: 40px; font-size: 13px; font-weight: 550; white-space: nowrap;
+  color: var(--ds-text-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.12s ease, border-color 0.15s var(--ds-ease);
+  &:hover { color: var(--ds-text); border-bottom-color: var(--ds-border-strong); }
+  &.active { color: var(--ds-text); border-bottom-color: var(--ds-text); }
+  &:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+}
+
+.main-content {
+  background: var(--ds-bg);
+  min-height: 100vh;
+}
+
+.content-container {
+  padding: 20px 24px 32px;
+  height: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.content-container.boxed {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 0 28px;
+}
+
+@media (max-width: 768px) {
+  .main-wrapper { margin-left: 0; }
+  .tb { display: flex; }
+  .main-content { min-height: calc(100vh - 52px); }
+  .content-container { padding: 12px 12px 20px; }
+}

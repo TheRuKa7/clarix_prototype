@@ -1,0 +1,103 @@
+<div class="drw-backdrop" (click)="close()"></div>
+<aside class="drw-panel">
+  <div class="drw-header">
+    <div>
+      <h3 class="drw-title">{{ execution()?.resolvedContact?.name || 'Call details' }}</h3>
+      <span class="drw-subtitle">{{ execution()?.resolvedContact?.phone || executionId() }}</span>
+    </div>
+    <button type="button" class="drw-close" (click)="close()" aria-label="Close">
+      <lucide-icon name="x" [size]="16"></lucide-icon>
+    </button>
+  </div>
+
+  <div class="drw-body">
+    @if (loading()) {
+      <div class="drw-empty">Loading call…</div>
+    } @else if (execution(); as exec) {
+      <div class="drw-tiles">
+        <div class="drw-tile">
+          <span class="drw-tile-label">Status</span>
+          @let v = view(exec);
+          <span class="drw-tile-value">{{ v.label }}</span>
+          @if (v.detail) { <span class="drw-tile-label" style="text-transform: none">{{ v.detail }}</span> }
+        </div>
+        <div class="drw-tile">
+          <span class="drw-tile-label">Duration</span>
+          <span class="drw-tile-value">
+            {{ exec.callDurationSeconds ? (exec.callDurationSeconds | number: '1.0-0') + 's' : '—' }}
+          </span>
+        </div>
+        @let dispatch = dispatchState(exec);
+        @if (dispatch) {
+        <div class="drw-tile" [title]="dispatchTooltip(exec)">
+          <span class="drw-tile-label">Provider</span>
+          <span class="drw-tile-value">
+            @switch (dispatch) {
+              @case ('sent') { Sent }
+              @case ('queued') { Queued }
+              @case ('not-sent') { Not sent }
+            }
+          </span>
+          <span class="drw-tile-ref">{{ dispatchTraceRef(exec) }}</span>
+        </div>
+        }
+      </div>
+
+      @if (conversation(); as conv) {
+        <div class="drw-audio">
+          <div class="drw-audio-head">
+            <span>Call recording</span>
+            @if (!audioUrl()) {
+              <button type="button" class="drw-play-btn" (click)="playAudio()" [disabled]="audioLoading()">
+                <lucide-icon name="play" [size]="12"></lucide-icon>
+                <span>{{ audioLoading() ? 'Loading…' : 'Play' }}</span>
+              </button>
+            }
+          </div>
+          @if (audioUrl(); as src) {
+            <audio [src]="src" controls class="drw-audio-el"></audio>
+          }
+        </div>
+
+        @if (conv.postCallIntelligence?.summary?.mom; as mom) {
+          <div class="drw-remarks">
+            <span class="drw-remarks-label">Summary</span>
+            <p>{{ mom }}</p>
+          </div>
+        }
+
+        @if (transcript().length > 0) {
+          <div class="drw-transcript">
+            <span class="drw-transcript-label">Transcript</span>
+            <div class="drw-transcript-feed">
+              @for (msg of transcript(); track $index) {
+                <div class="drw-msg" [class.is-user]="msg.isUser">
+                  <span class="drw-msg-speaker">{{ msg.speaker }}</span>
+                  <p class="drw-msg-text">{{ msg.text }}</p>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      }
+
+      @if (extractedFieldEntries().length > 0) {
+        <div class="drw-fields">
+          <span class="drw-fields-label">Extracted fields</span>
+          <dl class="drw-fields-list">
+            @for (f of extractedFieldEntries(); track f.key) {
+              <div class="drw-field-row">
+                <dt>{{ f.label }}</dt>
+                <dd>{{ f.value }}</dd>
+              </div>
+            }
+          </dl>
+        </div>
+      }
+
+      <a class="drw-full-link" [routerLink]="['/workflows/templates', exec.templateId, 'executions', exec.id]">
+        Open full details
+      </a>
+    }
+  </div>
+</aside>

@@ -1,0 +1,33 @@
+<button type="button" class="csr-link" (click)="open.set(true); $event.stopPropagation()" title="What each status means and exactly how it is worked out">
+  <lucide-icon name="book-open" [size]="14" [strokeWidth]="1.75"></lucide-icon> {{ label() }}
+</button>
+@if (open()) {
+  <div class="csr-backdrop" (click)="open.set(false)">
+    <div class="csr" role="dialog" aria-label="Call statuses" (click)="$event.stopPropagation()">
+      <div class="csr-head">
+        <div>
+          <h2>Statuses</h2>
+          <p>Each call has one status, worked out by Echo from the telephony service status for the dial and what the agent heard. Clarix shows the same words.</p>
+        </div>
+        <button type="button" class="csr-x" (click)="open.set(false)" aria-label="Close"><lucide-icon name="x" [size]="16"></lucide-icon></button>
+      </div>
+      <div class="csr-body">
+        <div class="csr-group">Campaign statuses</div>
+        @for (c of campaigns; track c.key) {
+          <div class="csr-row csr-camp"><span class="csr-pill" [attr.data-tone]="c.cls === 'done' ? 'ok' : c.cls === 'live' ? 'live' : c.cls === 'partial' ? 'warn' : 'muted'">{{ c.label }}</span><span class="csr-mean">{{ c.rule }}</span></div>
+        }
+        <div class="csr-group" style="margin-top: 18px">Call statuses</div>
+        @for (g of groups; track g.key) {
+          <div class="csr-group"><i [class]="'csr-dot csr-' + g.key"></i>{{ g.label }}</div>
+          @for (s of byGroup(g.key); track s.key) {
+            <div class="csr-row" [class.on]="s.key === highlight()">
+              <span class="csr-pill" [attr.data-tone]="s.tone">{{ s.label }}</span>
+              <span class="csr-mean">{{ s.help }}</span>
+              <span class="csr-oz">{{ s.rule }}</span>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  </div>
+}

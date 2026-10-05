@@ -1,0 +1,188 @@
+<div class="cd">
+
+  <!-- Top line: back, previous and next, downloads -->
+  <div class="cd-bar">
+    <button class="back-btn" (click)="back()" [attr.aria-label]="'Back to ' + backLabel()">
+      <lucide-icon name="arrow-left" [size]="15" [strokeWidth]="1.75"></lucide-icon>
+      {{ backLabel() }}
+    </button>
+    <div class="cd-acts">
+      @if (siblings().length > 1) {
+        <button type="button" class="icon-only" (click)="go(-1)" [disabled]="position() <= 1" title="Previous call (k)" aria-label="Previous call"><lucide-icon name="chevron-left" [size]="16" [strokeWidth]="1.75"></lucide-icon></button>
+        <span class="nav-pos">{{ position() }} / {{ siblings().length }}</span>
+        <button type="button" class="icon-only" (click)="go(1)" [disabled]="position() >= siblings().length" title="Next call (j)" aria-label="Next call"><lucide-icon name="chevron-right" [size]="16" [strokeWidth]="1.75"></lucide-icon></button>
+        <span class="cd-sep"></span>
+      }
+      @if (execution(); as e) {
+        <button type="button" class="icon-only" [disabled]="!hasTalk() || !!downloads.busy()" (click)="downloads.transcript(e)" title="Download transcript" aria-label="Download transcript"><lucide-icon name="scroll-text" [size]="16" [strokeWidth]="1.75"></lucide-icon></button>
+      }
+    </div>
+  </div>
+
+  @if (executionLoading() && !execution()) {
+    <div class="loading-state" aria-live="polite">
+      <div class="loading-spinner" role="status" aria-label="Loading details"></div>
+      <p class="loading-text">Loading call…</p>
+    </div>
+  }
+
+  @if (error() && !executionLoading()) {
+    <div class="error-state" role="alert">
+      <lucide-icon name="triangle-alert" [size]="28"></lucide-icon>
+      <p>{{ error() }}</p>
+      <button class="refresh-btn" (click)="refresh()">Try again</button>
+    </div>
+  }
+
+  @if (execution() && !error()) {
+    <!-- Who, the call status, and the facts that matter, on one line. -->
+    <header class="cd-head">
+      <div class="cd-who">
+        <h1>{{ execution()?.resolvedContact?.name || execution()?.resolvedContact?.phone || 'Call' }}</h1>
+        <span class="cd-sub">{{ conversation()?.contact?.phone ?? execution()!.resolvedContact?.phone }}@if (headerId()) { · {{ headerId() }} }</span>
+      </div>
+      <div class="cd-st">
+        @if (outcomeWord(execution()?.outcome); as o) {
+          <span class="outcome-pill" [attr.data-tone]="o.tone">{{ o.label }}</span>
+          <app-info-hint [text]="whyText()"></app-info-hint>
+        } @else if (conversation()?.status; as status) {
+          <span class="status-pill">{{ status }}</span>
+        }
+      </div>
+      <dl class="cd-facts">
+        <div><dt>Talk</dt><dd>{{ formatDurationFromSeconds(conversation()?.durationSeconds) }}</dd></div>
+        <div><dt>Started</dt><dd>{{ formatDateTime(conversation()?.startedAt ?? execution()!.createdAt) }}</dd></div>
+        @if (conversation()?.postCallIntelligence?.sentiment) {
+          <div><dt>Sentiment</dt><dd [class]="sentimentClass()">{{ conversation()!.postCallIntelligence!.sentiment }}</dd></div>
+        }
+        @if (satisfactionStars()) {
+          <div><dt>Satisfaction <app-info-hint [text]="conversation()?.postCallIntelligence?.satisfaction_score?.reasoning || 'Scored from the conversation after the call.'"></app-info-hint></dt><dd>{{ satisfactionRating() }}/5</dd></div>
+        }
+      </dl>
+    </header>
+
+    <div class="cd-main">
+      <!-- Listen and read: player on top of the transcript; click a line to play from there. -->
+      <section class="card cd-convo">
+        <div class="cd-player">
+          <app-call-player #player [src]="audioSrc()" [loading]="audioLoading()" [error]="audioError()" [turns]="turnMarks()" [seed]="executionId"
+            [downloadName]="'recording-' + (conversation()?.providerSessionId ?? executionId) + '.wav'" (retry)="retryAudio()"></app-call-player>
+        </div>
+        @if (resolutionText() || executiveSummaryItems().length) {
+          <div class="cd-sum" [class.open]="sumOpen()">
+            <lucide-icon name="file-text" [size]="14" [strokeWidth]="1.75"></lucide-icon>
+            <div class="cd-sum-body">
+              <p>{{ resolutionText() || executiveSummaryItems()[0] }}</p>
+              @if (sumOpen() && executiveSummaryItems().length) {
+                <ul>@for (line of executiveSummaryItems(); track $index) { <li>{{ line }}</li> }</ul>
+              }
+              @if (sumOpen() && conversation()?.postCallIntelligence?.intent) {
+                <div class="chip-row">
+                  <span class="chip"><lucide-icon name="target" [size]="12"></lucide-icon> {{ conversation()!.postCallIntelligence!.intent }}</span>
+                  @if (conversation()?.postCallIntelligence?.tone_analysis?.classification; as tone) { <span class="chip">Tone: {{ tone }}</span> }
+                </div>
+              }
+            </div>
+            <button type="button" class="link-btn" (click)="sumOpen.set(!sumOpen())">{{ sumOpen() ? 'Less' : 'More' }}</button>
+          </div>
+        }
+        <div class="cd-tx-head">
+          <span class="cd-tx-title"><lucide-icon name="message-square-text" [size]="14" [strokeWidth]="1.75"></lucide-icon> Transcript <span class="muted">· {{ turns() }} turns</span></span>
+          <span class="cd-tx-acts">
+            <button class="ghost-btn" (click)="copyTranscript()" [disabled]="!transcriptText()" aria-label="Copy transcript"><lucide-icon name="copy" [size]="13"></lucide-icon> Copy</button>
+          </span>
+        </div>
+        <div class="cd-tx">
+          @if (conversationLoading() || transcriptLoading()) {
+            <div class="loading-state inline"><div class="loading-spinner small"></div></div>
+          } @else if (timelineView() === 'detailed' && transcriptText()) {
+            <pre class="cd-raw">{{ transcriptText() }}</pre>
+          } @else if (transcriptMessages().length > 0) {
+            @for (m of transcriptMessages(); track $index) {
+              <button type="button" class="tx" [class.tx-caller]="m.isUser" (click)="playFrom(m.time)" [title]="m.time ? 'Play from ' + m.time : ''">
+                <span class="tx-meta"><b>{{ m.speaker }}</b>@if (m.time) { <span>{{ m.time }}</span> }</span>
+                <span class="tx-text">{{ m.text }}</span>
+              </button>
+            }
+            @if (conversation()?.endedAt) {
+              <div class="tx-end"><lucide-icon name="phone-off" [size]="12"></lucide-icon> Ended {{ formatTime(conversation()!.endedAt) }}</div>
+            }
+          } @else {
+            <div class="empty-block">
+              <lucide-icon name="message-square-off" [size]="28"></lucide-icon>
+              <p class="muted">{{ transcriptError() || 'No transcript for this call.' }}</p>
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- Everything else in tabs, so the page stays one screen tall. -->
+      <aside class="card cd-side">
+        <div class="cd-tabs" role="tablist" aria-label="Call details">
+          @for (t of sideTabs(); track t.key) {
+            <button role="tab" type="button" class="cd-tab" [class.on]="side() === t.key" [attr.aria-selected]="side() === t.key" [attr.tabindex]="side() === t.key ? 0 : -1"
+              (click)="side.set(t.key)" (keydown.arrowright)="moveTab(1)" (keydown.arrowleft)="moveTab(-1)">
+              <span class="cd-tab-label">{{ t.label }}</span>@if (t.n) { <span class="cd-n">{{ t.n }}</span> }
+            </button>
+          }
+        </div>
+        <div class="cd-side-body">
+          @switch (side()) {
+            @case ('answers') {
+              @if (requiredFieldOutcomes().length > 0) {
+                <dl class="cd-kv">
+                  @for (field of requiredFieldOutcomes(); track field.label) {
+                    <dt>{{ field.label }}</dt>
+                    <dd [class.miss]="!field.collected">{{ field.collected ? field.value : 'Not given' }}</dd>
+                  }
+                </dl>
+              }
+              @if (requiredDataEntries().length > 0) {
+                <dl class="cd-kv">@for (row of requiredDataEntries(); track row.key) { <dt>{{ row.key }}</dt><dd>{{ row.value }}</dd> }</dl>
+              }
+              @if (pendingItems().length > 0) {
+                <div class="cd-label">Still open</div>
+                <ul class="cd-list">@for (item of pendingItems(); track $index) { <li>{{ item }}</li> }</ul>
+              }
+              @if (!requiredFieldOutcomes().length && !requiredDataEntries().length && !pendingItems().length) {
+                <p class="muted cd-none">No answers on this call.</p>
+              }
+            }
+            @case ('dials') {
+              <ol class="cd-dials">
+                @for (a of execution()!.attemptLog!; track a.attempt) {
+                  <li>
+                    <span class="d-n">{{ a.attempt }}</span>
+                    <span class="d-body">
+                      <span class="d-top">
+                        @if (outcomeWord(a.outcome); as w) { <span class="outcome-pill sm" [attr.data-tone]="w.tone">{{ w.label }}</span> }
+                        @else { <strong>{{ statusText(a.callStatus) }}</strong> }
+                        <span class="muted">{{ a.startedAt | date: 'd MMM, h:mm a' }}</span>
+                      </span>
+                      <span class="muted">Rang {{ mss(a.ringSeconds) }}{{ a.talkSeconds ? ' · talked ' + mss(a.talkSeconds) : '' }}{{ a.provider.HangupBy ? ' · ' + hangupText(a.provider.HangupBy) : '' }}</span>
+                    </span>
+                  </li>
+                }
+              </ol>
+              @if (execution()?.nextAttemptAt && execution()?.callStatus === 'RETRY_SCHEDULED') {
+                <p class="muted cd-none">Next dial {{ execution()!.nextAttemptAt | date: 'd MMM, h:mm a' }}.</p>
+              }
+            }
+            @case ('context') {
+              <dl class="cd-kv">@for (row of callContextEntries(); track row.key) { <dt>{{ row.key }}</dt><dd>{{ row.value }}</dd> }</dl>
+            }
+          }
+        </div>
+      </aside>
+    </div>
+  }
+
+</div>
+
+<!-- Debug timeline modal -->
+@if (debugOpen()) {
+  <app-execution-debug-modal
+    [executionId]="executionId"
+    (closed)="closeDebug()"
+    (synced)="onDebugSynced()" />
+}
