@@ -5,7 +5,8 @@ import { environment } from './environments/environment';
 
 /** Demo build only: start the in-browser mock before the app makes its first call. */
 async function startDemoMock(): Promise<void> {
-  if (!environment.demo || !('serviceWorker' in navigator)) return;
+  // Single file build (mock/browser/build-single.mjs): the mock already answers inside the page.
+  if (!environment.demo || (globalThis as any).__SINGLE_FILE__ || !('serviceWorker' in navigator)) return;
   await navigator.serviceWorker.register(new URL('mock-sw.js', document.baseURI));
   await navigator.serviceWorker.ready;
   if (!navigator.serviceWorker.controller) {

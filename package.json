@@ -8,6 +8,7 @@
     "mock": "node mock/server.mjs",
     "build": "ng build",
     "build:demo": "ng build -c demo && node mock/browser/build-sw.mjs dist/demo/browser",
+    "build:single": "npm run build:demo && node mock/browser/build-single.mjs dist/demo/browser dist/Clarix-Prototype.html __CLARIX_DEMO__",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "eslint . --ext .ts,.html",

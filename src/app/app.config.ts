@@ -4,9 +4,9 @@ import {
   SocialAuthServiceConfig,
   SocialLoginModule
 } from '@abacritt/angularx-social-login';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { ApplicationConfig, importProvidersFrom, inject, provideAppInitializer, provideBrowserGlobalErrorListeners } from '@angular/core';
-import { provideRouter, withViewTransitions } from '@angular/router';
+import { provideRouter, withHashLocation, withViewTransitions } from '@angular/router';
 import {
   AlertCircle,
   AlertTriangle,
@@ -38,13 +38,18 @@ import { AuthService } from './core/auth/services/auth.service';
 import { PermissionsService } from './core/permissions/services/permissions.service';
 import { authInterceptor } from './interceptors/auth.interceptor';
 
+/** Set by the single file build (mock/browser/build-single.mjs) before the app starts. */
+const SINGLE_FILE = !!(globalThis as any).__SINGLE_FILE__;
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     // One icon weight everywhere, matching Echo.
     provideAppInitializer(() => { inject(LucideIconConfig).strokeWidth = 1.75; }),
-    provideRouter(routes, withViewTransitions()),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    // From a file on disk only # addresses work; on a web server the normal addresses stay.
+    provideRouter(routes, withViewTransitions(), ...(SINGLE_FILE ? [withHashLocation()] : [])),
+    // The in page mock answers fetch calls, so the single file build sends requests with fetch.
+    provideHttpClient(withInterceptors([authInterceptor]), ...(SINGLE_FILE ? [withFetch()] : [])),
     importProvidersFrom(SocialLoginModule),
     {
       provide: SOCIAL_AUTH_CONFIG,

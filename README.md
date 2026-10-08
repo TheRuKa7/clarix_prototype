@@ -30,6 +30,7 @@ browser and answers every API call under the app's own path (`__mock/...`). All 
 npm ci
 npm run start:local      # mock backend + dev server, same data as the demo
 npm run build:demo       # the static demo, as deployed (output: dist/demo/browser)
+npm run build:single     # the whole prototype as ONE html file that opens from disk, no server (output: dist/*-Prototype.html)
 ```
 
 ## Design system
