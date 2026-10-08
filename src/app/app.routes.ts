@@ -15,6 +15,7 @@ import { ExecutionSheetsComponent } from './modules/workflows/pages/execution-sh
 import { RunAgentsComponent } from './modules/workflows/pages/run-agents/run-agents.component';
 import { CampaignDetailComponent } from './modules/workflows/pages/campaign-detail/campaign-detail.component';
 import { CallLogsComponent } from './modules/workflows/pages/call-logs/call-logs.component';
+import { FollowUpsComponent } from './modules/workflows/pages/follow-ups/follow-ups.component';
 import { DataHubComponent } from './modules/workflows/pages/data-hub/data-hub.component';
 import { OrchestrationHubComponent } from './modules/workflows/pages/orchestration-hub/orchestration-hub.component';
 import { LoginComponent } from './pages/login.component';
@@ -76,6 +77,11 @@ export const routes: Routes = [
             path: 'calls',
             component: CallLogsComponent,
             title: 'Call Logs | Clarix'
+          },
+          {
+            path: 'follow-ups',
+            component: FollowUpsComponent,
+            title: 'Follow ups | Clarix'
           },
           {
             path: 'sheets',

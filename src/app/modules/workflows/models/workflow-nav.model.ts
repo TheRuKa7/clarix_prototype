@@ -16,6 +16,7 @@ export const WORKFLOW_NAV: Record<WorkflowMode, WorkflowNavItem[]> = {
     { label: 'Agents', route: '/workflows/agents', icon: 'bot' },
     { label: 'Campaigns', route: '/workflows/campaigns', icon: 'phone-call' },
     { label: 'Call Logs', route: '/workflows/calls', icon: 'phone-outgoing' },
+    { label: 'Follow ups', route: '/workflows/follow-ups', icon: 'user-check' },
   ],
   build: [
     { label: 'Agent setup', route: '/workflows/build/agents', icon: 'settings-2' },

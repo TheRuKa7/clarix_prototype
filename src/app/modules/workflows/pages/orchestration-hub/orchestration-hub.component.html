@@ -1,27 +1,6 @@
-<div class="oh-page">
-  <div class="oh-header">
-    <h1 class="oh-title">Orchestration</h1>
-    <p class="oh-subtitle">
-      One large upload, split by rules into lanes. Each lane feeds a different agent. Rows that
-      match no lane fall through to the next.
-    </p>
+<div class="rx-page">
+  <div class="rx-head">
+    <h1 class="rx-title" title="One upload, split by rules into routes. Each route sends its rows to one agent. A row goes to the first route it matches.">Orchestration <lucide-icon name="info" [size]="14"></lucide-icon></h1>
   </div>
-
-  <div class="oh-tabs" role="tablist">
-    <button role="tab" class="oh-tab" [class.active]="activeTab() === 'lanes'" (click)="setTab('lanes')">Lanes</button>
-    <button role="tab" class="oh-tab" [class.active]="activeTab() === 'agenda'" (click)="setTab('agenda')">Call agenda</button>
-    <button role="tab" class="oh-tab" [class.active]="activeTab() === 'boundary'" (click)="setTab('boundary')">Who does what</button>
-  </div>
-
-  @switch (activeTab()) {
-    @case ('lanes') {
-      <app-orchestration-lanes></app-orchestration-lanes>
-    }
-    @case ('agenda') {
-      <app-call-agenda-settings></app-call-agenda-settings>
-    }
-    @default {
-      <app-orchestration-explainer></app-orchestration-explainer>
-    }
-  }
+  <app-orchestration-lanes></app-orchestration-lanes>
 </div>

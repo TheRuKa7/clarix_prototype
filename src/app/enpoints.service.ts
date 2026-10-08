@@ -29,6 +29,20 @@ export const ENDPOINTS = {
     dashboard: {
         overview: `${clarix.baseURL}/api/v1/dashboard`,
     },
+    /** Reports: the dashboard numbers split by anything, the spreadsheet of the same, and reports sent by email. */
+    reports: {
+        summary: `${clarix.baseURL}/api/v1/reports/summary`,
+        exportXlsx: `${clarix.baseURL}/api/v1/reports/export.xlsx`,
+        schedules: `${clarix.baseURL}/api/v1/report-schedules`,
+        schedule: (id: string) => `${clarix.baseURL}/api/v1/report-schedules/${id}`,
+        sendNow: (id: string) => `${clarix.baseURL}/api/v1/report-schedules/${id}/send-now`,
+    },
+    /** Follow ups: rows that calling alone cannot settle. */
+    followUps: {
+        list: `${clarix.baseURL}/api/v1/follow-ups`,
+        one: (id: string) => `${clarix.baseURL}/api/v1/follow-ups/${id}`,
+        callAgain: (id: string) => `${clarix.baseURL}/api/v1/follow-ups/${id}/call-again`,
+    },
     transformationCatalog: {
         list: `${clarix.baseURL}/api/v1/transformation-catalog`,
     },
@@ -39,6 +53,9 @@ export const ENDPOINTS = {
         update: (id: string) => `${clarix.baseURL}/api/v1/workflows/orchestration/${id}`,
         delete: (id: string) => `${clarix.baseURL}/api/v1/workflows/orchestration/${id}`,
         preview: (id: string) => `${clarix.baseURL}/api/v1/workflows/orchestration/${id}/preview`,
+        samples: `${clarix.baseURL}/api/v1/workflows/orchestration/samples`,
+        sample: (id: string) => `${clarix.baseURL}/api/v1/workflows/orchestration/samples/${encodeURIComponent(id)}`,
+        previewFile: `${clarix.baseURL}/api/v1/workflows/orchestration/preview`,
     },
     callProviders: {
         list: `${clarix.baseURL}/api/v1/call-providers`,

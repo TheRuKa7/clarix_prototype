@@ -3,6 +3,8 @@ import {
   Component,
   ElementRef,
   computed,
+  effect,
+  untracked,
   inject,
   input,
   output,
@@ -68,9 +70,14 @@ export class TemplatePickerComponent {
   protected readonly label = computed(() => {
     const template = this.selectedTemplate();
     if (template) return template.name;
-    if (this.selectedId()) return this.selectedId(); // loaded before the list arrived
+    if (this.selectedId()) return this.loading() || !this.templates().length ? 'Loading…' : 'Agent no longer exists';
     return this.allowAny() ? this.anyLabel() : this.placeholder();
   });
+
+  constructor() {
+    // A saved choice shows its name, not its id: load the list as soon as there is something selected.
+    effect(() => { if (this.selectedId()) untracked(() => this.loadTemplates()); });
+  }
 
   protected toggle(): void {
     if (this.disabled()) return;

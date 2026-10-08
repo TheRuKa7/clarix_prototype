@@ -1,104 +1,115 @@
-<div class="ol-page">
-  <div class="ol-toolbar">
-    <select class="ol-input" aria-label="Orchestration" [ngModel]="activeId()" (ngModelChange)="selectDefinition($event)">
-      @for (d of definitions(); track d.id) {
-        <option [value]="d.id">{{ d.name }}</option>
-      }
-    </select>
-    <button type="button" class="ol-btn ol-btn-secondary" (click)="newDefinition()">New orchestration</button>
-    <input class="ol-input ol-name-input" [ngModel]="name()" (ngModelChange)="name.set($event)" placeholder="Orchestration name" aria-label="Orchestration name" />
-    <button type="button" class="ol-btn ol-btn-primary" (click)="save()" [disabled]="saving()">
-      {{ saving() ? 'Saving…' : 'Save' }}
-    </button>
-    @if (saved()) {
-      <span class="ol-saved">Saved.</span>
-    }
-  </div>
+<div class="or-bar">
+  <select class="rx-select or-pick" (change)="onSelect($event)" aria-label="Orchestration">
+    @for (d of definitions(); track d.id) { <option [value]="d.id" [selected]="activeId() === d.id">{{ d.name }}</option> }
+    <option value="" [selected]="!activeId()">New orchestration…</option>
+  </select>
+  <input class="rx-input or-name" [value]="name()" (input)="setName($event)" placeholder="Name, for example Open orders by stage" aria-label="Name" maxlength="80" />
+  <span class="rx-grow"></span>
+  @if (activeId()) {
+    @if (removing()) {
+      <span class="rx-sub">Remove it?</span>
+      <button type="button" class="rx-btn rx-btn-sm" (click)="removing.set(false)">Keep</button>
+      <button type="button" class="rx-btn rx-btn-sm rx-btn-danger" (click)="remove()">Remove</button>
+    } @else { <button type="button" class="rx-icon-btn" (click)="removing.set(true)" title="Remove this orchestration" aria-label="Remove this orchestration"><lucide-icon name="trash-2" [size]="15"></lucide-icon></button> }
+  }
+  <button type="button" class="rx-btn rx-btn-primary" (click)="save()" [disabled]="saving() || !dirty() || problems().length > 0" [title]="problems().join('. ')">{{ saving() ? 'Saving…' : dirty() ? 'Save' : 'Saved' }}</button>
+</div>
+@if (error()) { <p class="rx-note" role="alert">{{ error() }}</p> }
 
-  <div class="ol-layout">
-    <div class="ol-main">
-      @for (lane of lanes(); track lane.laneId || $index; let laneIdx = $index) {
-        <div class="ol-lane">
-          <div class="ol-lane-rail">{{ laneIdx + 1 }}</div>
-          <div class="ol-lane-body">
-            <div class="ol-lane-head">
-              <input class="ol-input" aria-label="Lane name" [ngModel]="lane.name" (ngModelChange)="updateLane(laneIdx, { name: $event })" />
-              <button type="button" class="ol-icon-btn" (click)="removeLane(laneIdx)">Remove lane</button>
-            </div>
+<!-- The file the rules are built and tested on. -->
+<div class="rx-card or-file">
+  <lucide-icon name="file-spreadsheet" [size]="16"></lucide-icon>
+  <span class="or-file-k" title="Columns and values in the rules come from this file, and the counts on the right are from running the routes over it. Nothing is called.">Try it on <lucide-icon name="info" [size]="12"></lucide-icon></span>
+  <select class="rx-select" (change)="onSample($event)" aria-label="File to try the routes on">
+    @for (s of samples(); track s.id) { <option [value]="s.id" [selected]="sample()?.id === s.id">{{ s.name }} · {{ s.rows }} rows{{ s.uploaded ? ' · uploaded here' : '' }}</option> }
+    @if (!samples().length) { <option value="">No file yet</option> }
+  </select>
+  <label class="rx-btn rx-btn-sm or-upload"><lucide-icon name="upload" [size]="13"></lucide-icon> Upload a file<input type="file" accept=".xlsx,.csv" (change)="onFile($event)" /></label>
+  <span class="rx-grow"></span>
+  @if (preview(); as p) { <span class="rx-sub"><b>{{ p.routed }}</b> of {{ p.total }} rows go to an agent</span> }
+</div>
 
-            <div class="ol-lane-grid">
-              <div class="ol-lane-col">
-                <span class="ol-lane-label">Keep rows where</span>
-                @for (rule of lane.filterRules; track $index; let ri = $index) {
-                  <div class="ol-rule">
-                    <input class="ol-input ol-rule-field" [ngModel]="rule.field"
-                      (ngModelChange)="updateRule(laneIdx, ri, { field: $event })" placeholder="Column" />
-                    <select class="ol-input" aria-label="Rule operator" [ngModel]="rule.operator" (ngModelChange)="updateRule(laneIdx, ri, { operator: $event })">
-                      @for (op of operators; track op) {
-                        <option [value]="op">{{ op }}</option>
-                      }
-                    </select>
-                    <input class="ol-input" [ngModel]="rule.value" (ngModelChange)="updateRule(laneIdx, ri, { value: $event })" placeholder="Value" aria-label="Rule value" />
-                    <button type="button" class="ol-icon-btn" (click)="removeRule(laneIdx, ri)">&times;</button>
-                  </div>
-                }
-                <button type="button" class="ol-add-btn" (click)="addRule(laneIdx)">Add rule</button>
-              </div>
+<div class="or-list">
+  @for (lane of lanes(); track lane.laneId || $index; let i = $index) {
+    @let res = routeResult(i);
+    <div class="rx-card or-route">
+      <div class="or-n" title="Routes run top to bottom. A row goes to the first one it matches.">
+        <button type="button" class="or-move" (click)="move(i, -1)" [disabled]="i === 0" aria-label="Move up"><lucide-icon name="chevron-up" [size]="14"></lucide-icon></button>
+        <b>{{ i + 1 }}</b>
+        <button type="button" class="or-move" (click)="move(i, 1)" [disabled]="i === lanes().length - 1" aria-label="Move down"><lucide-icon name="chevron-down" [size]="14"></lucide-icon></button>
+      </div>
 
-              <div class="ol-lane-col">
-                <span class="ol-lane-label">Then</span>
-                <label class="ol-mini-field">
-                  <span>Sort by</span>
-                  <input class="ol-input" [ngModel]="lane.sortField" (ngModelChange)="updateLane(laneIdx, { sortField: $event })" />
-                </label>
-                <label class="ol-mini-field">
-                  <span>Group into one call by</span>
-                  <input class="ol-input" [ngModel]="lane.groupByKey" (ngModelChange)="updateLane(laneIdx, { groupByKey: $event })" />
-                </label>
-                <label class="ol-mini-field">
-                  <span>Send to agent</span>
-                  <app-template-picker
-                    [selectedId]="lane.targetTemplateId || ''"
-                    (selected)="onLaneTargetPicked(laneIdx, $event)"
-                  ></app-template-picker>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-      }
-
-      <button type="button" class="ol-btn ol-btn-secondary ol-add-lane" (click)="addLane()">Add lane</button>
-    </div>
-
-    <aside class="ol-side">
-      <div class="ol-block">
-        <div class="ol-block-head">Preview matching</div>
-        <p class="ol-block-hint">Paste a comma-separated header row to see how well each lane's agent inputs would be matched.</p>
-        <textarea class="ol-textarea" rows="3" aria-label="Sample column headers" [ngModel]="previewHeaders()" (ngModelChange)="previewHeaders.set($event)"
-          placeholder="Vendor Code, Vendor Name, Plant, PO Number, ..."></textarea>
-        <button type="button" class="ol-btn ol-btn-secondary" (click)="runPreview()" [disabled]="previewing() || !activeId()">
-          {{ previewing() ? 'Checking…' : 'Preview matching' }}
-        </button>
-
-        @if (previewResults(); as results) {
-          <div class="ol-preview-results">
-            @for (r of results; track r.laneId) {
-              <div class="ol-preview-lane">
-                <span class="ol-preview-lane-name">{{ r.laneName }} → {{ r.targetTemplateName || 'no agent set' }}</span>
-                <ul class="ol-match-list">
-                  @for (m of r.matches; track m.fieldKey) {
-                    <li class="ol-match" [class]="m.level.toLowerCase()">
-                      <code>{{ m.fieldKey }}</code>
-                      <span>{{ m.matchedColumn || 'no match' }}</span>
-                    </li>
-                  }
-                </ul>
-              </div>
+      <div class="or-rules">
+        <span class="rx-label">Rows where</span>
+        @for (rule of lane.filterRules; track $index; let r = $index) {
+          <div class="or-rule">
+            @if (r > 0) { <span class="or-and">and</span> }
+            <select class="rx-select" (change)="setField(i, r, $event)" aria-label="Column">
+              <option value="" [selected]="!rule.field">Pick a column</option>
+              @for (c of columns(); track c.name) { <option [value]="c.name" [selected]="rule.field === c.name">{{ c.name }}</option> }
+              @if (rule.field && !hasColumn(rule.field)) { <option [value]="rule.field" selected>{{ rule.field }} (not in this file)</option> }
+            </select>
+            <select class="rx-select or-op" (change)="setOp(i, r, $event)" aria-label="Rule">
+              @for (o of operators; track o.value) { <option [value]="o.value" [selected]="rule.operator === o.value">{{ o.label }}</option> }
+            </select>
+            @if (op(rule).needsValue) {
+              @if (valuesFor(rule.field).length && op(rule).many) {
+                <div class="or-values" role="group" aria-label="Values">
+                  @for (v of valuesFor(rule.field); track v.value) { <button type="button" class="or-val" [class.on]="chosen(rule).includes(v.value)" (click)="toggleValue(i, r, rule, v.value)">{{ v.value }} <small>{{ v.rows }}</small></button> }
+                </div>
+              } @else if (valuesFor(rule.field).length && (rule.operator === 'EQUALS' || rule.operator === 'NOT_EQUALS')) {
+                <select class="rx-select or-value" (change)="patchRule(i, r, { value: val($event) })" aria-label="Value">
+                  <option value="" [selected]="!rule.value">Pick a value</option>
+                  @for (v of valuesFor(rule.field); track v.value) { <option [value]="v.value" [selected]="rule.value === v.value">{{ v.value }} · {{ v.rows }} rows</option> }
+                </select>
+              } @else {
+                <input class="rx-input or-value" [value]="rule.value ?? ''" (input)="patchRule(i, r, { value: val($event) })" [placeholder]="op(rule).many ? 'Values, separated by commas' : 'Value'" aria-label="Value" />
+              }
             }
+            <button type="button" class="rx-icon-btn" (click)="removeRule(i, r)" [disabled]="lane.filterRules.length === 1" aria-label="Remove this rule"><lucide-icon name="x" [size]="14"></lucide-icon></button>
           </div>
         }
+        <button type="button" class="rx-link or-add" (click)="addRule(i)">Add a rule</button>
       </div>
-    </aside>
+
+      <div class="or-to">
+        <span class="rx-label">Go to agent</span>
+        <app-template-picker placeholder="Pick an agent" statusFilter="ACTIVE" [selectedId]="lane.targetTemplateId || ''" (selected)="pickAgent(i, $event)"></app-template-picker>
+        @if (res?.plan) { <span class="rx-sub or-plan" title="How this agent turns rows into calls. It is part of the agent's setup in Echo and cannot be changed here."><lucide-icon name="phone" [size]="12"></lucide-icon> {{ res!.plan }}</span> }
+      </div>
+
+      <div class="or-result" [class.zero]="res && !res.rows">
+        @if (res) {
+          <b class="rx-mono">{{ res.rows }}</b><span class="rx-sub">rows · {{ share(res.rows) }}%</span>
+          @if (res.rows && res.agentSet) { <span class="rx-sub">{{ res.contacts }} contacts · {{ res.calls }} calls</span> }
+          @if (res.missing.length) { <span class="or-warn" [title]="'This agent needs these inputs and the file has no column for them: ' + res.missing.join(', ')"><lucide-icon name="triangle-alert" [size]="12"></lucide-icon> {{ res.missing.length }} input{{ res.missing.length === 1 ? '' : 's' }} missing</span> }
+          @if (res.unusedRules.length) { <span class="or-warn" [title]="'The file has no column named ' + res.unusedRules.join(', ')"><lucide-icon name="triangle-alert" [size]="12"></lucide-icon> column not in file</span> }
+        } @else { <span class="rx-sub">Pick a file to see the count</span> }
+        <button type="button" class="rx-icon-btn or-del" (click)="removeLane(i)" [disabled]="lanes().length === 1" aria-label="Remove this route"><lucide-icon name="trash-2" [size]="14"></lucide-icon></button>
+      </div>
+    </div>
+  }
+
+  <button type="button" class="rx-btn or-add-route" (click)="addLane()"><lucide-icon name="plus" [size]="14"></lucide-icon> Add a route</button>
+
+  <!-- Rows that match no route are always accounted for. -->
+  <div class="rx-card or-route or-rest">
+    <div class="or-n"><lucide-icon name="corner-down-right" [size]="15"></lucide-icon></div>
+    <div class="or-rules">
+      <span class="rx-label" title="Rows that match none of the routes above.">Everything else <lucide-icon name="info" [size]="12"></lucide-icon></span>
+      <div class="rx-seg" role="group" aria-label="Rows that match no route">
+        <button type="button" [class.on]="unmatched().action === 'leave'" (click)="setUnmatched('leave')">Leave out</button>
+        <button type="button" [class.on]="unmatched().action === 'route'" (click)="setUnmatched('route')">Send to an agent</button>
+      </div>
+    </div>
+    <div class="or-to">
+      @if (unmatched().action === 'route') {
+        <span class="rx-label">Go to agent</span>
+        <app-template-picker placeholder="Pick an agent" statusFilter="ACTIVE" [selectedId]="unmatched().targetTemplateId || ''" (selected)="pickRestAgent($event)"></app-template-picker>
+      } @else { <span class="rx-sub">Listed in the upload result, never called.</span> }
+    </div>
+    <div class="or-result" [class.zero]="preview() && !preview()!.rest.rows">
+      @if (preview(); as p) { <b class="rx-mono">{{ p.rest.rows }}</b><span class="rx-sub">rows · {{ share(p.rest.rows) }}%</span> }
+    </div>
   </div>
 </div>

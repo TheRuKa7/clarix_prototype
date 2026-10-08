@@ -16,6 +16,8 @@ import { randomBytes } from 'node:crypto';
 import { writeXlsx, readXlsx } from './xlsx.mjs';
 import { planAttempts, rowTiming, reOutcome } from './ozonetel.mjs';
 import { OUTCOMES } from './outcome.mjs';
+import { registerReports } from './reports.mjs';
+import { registerOrchestration } from './orchestration.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -509,6 +511,25 @@ const file = (buf, type, name) => { R.res.writeHead(200, { ...cors(R.req), 'Cont
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const execOr404 = (id) => executions.find((e) => e.id === id) || (fail(404, `Execution not found: ${id}`), null);
 
+// Follow ups demo data: a few not reached rows end as Blocked, Rejected or with every try used (same idea as the Echo mock).
+if (MODE === 'target') {
+  const pool = executions.filter((e) => ['no_answer', 'busy', 'unreachable'].includes(e.outcome) && e.status !== 'IN_PROGRESS');
+  const set = (e, outcome, cust) => { const last = (e.attemptLog || []).slice(-1)[0]; if (last) { last.outcome = outcome; Object.assign(last.provider || {}, { Status: 'NotAnswered', CustomerStatus: cust, DialStatus: 'not_answered' }); } Object.assign(e, { outcome, outcomeGroup: 'not_reached', callStatus: outcome.toUpperCase() }); };
+  pool.slice(0, 4).forEach((e) => set(e, 'blocked', 'DND'));
+  pool.slice(4, 6).forEach((e) => set(e, 'rejected', 'Rejected'));
+  pool.slice(6).filter((e) => (e.attemptLog || []).length >= 3).slice(0, 5).forEach((e) => { e.callStatus = 'RETRY_EXHAUSTED'; });
+  // Input layer demo data: a few rows carry the kind of mistakes real uploads have.
+  executions.forEach((e, i) => { const x = e.context; if (!x) return;
+    if (x.target_dispatch_date && i % 7 === 2) { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(x.target_dispatch_date); if (m && Number(m[1]) > 12) x.target_dispatch_date = `${m[2]}/${m[1]}/${m[3]}`; }
+    if (x.plant_name && i % 17 === 4) x.plant_name = e.name || x.plant_name;
+    if (x.item_details && i % 13 === 5) x.item_details = String(x.item_details).slice(0, 4); });
+  if (pool[0]) pool[0].followUp = { state: 'open', reason: 'blocked', owner: S.operators[0], notes: [{ text: 'Called from my phone. They will save our number and allow calls from tomorrow.', by: S.operators[0], at: new Date(Date.now() - 3 * 3600000).toISOString() }] };
+}
+registerReports({ on, ok, fail, file, executions, sheets, templates, nowIso, me: () => USER,
+  owners: [USER, ...S.operators].filter((v, i, l) => l.indexOf(v) === i).map((email) => ({ email })),
+  // Call again from Follow ups: Clarix asks Echo to dial the row again; here the row simply goes back to waiting.
+  redial: (e) => Object.assign(e, { status: 'IN_PROGRESS', outcome: 'waiting', outcomeGroup: 'in_progress', callStatus: 'QUEUED', completedAt: null, updatedAt: nowIso() }) });
+
 // Auth and permissions
 on('GET', '/api/v1/auth/me/permissions', () => ok(PERMISSION_KEYS));
 on('POST', '/api/v1/auth/me/permissions/refresh', () => ok(PERMISSION_KEYS));
@@ -550,7 +571,7 @@ on('POST', '/api/v1/workflows/sheets/:id/stop', async ({ p }) => {
   live.forEach((e) => finishExecution(e, 'STOPPED', { by: USER }));
   ok(live.length);
 });
-on('GET', '/api/v1/workflows/orchestration', () => ok([]));
+registerOrchestration({ on, ok, fail, multipart, readSheet, templates, sheets, batches: S.batches, agentByKey, nowIso });
 on('GET', '/api/v1/workflows/reports', ({ q }) => ok([], 0));
 on('POST', '/api/v1/workflows/trigger/bulk', async ({ req, raw }) => {
   const form = multipart(req, raw);
