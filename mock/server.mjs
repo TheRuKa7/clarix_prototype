@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto';
 import { writeXlsx, readXlsx } from './xlsx.mjs';
 import { planAttempts, rowTiming, reOutcome } from './ozonetel.mjs';
 import { OUTCOMES } from './outcome.mjs';
-import { registerReports } from './reports.mjs';
+import { registerReports, withReason } from './reports.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
@@ -129,7 +129,7 @@ function addExecution({ id, template, batch, row, status, submittedAt, completed
     outcome: conv.outcome ?? null, outcomeGroup: conv.outcome ? OUTCOMES[conv.outcome]?.group ?? null : null,
     ...dialFields(conv.attemptLog),
   };
-  executions.push(exec);
+  executions.push(withReason(exec));
   conversations.set(exec.activeConversationId, {
     id: exec.activeConversationId, workflowExecutionId: id, orgId: ORG, stepId: 'step_1', channelType: 'CALL',
     status: conv.status || (status === 'COMPLETED' ? 'COMPLETED' : status === 'IN_PROGRESS' ? 'INITIATED' : 'FAILED'),
@@ -525,6 +525,21 @@ if (MODE === 'target') {
     if (x.item_details && i % 13 === 5) x.item_details = String(x.item_details).slice(0, 4); });
   if (pool[0]) pool[0].followUp = { state: 'open', reason: 'blocked', owner: S.operators[0], notes: [{ text: 'Called from my phone. They will save our number and allow calls from tomorrow.', by: S.operators[0], at: new Date(Date.now() - 3 * 3600000).toISOString() }] };
 }
+executions.forEach(withReason);
+/**
+ * Echo reads the transcript once when a caller talked and hung up before the agent saved anything, and sends what it
+ * could keep. The mock applies the same rule as the Echo mock, so both prototypes show the same rows.
+ */
+function fillFromTranscripts() {
+  for (const e of executions) {
+    if ((e.extractedFields && Object.keys(e.extractedFields).length) || e.outcome !== 'caller_hung_up') continue;
+    const said = String(conversations.get(e.activeConversationId)?.transcriptText || '').split('\n').map((l) => l.trim()).filter((l) => /^(user|caller|customer|supplier|contact)\b/i.test(l));
+    const text = (templates.find((t) => t.id === e.templateId)?.requiredFields || []).find((f) => /remark|note|summary|comment/i.test(f.fieldKey));
+    if (said.length < 2 || !text || [...String(e.id)].reduce((n, ch) => n + ch.charCodeAt(0), 0) % 2) continue;
+    e.extractedFields = { [text.fieldKey]: `Caller said: "${said.slice(-1)[0].replace(/^[^:]*:\s*/, '')}"` }; e.answersSource = 'transcript';
+  }
+}
+fillFromTranscripts();
 registerReports({ on, ok, fail, file, executions, sheets, templates, nowIso, me: () => USER,
   owners: [USER, ...S.operators].filter((v, i, l) => l.indexOf(v) === i).map((email) => ({ email })),
   // Call again from Follow ups: Clarix asks Echo to dial the row again; here the row simply goes back to waiting.

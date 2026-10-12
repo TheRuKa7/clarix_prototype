@@ -58,6 +58,10 @@
       </div>
     </div>
 
+    @if (stats()?.stats) {
+      <app-stat-row [stats]="stats()!.stats" [result]="stats()!.result" [scope]="statScope()"></app-stat-row>
+    }
+
     <div class="cd-panel">
       <!-- Call status drives the page: one chip per status, with counts. -->
       <div class="cd-status-bar" role="group" aria-label="Filter by call status">
@@ -100,6 +104,7 @@
                   <td class="cd-nowrap">
                     <span class="cd-status" [attr.data-tone]="o.tone">{{ o.label }}</span>
                     <span (click)="$event.stopPropagation()"><app-info-hint [text]="why(call, o)"></app-info-hint></span>
+                    @if (reasonLine(call)) { <div class="cd-why">No answers: {{ reasonLine(call) }}</div> }
                   </td>
                   <td>
                     {{ call.attemptNumber || '—' }}

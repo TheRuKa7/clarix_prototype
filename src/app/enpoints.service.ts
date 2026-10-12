@@ -32,6 +32,7 @@ export const ENDPOINTS = {
     /** Reports: the dashboard numbers split by anything, the spreadsheet of the same, and reports sent by email. */
     reports: {
         summary: `${clarix.baseURL}/api/v1/reports/summary`,
+        rows: `${clarix.baseURL}/api/v1/reports/rows`,
         exportXlsx: `${clarix.baseURL}/api/v1/reports/export.xlsx`,
         schedules: `${clarix.baseURL}/api/v1/report-schedules`,
         schedule: (id: string) => `${clarix.baseURL}/api/v1/report-schedules/${id}`,

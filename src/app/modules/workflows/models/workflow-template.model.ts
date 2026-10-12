@@ -390,6 +390,8 @@ export interface ResolvedContact {
 }
 
 export interface WorkflowExecution {
+  /** Why this row has no answers, as sent by Echo with the call status. Null when answers were saved. */
+  noAnswers?: { key: string; label: string } | null;
   id: string;
   templateId: string;
   triggerEventId?: string;

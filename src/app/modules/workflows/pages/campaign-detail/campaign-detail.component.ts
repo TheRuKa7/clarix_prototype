@@ -11,6 +11,8 @@ import { ConfirmDialogService } from '../../../../shared/ui/confirm-dialog/confi
 import { CampaignProgress, buildCampaignProgress, campaignState } from '../../utils/campaign-progress';
 import { callStatusView, mss } from '../../utils/call-status';
 import { downloadBlob } from '../../utils/csv-download';
+import { StatRowComponent } from '../../../dashboard/components/stat-row/stat-row.component';
+import { ReportService, ReportSummary } from '../../../dashboard/services/report.service';
 import { InfoHintComponent } from '../../components/info-hint/info-hint.component';
 import { GROUPS, campaignRule, outcomeWord, statusHover, telephonyLine, runTime } from '../../utils/outcome';
 import { CallStatusReferenceComponent } from '../../components/call-status-reference/call-status-reference.component';
@@ -22,7 +24,7 @@ import { CallDownloadsService } from '../../utils/call-downloads';
  */
 @Component({
   selector: 'app-campaign-detail',
-  imports: [CommonModule, LucideAngularModule, CallStatusReferenceComponent, InfoHintComponent],
+  imports: [CommonModule, LucideAngularModule, CallStatusReferenceComponent, InfoHintComponent, StatRowComponent],
   templateUrl: './campaign-detail.component.html',
   styleUrl: './campaign-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -112,8 +114,9 @@ export class CampaignDetailComponent implements OnInit, OnDestroy {
       return;
     }
     this.load(batchId, true);
+    this.loadStats(batchId);
     this.timer = setInterval(() => {
-      if (this.state().cls === 'live') this.load(batchId, false);
+      if (this.state().cls === 'live') { this.load(batchId, false); this.loadStats(batchId); }
     }, 5000);
   }
 
@@ -154,6 +157,19 @@ export class CampaignDetailComponent implements OnInit, OnDestroy {
   openAgent(): void {
     const c = this.campaign();
     if (c?.templateId) this.router.navigate(['/workflows/build/agents'], { queryParams: { templateId: c.templateId } });
+  }
+
+  /** Result and stats of this campaign, from Echo, with the rows behind each number. */
+  private readonly reportApi = inject(ReportService);
+  protected readonly stats = signal<ReportSummary | null>(null);
+  protected readonly statScope = signal<Record<string, string | number>>({});
+  private loadStats(batchId: string): void {
+    this.statScope.set({ days: 3650, batchId });
+    this.reportApi.campaignSummary(batchId).subscribe({ next: (r) => this.stats.set(r), error: () => {} });
+  }
+  /** Reasons worth a line under the status: the call was picked up and still has no answers. */
+  protected reasonLine(call: WorkflowExecution): string {
+    const n = call.noAnswers; return n && ['never_spoke', 'machine', 'no_audio', 'hung_up', 'not_saved'].includes(n.key) ? n.label : '';
   }
 
   openCall(execution: WorkflowExecution): void {

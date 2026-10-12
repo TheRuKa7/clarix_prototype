@@ -14,11 +14,37 @@ export const FOLLOW_REASONS = {
   wrong_number: { label: 'Wrong number', help: 'The number does not exist or is not valid. It needs a corrected number.' },
   rejected: { label: 'Rejected', help: 'The contact declined the call. A person should reach out before the agent calls again.' },
   no_more_tries: { label: 'No more tries', help: 'Every allowed try was used and the contact was never reached.' },
+  answers_missing: { label: 'Answers missing', help: 'The contact spoke, no answers were saved and no more tries are due. Listen to the call and fill them in, or call again.' },
   never_reached: { label: 'Not reached on 2+ days', help: 'The contact was tried on two or more separate days and never picked up. The number may be wrong, dead or blocking the calls.' },
 };
 export function followReason(e) {
   if (e.callStatus === 'RETRY_EXHAUSTED') return 'no_more_tries';
-  return FOLLOW_REASONS[e.outcome] ? e.outcome : null;
+  if (FOLLOW_REASONS[e.outcome]) return e.outcome;
+  const n = noAnswers(e);
+  return n && (n.key === 'hung_up' || n.key === 'not_saved') && whyOf(e.outcome, e.id, false) !== 'call_later' ? 'answers_missing' : null;
+}
+/**
+ * Why a row has no answers. Echo sends the reason with the call status; the mock works it out the same way Echo does.
+ * Null when answers were saved. A Clarix row is never blank without one.
+ */
+export function noAnswers(e) {
+  if (e.extractedFields && Object.keys(e.extractedFields).length) return null;
+  const o = e.outcome; const def = OUTCOMES[o] || {}; const g = e.outcomeGroup || def.group;
+  if (!o) return e.status === 'COMPLETED' ? { key: 'not_saved', label: 'Answers not saved' } : e.status === 'IN_PROGRESS' ? { key: 'in_progress', label: 'Still in progress' } : { key: 'not_reached', label: 'Not reached' };
+  if (g === 'in_progress') return { key: 'in_progress', label: 'Still in progress' };
+  if (g === 'not_dialled') return { key: 'not_dialled', label: `Not dialled: ${def.label}` };
+  if (g === 'not_reached') return { key: 'not_reached', label: `Not reached: ${def.label}` };
+  if (o === 'no_reply') return { key: 'never_spoke', label: 'Caller never spoke' };
+  if (o === 'voicemail') return { key: 'machine', label: 'Voicemail or machine' };
+  if (o === 'call_dropped') return { key: 'no_audio', label: 'No audio on the call' };
+  if (g === 'failed') return { key: 'failed', label: `Call failed: ${def.label}` };
+  if (o === 'caller_hung_up') return { key: 'hung_up', label: 'Hung up before answering' };
+  return { key: 'not_saved', label: 'Answers not saved' };
+}
+/** Every execution carries its reason, so each screen and export can show it. */
+export function withReason(e) {
+  if (!Object.getOwnPropertyDescriptor(e, 'noAnswers')) Object.defineProperty(e, 'noAnswers', { enumerable: true, get() { return noAnswers(e); } });
+  return e;
 }
 
 
@@ -145,22 +171,54 @@ export function registerReports({ on, ok, fail, file, executions, sheets, templa
   const whyFor = (list) => { const m = {}; let base = 0;
     for (const e of list) { if (groupOf(e) !== 'reached' || e.outcome === 'completed' || !e.outcome) continue; base++; const k = whyOf(e.outcome, e.id, !!(e.extractedFields?.callback_time || e.extractedFields?.callback_date)); if (k) m[k] = (m[k] || 0) + 1; }
     return { base, reasons: Object.entries(m).map(([key, count]) => ({ key, label: WHY[key], count })).sort((a, b) => b.count - a.count) }; };
+  /**
+   * Stats every agent has, each with the rows behind it, and one result per row. Nothing here reads an agent's own answers,
+   * except a field its builder marked as the call back time. Result uses the default goal: call completed with answers saved.
+   */
+  const callbackKeys = (templateId) => { const fs = templates.find((t) => t.id === templateId)?.requiredFields || []; const marked = fs.filter((f) => f.role === 'callback').map((f) => f.fieldKey);
+    return marked.length ? marked : fs.map((f) => f.fieldKey).filter((k) => /^call_?back_(time|date|at)$/i.test(k || '')); };
+  const statOf = (e, never) => {
+    const o = e.outcome || (e.status === 'COMPLETED' ? 'completed' : ''); const g = groupOf(e); const n = noAnswers(e); const tags = [];
+    const asked = callbackKeys(e.templateId).some((k) => e.extractedFields?.[k]) || (g === 'reached' && o !== 'completed' && whyOf(o, e.id, false) === 'call_later');
+    const follow = !!reasonFor(e, never) && e.followUp?.state !== 'done';
+    if (g === 'not_dialled') tags.push('not_dialled');
+    if (asked) tags.push('callbacks_due');
+    if (n && (n.key === 'hung_up' || n.key === 'not_saved') && !asked) tags.push('answers_missing');
+    if (n?.key === 'no_audio') tags.push('tech_failures');
+    if (follow) tags.push('follow_up');
+    const result = follow || o === 'bad_data' ? 'needs_action' : g === 'in_progress' || asked ? 'in_progress' : o === 'completed' && !n ? 'successful' : 'closed';
+    return { tags, result, why: asked ? 'Asked to be called later' : n?.label || OUTCOMES[o]?.label || '' };
+  };
+  const STAT_KEYS = ['not_dialled', 'callbacks_due', 'answers_missing', 'tech_failures', 'follow_up']; const RESULT_KEYS = ['successful', 'needs_action', 'in_progress', 'closed'];
+  on('GET', '/api/v1/reports/rows', ({ q }) => {
+    const want = q.get('stat') || ''; const never = neverReached(); const out = [];
+    for (const e of inWindow(q)) {
+      const st = statOf(e, never); if (!st.tags.includes(want) && st.result !== want) continue;
+      out.push({ id: e.id, templateId: e.templateId, batchId: e.batchId, campaign_name: sheetName(e.batchId), name: e.resolvedContact?.name || '', phone: e.resolvedContact?.phone || '', status: OUTCOMES[e.outcome]?.label || e.status || '', why: st.why,
+        call_back: callbackKeys(e.templateId).map((k) => e.extractedFields?.[k]).filter(Boolean).join(' ') });
+    }
+    ok({ stat: want, total: out.length, rows: out.slice(0, 300) });
+  });
   function summary(q) {
     const list = inWindow(q); const by = q.get('by') || 'agent'; const only = q.get('value') || '';
     const keyOf = (e) => by === 'campaign' ? [e.batchId, sheetName(e.batchId)] : by === 'agent' ? [e.templateId, agentName(e.templateId)] : by === 'day' ? [dayOf(e), dayOf(e)] : [String(e.context?.[by] ?? ''), String(e.context?.[by] ?? '') || 'Not given'];
     add.never = neverReached();
     const groups = new Map(); const days = new Map(); const total = blank(); const outcomes = {};
+    const stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])); const result = Object.fromEntries(RESULT_KEYS.map((k) => [k, 0])); const undialled = {};
     for (const e of list) {
       const [k, label] = keyOf(e); if (only && k !== only) continue;
       if (!groups.has(k)) groups.set(k, { key: k, label, ...blank() }); add(groups.get(k), e); add(total, e);
       const d = dayOf(e); if (!days.has(d)) days.set(d, { day: d, ...blank() }); add(days.get(d), e);
       const o = e.outcome || (e.status === 'COMPLETED' ? 'completed' : e.status === 'IN_PROGRESS' ? 'waiting' : 'no_answer'); outcomes[o] = (outcomes[o] || 0) + 1;
+      const st = statOf(e, add.never); for (const t of st.tags) stats[t]++; result[st.result]++;
+      if (st.tags.includes('not_dialled')) { const l = OUTCOMES[o]?.label || 'Not dialled'; undialled[l] = (undialled[l] || 0) + 1; }
     }
     const rows = [...groups.values()].sort((a, b) => by === 'day' ? b.key.localeCompare(a.key) : b.dialled - a.dialled || a.label.localeCompare(b.label));
     return { by, days: Number(q.get('days') || 30), generated_at: nowIso(), total, rows, trend: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
       by_outcome: Object.entries(outcomes).map(([key, count]) => ({ key, label: OUTCOMES[key]?.label || key, group: OUTCOMES[key]?.group || 'failed', count })).sort((a, b) => b.count - a.count),
       columns: columnsOf(list), campaigns: new Set(list.map((e) => e.batchId)).size,
       input: inputOf(only ? [] : list), why: whyFor(list), rows_line: null,
+      stats: { ...stats, not_dialled_why: Object.entries(undialled).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count) }, result,
       agent: q.get('agent') || '', agents: [...new Set(executions.map((e) => e.templateId))].map((key) => ({ key, label: agentName(key) })).sort((a, b) => a.label.localeCompare(b.label)), answers: q.get('agent') ? answersOf(q.get('agent'), list) : [], active_calls: list.filter((e) => e.outcome === 'calling' || e.outcome === 'on_call').length };
   }
   on('GET', '/api/v1/reports/summary', ({ q }) => ok(summary(q)));

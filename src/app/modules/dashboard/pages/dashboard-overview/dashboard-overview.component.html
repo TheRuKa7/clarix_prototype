@@ -40,6 +40,10 @@
     </div>
   </div>
 
+  @if (data()?.stats) {
+    <app-stat-row [stats]="data()!.stats" [result]="data()!.result" [scope]="rowScope()"></app-stat-row>
+  }
+
   <div class="rx-card db-mix">
     <div class="db-mix-head"><span class="rx-card-title">Call status</span><span class="rx-sub">as sent by Echo</span></div>
     <div class="db-bar" role="img" aria-label="Call status mix">

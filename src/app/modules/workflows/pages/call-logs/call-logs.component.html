@@ -52,6 +52,7 @@
                 @let w = word(e.outcome);
                 <span class="cl-status" [attr.data-tone]="w ? w.tone : v.tone" [title]="w?.help || ''">{{ w ? w.label : v.label }}</span>
                 @if (v.detail) { <div class="cl-contact-sub">{{ v.detail }}</div> }
+                @if (e.noAnswers && ['never_spoke', 'machine', 'no_audio', 'hung_up', 'not_saved'].includes(e.noAnswers.key)) { <div class="cl-contact-sub">No answers: {{ e.noAnswers.label }}</div> }
               </td>
               <td>{{ dur(e.callDurationSeconds) }}</td>
               <td>{{ e.createdAt ? (e.createdAt | date: 'MMM d, HH:mm') : '—' }}</td>

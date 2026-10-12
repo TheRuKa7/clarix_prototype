@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { ReportLine, ReportRow, ReportService } from '../../services/report.service';
+import { StatRowComponent } from '../../components/stat-row/stat-row.component';
 import { ReportShareComponent } from '../../components/report-share/report-share.component';
 import { GROUPS } from '../../utils/report-card';
 
@@ -17,7 +18,7 @@ const EMPTY: ReportLine = { contacts: 0, dialled: 0, reached: 0, completed: 0, n
 @Component({
   selector: 'app-dashboard-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, ReportShareComponent],
+  imports: [LucideAngularModule, RouterLink, ReportShareComponent, StatRowComponent],
   templateUrl: './dashboard-overview.component.html',
   styleUrl: './dashboard-overview.component.scss',
 })
@@ -40,6 +41,8 @@ export class DashboardOverviewComponent {
   protected readonly data = computed(() => { const v = this.report.hasValue() ? this.report.value() : undefined; if (v) this.last = v; return v ?? this.last; });
   protected readonly BYS = computed(() => ALL_BYS.filter((b) => !(this.agent() && b.key === 'agent')));
   protected readonly agents = computed(() => this.data()?.agents ?? []);
+  /** Scope of the lists behind the stats: the same period and agent as the page. */
+  protected readonly rowScope = computed(() => ({ days: this.days(), agent: this.agent() }));
   protected readonly agentName = computed(() => this.agents().find((a) => a.key === this.agent())?.label ?? this.agent());
   protected readonly answers = computed(() => this.data()?.answers ?? []);
   protected readonly input = computed(() => (this.data()?.input?.rows ? this.data()!.input : null));

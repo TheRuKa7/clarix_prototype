@@ -1,0 +1,56 @@
+<div class="rx-card sr">
+  @if (total()) {
+    <div class="sr-head">
+      <span class="rx-card-title">Result <lucide-icon name="info" [size]="12" title="Every row ends in one of four results. Successful: the call completed and its answers were saved. Needs action: a person has to do something; open it to see what. In progress: calling is still trying, or a call back is due. Closed: nothing more will happen. When an agent has its own goal in Echo, that goal decides what successful means."></lucide-icon></span>
+      <span class="rx-grow"></span><span class="rx-sub">{{ total() }} rows · as sent by Echo</span>
+    </div>
+    <div class="sr-bar" role="group" aria-label="Result">
+      @for (s of segments(); track s.key) {
+        @if (s.count) { <button type="button" [class]="'sr-seg ' + s.key" [style.flex-grow]="s.count" (click)="open(s.key, s.label, s.help)" [attr.aria-label]="s.label + ': ' + s.count"></button> }
+      }
+    </div>
+    <div class="sr-legend">
+      @for (s of segments(); track s.key) {
+        <button type="button" class="sr-leg" [disabled]="!s.count" (click)="open(s.key, s.label, s.help)"><i [class]="'sr-dot ' + s.key"></i>{{ s.label }} <b>{{ s.count }}</b></button>
+      }
+    </div>
+  }
+  <div class="sr-tiles">
+    @for (t of tiles(); track t.key) {
+      <div class="sr-tile" [class.zero]="!t.count">
+        <button type="button" class="sr-open" [disabled]="!t.count" (click)="open(t.key, t.label, t.help)" [attr.aria-label]="t.label + ': ' + t.count + '. Open the list'"><span class="sr-n">{{ t.count }}</span></button>
+        <span class="sr-l">{{ t.label }} <lucide-icon name="info" [size]="12" [title]="t.help"></lucide-icon></span>
+        <span class="sr-sub">{{ t.sub }}</span>
+      </div>
+    }
+  </div>
+</div>
+
+@if (list(); as l) {
+  <div class="rx-backdrop" (click)="close()">
+    <div class="rx-modal sr-modal" role="dialog" aria-modal="true" [attr.aria-label]="l.label" (click)="$event.stopPropagation()">
+      <div class="rx-modal-head">
+        <div>
+          <h2 class="rx-modal-title">{{ l.label }} <span class="rx-n">{{ l.total ?? '…' }}</span></h2>
+          <p class="rx-sub sr-help">{{ l.help }}</p>
+        </div>
+        <button type="button" class="rx-icon-btn" (click)="close()" aria-label="Close"><lucide-icon name="x" [size]="16"></lucide-icon></button>
+      </div>
+      <div class="sr-list">
+        @if (!l.rows) { <div class="rx-empty"><span>Loading…</span></div> }
+        @for (r of l.rows ?? []; track r.id) {
+          <a class="sr-item" [routerLink]="['/workflows/templates', r.templateId, 'executions', r.id]" (click)="close()">
+            <span><b class="sr-name">{{ r.name || r.phone }}</b><span class="rx-sub rx-mono">{{ r.phone }}</span></span>
+            <span class="sr-status">{{ r.status }}</span>
+            <span class="sr-why">{{ r.why }}@if (r.call_back) { <span class="rx-sub"> · call back {{ r.call_back }}</span> }</span>
+            <span class="rx-sub sr-camp">{{ r.campaign_name }}</span>
+            <lucide-icon name="chevron-right" [size]="14"></lucide-icon>
+          </a>
+        }
+      </div>
+      @if (l.key === 'follow_up' || l.key === 'needs_action' || l.key === 'answers_missing') {
+        <div class="rx-modal-foot"><span class="rx-sub rx-grow">Owner, notes and call again are in Follow ups.</span><a class="rx-btn rx-btn-primary" routerLink="/workflows/follow-ups" (click)="close()">Open Follow ups</a></div>
+      }
+    </div>
+  </div>
+}

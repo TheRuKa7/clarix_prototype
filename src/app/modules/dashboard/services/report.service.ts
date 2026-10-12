@@ -12,7 +12,13 @@ export interface ReportColumn { key: string; label: string; values: string[] }
 export interface ReportAnswer { key: string; label: string; type: 'choice' | 'number'; unit: string; answered: number; values?: { value: string; count: number }[]; sum?: number; avg?: number }
 /** The Input layer: uploaded rows checked against the agent's own field types. */
 export interface ReportInput { rows: number; rejected: number; warned: number; clean: number; problems: { label: string; field: string; kind: 'reject' | 'warn'; rows: number }[] }
+/** Stats every agent has. Each one opens the rows behind it. */
+export interface ReportStats { not_dialled: number; callbacks_due: number; answers_missing: number; tech_failures: number; follow_up: number; not_dialled_why: { label: string; count: number }[] }
+/** One result per row, by the default goal: call completed with answers saved. */
+export interface ReportResult { successful: number; needs_action: number; in_progress: number; closed: number }
+export interface StatRowItem { id: string; templateId: string; batchId: string; campaign_name: string; name: string; phone: string; status: string; why: string; call_back: string }
 export interface ReportSummary {
+  stats?: ReportStats; result?: ReportResult;
   by: string; days: number; generated_at: string; total: ReportLine; rows: ReportRow[]; trend: ReportDay[];
   by_outcome: { key: string; label: string; group: string; count: number }[]; columns: ReportColumn[]; campaigns: number; active_calls: number;
   agent: string; agents: { key: string; label: string }[]; answers: ReportAnswer[];
@@ -39,6 +45,16 @@ export class ReportService {
 
   summary(days: number, by: string, agent = ''): Observable<ReportSummary> {
     return this.data(this.http.get<{ data: ReportSummary }>(ENDPOINTS.reports.summary, { params: new HttpParams().set('days', days).set('by', by).set('agent', agent) }));
+  }
+  /** Result and stats of one campaign (one uploaded sheet). */
+  campaignSummary(batchId: string): Observable<ReportSummary> {
+    return this.data(this.http.get<{ data: ReportSummary }>(ENDPOINTS.reports.summary, { params: new HttpParams().set('days', 3650).set('by', 'day').set('batchId', batchId) }));
+  }
+  /** The rows behind one stat or one result. */
+  rows(scope: Record<string, string | number>, stat: string): Observable<{ stat: string; total: number; rows: StatRowItem[] }> {
+    let params = new HttpParams().set('stat', stat);
+    for (const [k, v] of Object.entries(scope)) if (v !== '' && v != null) params = params.set(k, v);
+    return this.data(this.http.get<{ data: { stat: string; total: number; rows: StatRowItem[] } }>(ENDPOINTS.reports.rows, { params }));
   }
   /** The same report as a spreadsheet with five tabs. */
   spreadsheet(days: number, by: string, agent = ''): Observable<Blob> {
