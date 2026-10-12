@@ -45,8 +45,10 @@ export class CampaignDetailComponent implements OnInit, OnDestroy {
   protected readonly filter = signal('');
   protected readonly view = callStatusView;
   protected readonly mss = mss;
-  protected readonly dials = computed(() => this.calls().reduce((n, c) => n + (c.attemptNumber || 0), 0));
-  protected readonly talkSeconds = computed(() => this.calls().reduce((n, c) => n + (c.callStatus === 'COMPLETED' ? c.callDurationSeconds || 0 : 0), 0));
+  /** One entry per call: when rows share a call, call counts must not count the call once per row. */
+  protected readonly callUnits = computed(() => { const seen = new Set<string>(); return this.calls().filter((c) => { const k = c.echoCall?.key ?? c.id; if (seen.has(k)) return false; seen.add(k); return true; }); });
+  protected readonly dials = computed(() => this.callUnits().reduce((n, c) => n + (c.attemptNumber || 0), 0));
+  protected readonly talkSeconds = computed(() => this.callUnits().reduce((n, c) => n + (c.callStatus === 'COMPLETED' || c.echoCall ? c.callDurationSeconds || 0 : 0), 0));
   private timer: ReturnType<typeof setInterval> | null = null;
 
   protected readonly progress = computed<CampaignProgress | null>(() => {
@@ -81,12 +83,12 @@ export class CampaignDetailComponent implements OnInit, OnDestroy {
   protected readonly rule = campaignRule;
   protected oz(c: WorkflowExecution): string { return telephonyLine(c.providerStatus); }
   protected hasTalk(c: WorkflowExecution): boolean { return !!c.activeConversationId && c.callStatus === 'COMPLETED' && !!c.callDurationSeconds; }
-  protected readonly groupCounts = computed(() => GROUPS.map((g) => ({ ...g, count: this.calls().filter((c) => this.word(c).group === g.key).length })));
+  protected readonly groupCounts = computed(() => GROUPS.map((g) => ({ ...g, count: this.callUnits().filter((c) => this.word(c).group === g.key).length })));
   protected readonly doneCount = computed(() => this.calls().filter((c) => this.word(c).group !== 'in_progress').length);
   protected readonly barLabel = computed(() => this.groupCounts().filter((g) => g.count).map((g) => `${g.label} ${g.count}`).join(', '));
   protected readonly outcomeCounts = computed(() => {
     const m = new Map<string, { key: string; label: string; group: string; count: number }>();
-    for (const c of this.calls()) {
+    for (const c of this.callUnits()) {
       const w = this.word(c);
       const cur = m.get(w.key) ?? { key: w.key, label: w.label, group: w.group, count: 0 };
       cur.count += 1;
@@ -167,6 +169,26 @@ export class CampaignDetailComponent implements OnInit, OnDestroy {
     this.statScope.set({ days: 3650, batchId });
     this.reportApi.campaignSummary(batchId).subscribe({ next: (r) => this.stats.set(r), error: () => {} });
   }
+  /** Rows that share a call (set by Echo). The table then lists rows under their contact, and counts are in rows. */
+  protected readonly grouped = computed(() => this.calls().some((c) => !!c.echoCall));
+  protected readonly tableRows = computed(() => {
+    const list = this.shownCalls();
+    if (!this.grouped()) return list.map((call) => ({ call, head: null as null | { answered: number; rows: number } }));
+    const sorted = [...list].sort((a, b) => (a.sheetRow ?? 0) - (b.sheetRow ?? 0)); const seen = new Set<string>();
+    return sorted.map((call) => {
+      const key = call.echoCall?.key ?? call.id; const first = !seen.has(key); seen.add(key);
+      const mine = first ? this.calls().filter((c) => (c.echoCall?.key ?? c.id) === key) : [];
+      return { call, head: first ? { answered: mine.filter((c) => c.rowState === 'answered').length, rows: mine.length } : null };
+    });
+  });
+  /** Every row of the sheet, with the rows Echo skipped before any call (settled last time, or matched a skip rule). */
+  protected readonly rowsTotal = computed(() => { const r = this.stats()?.result; return r ? r.successful + r.needs_action + r.in_progress + r.closed : this.calls().length; });
+  protected readonly rowsAnswered = computed(() => this.calls().filter((c) => c.rowState === 'answered').length);
+  protected readonly callCount = computed(() => new Set(this.calls().map((c) => c.echoCall?.key ?? c.id)).size);
+  protected rowTone(state?: string): string { return state === 'answered' ? 'ok' : state === 'not_covered' ? 'warn' : state === 'waiting' ? 'live' : 'muted'; }
+  /** The answers of one row, in a line. */
+  protected rowAnswer(call: WorkflowExecution): string { return Object.values(call.extractedFields || {}).filter((v) => v !== '' && v != null).slice(0, 3).map((v) => String(v).replace(/_/g, ' ')).join(' · '); }
+
   /** Reasons worth a line under the status: the call was picked up and still has no answers. */
   protected reasonLine(call: WorkflowExecution): string {
     const n = call.noAnswers; return n && ['never_spoke', 'machine', 'no_audio', 'hung_up', 'not_saved'].includes(n.key) ? n.label : '';

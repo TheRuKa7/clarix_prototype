@@ -29,6 +29,9 @@ export function followReason(e) {
  */
 export function noAnswers(e) {
   if (e.extractedFields && Object.keys(e.extractedFields).length) return null;
+  // Rows that share a call carry their own state from Echo. A row the call did not get to is asked on the next try.
+  if (e.rowState === 'not_covered') return { key: 'not_covered', label: 'Not covered on the call' };
+  if (e.rowState === 'waiting') return { key: 'in_progress', label: 'Still in progress' };
   const o = e.outcome; const def = OUTCOMES[o] || {}; const g = e.outcomeGroup || def.group;
   if (!o) return e.status === 'COMPLETED' ? { key: 'not_saved', label: 'Answers not saved' } : e.status === 'IN_PROGRESS' ? { key: 'in_progress', label: 'Still in progress' } : { key: 'not_reached', label: 'Not reached' };
   if (g === 'in_progress') return { key: 'in_progress', label: 'Still in progress' };
@@ -178,6 +181,12 @@ export function registerReports({ on, ok, fail, file, executions, sheets, templa
   const callbackKeys = (templateId) => { const fs = templates.find((t) => t.id === templateId)?.requiredFields || []; const marked = fs.filter((f) => f.role === 'callback').map((f) => f.fieldKey);
     return marked.length ? marked : fs.map((f) => f.fieldKey).filter((k) => /^call_?back_(time|date|at)$/i.test(k || '')); };
   const statOf = (e, never) => {
+    if (e.rowState) {
+      // Several rows on one call: the result is per row, from the state Echo sent; a follow up is per contact, counted on its first row.
+      const follow = !!reasonFor(e, never) && e.followUp?.state !== 'done';
+      const result = e.rowState === 'answered' ? 'successful' : follow ? 'needs_action' : e.rowState === 'waiting' || e.rowState === 'not_covered' || groupOf(e) === 'in_progress' ? 'in_progress' : 'closed';
+      return { tags: follow && e.echoCall?.position === 1 ? ['follow_up'] : [], result, why: `${e.sayAs || 'Row'}: ${e.rowStateLabel || e.rowState}` };
+    }
     const o = e.outcome || (e.status === 'COMPLETED' ? 'completed' : ''); const g = groupOf(e); const n = noAnswers(e); const tags = [];
     const asked = callbackKeys(e.templateId).some((k) => e.extractedFields?.[k]) || (g === 'reached' && o !== 'completed' && whyOf(o, e.id, false) === 'call_later');
     const follow = !!reasonFor(e, never) && e.followUp?.state !== 'done';
@@ -213,6 +222,8 @@ export function registerReports({ on, ok, fail, file, executions, sheets, templa
       const st = statOf(e, add.never); for (const t of st.tags) stats[t]++; result[st.result]++;
       if (st.tags.includes('not_dialled')) { const l = OUTCOMES[o]?.label || 'Not dialled'; undialled[l] = (undialled[l] || 0) + 1; }
     }
+    // Rows skipped before any call (settled last time, or matched a skip rule) are closed.
+    if (!only) for (const id of new Set(list.map((e) => e.batchId))) result.closed += (sheets.find((s) => s.id === id)?.skippedRows || []).length;
     const rows = [...groups.values()].sort((a, b) => by === 'day' ? b.key.localeCompare(a.key) : b.dialled - a.dialled || a.label.localeCompare(b.label));
     return { by, days: Number(q.get('days') || 30), generated_at: nowIso(), total, rows, trend: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
       by_outcome: Object.entries(outcomes).map(([key, count]) => ({ key, label: OUTCOMES[key]?.label || key, group: OUTCOMES[key]?.group || 'failed', count })).sort((a, b) => b.count - a.count),
@@ -228,6 +239,7 @@ export function registerReports({ on, ok, fail, file, executions, sheets, templa
     const out = []; const never = neverReached();
     for (const e of executions) {
       const reason = reasonFor(e, never); if (!reason && !e.followUp) continue;
+        if (e.echoCall && e.echoCall.position !== 1) continue; // one follow up per contact, not one per row
       const f = e.followUp || {}; const last = lastDial(e);
       out.push({ id: e.id, batchId: e.batchId, templateId: e.templateId, campaign_name: sheetName(e.batchId), agent: agentName(e.templateId), name: e.resolvedContact?.name || e.name, phone: e.resolvedContact?.phone || '',
         reason: f.reason || reason, reason_label: FOLLOW_REASONS[f.reason || reason]?.label || '', status: OUTCOMES[e.outcome]?.label || '', dials: (e.attemptLog || []).length,

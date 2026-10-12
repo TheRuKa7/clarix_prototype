@@ -41,11 +41,12 @@
         } @else if (executions().length === 0) {
           <tr><td colspan="5" class="cl-empty-row">No calls match these filters.</td></tr>
         } @else {
-          @for (e of executions(); track e.id) {
+          @for (line of lines(); track line.e.id) {
+            @let e = line.e;
             <tr class="cl-row" (click)="openCall(e)" tabindex="0" (keydown.enter)="openCall(e)" title="Open the call page">
               <td>
                 <div class="cl-contact-name">{{ e.resolvedContact?.name || '—' }}</div>
-                <div class="cl-contact-sub">{{ e.resolvedContact?.phone || '—' }}</div>
+                <div class="cl-contact-sub">{{ e.resolvedContact?.phone || '—' }}@if (e.echoCall) { · {{ line.answered }} of {{ e.echoCall.rows }} rows answered@if (e.echoCall.label) { · {{ e.echoCall.label }} } }</div>
               </td>
               <td>
                 @let v = view(e);

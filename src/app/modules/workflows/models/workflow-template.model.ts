@@ -389,7 +389,11 @@ export interface ResolvedContact {
   entityId?: string;
 }
 
+/** The call a row was on, as Echo reports it. Rows of one contact share it; Clarix never works this out itself. */
+export interface EchoCall { key: string; id: string | null; position: number; rows: number; part: number; parts: number; label: string; contact: string; phone: string }
 export interface WorkflowExecution {
+  /** When several rows share a call: the row's place in the sheet, how it is said, its own state and when it was saved. */
+  sheetRow?: number; rowState?: string; rowStateLabel?: string; sayAs?: string; lastTime?: string | null; savedSecond?: number | null; echoCall?: EchoCall;
   /** Why this row has no answers, as sent by Echo with the call status. Null when answers were saved. */
   noAnswers?: { key: string; label: string } | null;
   id: string;

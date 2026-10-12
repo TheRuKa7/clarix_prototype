@@ -17,6 +17,7 @@ import { writeXlsx, readXlsx } from './xlsx.mjs';
 import { planAttempts, rowTiming, reOutcome } from './ozonetel.mjs';
 import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
+import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
@@ -524,6 +525,43 @@ if (MODE === 'target') {
     if (x.plant_name && i % 17 === 4) x.plant_name = e.name || x.plant_name;
     if (x.item_details && i % 13 === 5) x.item_details = String(x.item_details).slice(0, 4); });
   if (pool[0]) pool[0].followUp = { state: 'open', reason: 'blocked', owner: S.operators[0], notes: [{ text: 'Called from my phone. They will save our number and allow calls from tomorrow.', by: S.operators[0], at: new Date(Date.now() - 3 * 3600000).toISOString() }] };
+}
+// ── A team sheet whose rows share calls (the same data as the Echo mock, from the same seed file) ──
+// Clarix never groups. Echo sends, for every row: the call it was on, its place in that call, its row state and its answers.
+{
+  const ROW_STATES = { rejected: 'Rejected', skipped: 'Skipped', waiting: 'Waiting', answered: 'Answered', partly: 'Partly answered', not_covered: 'Not covered', not_reached: 'Not reached' };
+  const agent = trackerAgent(plus(nowIso(), -2 * 86400000)); const { campaign, calls } = trackerCampaign(nowIso());
+  const template = templateFrom({ id: TRACKER.templateId, key: TRACKER.templateKey, name: 'Order tracker follow up' }, agent,
+    { description: 'Calls each vendor once about all of its open order lines and brings back an answer for every line.', event: 'ORDER_FOLLOW_UP', createdAt: plus(campaign.created_at, -2 * 86400000) });
+  template.rowsShareCalls = true; templates.push(template);
+  const batch = { id: TRACKER.batch, uploadedBy: S.operators[0], createdAt: campaign.created_at };
+  const total = campaign.contacts.reduce((n, x) => n + x.items.length, 0) + (campaign.skipped_rows || []).length;
+  sheets.push({ id: batch.id, orgId: ORG, templateId: template.id, templateName: template.name, eventType: template.triggerEventTypes[0], sourceSystem: 'CSV', originalFilename: TRACKER.file, fileUrl: null,
+    uploadedBy: batch.uploadedBy, total, triggered: total, failed: 0, failedRows: [], createdAt: batch.createdAt, rowsShareCalls: true,
+    skippedRows: (campaign.skipped_rows || []).map((r) => ({ row: r.row, say: `${r.values.item}, ${r.values.open_qty} open`, reason: r.reason, contact: r.contact })) });
+  const rowId = (n) => `6ac0ffee5eed00a1b2${String(100000 + n).slice(1)}c`;
+  for (const x of campaign.contacts) {
+    const lastA = (x.attempts_detail || []).slice(-1)[0]; const call = calls.find((k) => k.call_id === x.call_id);
+    const o = x.status === 'retry_scheduled' ? 'will_retry' : lastA?.outcome || 'waiting'; const g = OUTCOMES[o]?.group;
+    const talked = (x.attempts_detail || []).some((t) => t.stream?.connected);
+    const cs = x.status === 'completed' ? 'COMPLETED' : x.status === 'retry_scheduled' ? 'RETRY_SCHEDULED' : x.status === 'retry_exhausted' ? 'RETRY_EXHAUSTED' : String(x.status).toUpperCase();
+    const status = WORKFLOW_OF(cs); const answers = Array.isArray(x.outputs?.rows) ? x.outputs.rows : [];
+    for (const it of x.items) {
+      const ans = answers.find((a) => Number(a.row) === it.n); const got = ans && ans.line_status !== 'not_covered' ? ans : null;
+      const state = got ? 'answered' : talked && g !== 'not_reached' ? 'not_covered' : g === 'in_progress' ? 'waiting' : 'not_reached';
+      const fields = got ? Object.fromEntries(Object.entries(got).filter(([k, v]) => k !== 'row' && v !== '' && v != null)) : null;
+      addExecution({ id: rowId(it.row), template, batch, row: { name: x.name, phone: x.phone, context: { ...x.context, ...it.values, rows: undefined, row_count: undefined } }, status,
+        submittedAt: x.dispatched_at, completedAt: status === 'IN_PROGRESS' ? null : call?.ended_at || lastA?.ended_at || null, duration: call ? Math.round(call.duration_seconds) : null, extracted: fields,
+        conv: { callStatus: cs, callResult: x.call_result ? x.call_result.toUpperCase() : null, callReason: lastA?.mapped?.reason ? lastA.mapped.reason.toUpperCase() : null, outcome: o, attempts: (x.attempts_detail || []).length,
+          attemptLog: x.attempts_detail || [], nextAttemptAt: x.next_attempt_at || null,
+          transcriptText: call ? call.events.filter((e) => e.kind.endsWith('_TURN')).map((e) => `${e.kind === 'AGENT_TURN' ? 'Agent' : 'Customer'}: ${e.text}`).join('\n') : null } });
+      const dur = call?.duration_seconds || 0;
+      Object.assign(executions[executions.length - 1], { sheetRow: it.row, rowState: state, rowStateLabel: ROW_STATES[state], sayAs: `${it.values.item}, ${it.values.open_qty} open`, lastTime: it.last || null,
+        savedSecond: got && dur ? Math.round(dur * (0.2 + (0.7 * it.n) / (x.items.length + 0.5))) : null,
+        // The call this row was on, as Echo reports it. Rows of one contact share it.
+        echoCall: { key: x.primary_id, id: x.call_id || null, position: it.n, rows: x.items.length, part: x.part, parts: x.parts, label: x.parts > 1 ? `call ${x.part} of ${x.parts}` : '', contact: x.name, phone: x.phone } });
+    }
+  }
 }
 executions.forEach(withReason);
 /**

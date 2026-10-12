@@ -1,6 +1,6 @@
 import { callStatusView, durationText } from '../../utils/call-status';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
@@ -47,6 +47,15 @@ export class CallLogsComponent implements OnInit, OnDestroy {
   protected readonly statusOptions = STATUS_OPTIONS;
   protected readonly loading = signal(false);
   protected readonly executions = signal<WorkflowExecution[]>([]);
+  /** One line per call. When Echo put several rows on a call, they are one line here, with how many rows it covered. */
+  protected readonly lines = computed(() => {
+    const seen = new Map<string, { e: WorkflowExecution; rows: number; answered: number }>();
+    for (const e of this.executions()) {
+      const key = e.echoCall?.key ? `${e.batchId}:${e.echoCall.key}` : e.id; const cur = seen.get(key);
+      if (cur) { cur.rows++; if (e.rowState === 'answered') cur.answered++; } else seen.set(key, { e, rows: 1, answered: e.rowState === 'answered' ? 1 : 0 });
+    }
+    return [...seen.values()];
+  });
   protected readonly total = signal(0);
   protected readonly page = signal(0);
   protected readonly pageSize = PAGE_SIZE;

@@ -39,7 +39,7 @@
     <!-- Progress by Echo's outcome groups, the numbers that matter, and how long it has run. -->
     <div class="cd-progress">
       <div class="cd-progress-top">
-        <div class="cd-progress-main"><b>{{ doneCount() }}</b> of {{ calls().length }} calls done</div>
+        <div class="cd-progress-main">@if (grouped()) { <b>{{ rowsAnswered() }}</b> of {{ rowsTotal() }} rows answered · {{ callCount() }} calls@if (rowsTotal() > calls().length) { · {{ rowsTotal() - calls().length }} skipped before any call } } @else { <b>{{ doneCount() }}</b> of {{ calls().length }} calls done }</div>
         <div class="cd-facts">
           <span>Dials <b>{{ dials() }}</b></span>
           <span>Talk time <b>{{ mss(talkSeconds()) }}</b></span>
@@ -47,7 +47,7 @@
         </div>
       </div>
       <div class="cd-bar" role="img" [attr.aria-label]="barLabel()">
-        @for (g of groupCounts(); track g.key) { @if (g.count) { <span [class]="'cd-seg cd-seg--' + g.key" [style.width.%]="g.count / (calls().length || 1) * 100" [title]="g.label + ': ' + g.count"></span> } }
+        @for (g of groupCounts(); track g.key) { @if (g.count) { <span [class]="'cd-seg cd-seg--' + g.key" [style.width.%]="g.count / (callUnits().length || 1) * 100" [title]="g.label + ': ' + g.count"></span> } }
       </div>
       <div class="cd-chips" aria-label="Filter by group">
         @for (g of groupCounts(); track g.key) { @if (g.count) {
@@ -86,7 +86,7 @@
       <div class="cd-table-card">
         <table class="cd-table">
           <thead>
-            <tr><th>Contact</th><th>Call status</th><th>Dials</th><th>Talk</th><th>Last update</th><th class="cd-act-h"><span class="cd-sr">Actions</span></th></tr>
+            <tr><th>{{ grouped() ? 'Row' : 'Contact' }}</th><th>{{ grouped() ? 'Row state' : 'Call status' }}</th><th>{{ grouped() ? 'Answers' : 'Dials' }}</th><th>{{ grouped() ? '' : 'Talk' }}</th><th>{{ grouped() ? '' : 'Last update' }}</th><th class="cd-act-h"><span class="cd-sr">Actions</span></th></tr>
           </thead>
           <tbody>
             @if (callsLoading()) {
@@ -94,8 +94,41 @@
             } @else if (shownCalls().length === 0) {
               <tr><td colspan="6" class="cd-empty-row">{{ filtersOn() ? 'No calls match. Clear the filters to see all.' : 'No calls here yet.' }}</td></tr>
             } @else {
-              @for (call of shownCalls(); track call.id) {
+              @for (entry of tableRows(); track entry.call.id) {
+                @let call = entry.call;
                 @let o = word(call);
+                @if (entry.head; as head) {
+                  <!-- One line per call, as Echo placed it. Its rows follow. Clarix never groups rows itself. -->
+                  <tr class="cd-group" (click)="openCall(call)" tabindex="0" (keydown.enter)="openCall(call)" title="Open the call page">
+                    <td>
+                      <div class="cd-contact-name">{{ call.echoCall?.contact || call.resolvedContact?.name }}</div>
+                      <div class="cd-contact-sub">{{ call.echoCall?.phone }}@if (call.echoCall?.label) { · {{ call.echoCall?.label }} }</div>
+                    </td>
+                    <td class="cd-nowrap">
+                      <span class="cd-status" [attr.data-tone]="o.tone">{{ o.label }}</span>
+                      <span (click)="$event.stopPropagation()"><app-info-hint [text]="why(call, o)"></app-info-hint></span>
+                    </td>
+                    <td><b>{{ head.answered }}</b> of {{ head.rows }} rows answered@if (call.nextAttemptAt && call.outcome === 'will_retry') { <div class="cd-contact-sub">next try {{ call.nextAttemptAt | date: 'h:mm a' }}, open rows only</div> }</td>
+                    <td>{{ call.callDurationSeconds ? mss(call.callDurationSeconds) : '—' }}</td>
+                    <td>{{ (call.completedAt || call.updatedAt || call.createdAt) ? ((call.completedAt || call.updatedAt || call.createdAt) | date: 'd MMM, h:mm a') : '—' }}</td>
+                    <td class="cd-row-actions"><lucide-icon name="chevron-right" [size]="16" class="cd-go"></lucide-icon></td>
+                  </tr>
+                }
+                @if (call.echoCall) {
+                  <tr class="cd-row cd-sub" (click)="openCall(call)" tabindex="0" (keydown.enter)="openCall(call)" [title]="'Sheet row ' + call.sheetRow">
+                    <td>
+                      <div class="cd-sub-name"><span class="cd-sub-n">{{ call.echoCall.position }}</span>{{ call.sayAs }}</div>
+                      @if (call.lastTime) { <div class="cd-contact-sub cd-sub-pad">Last time: {{ call.lastTime }}</div> }
+                    </td>
+                    <td class="cd-nowrap">
+                      <span class="cd-status" [attr.data-tone]="rowTone(call.rowState)">{{ call.rowStateLabel }}</span>
+                      @if (call.savedSecond !== null && call.savedSecond !== undefined) { <div class="cd-contact-sub" title="Echo saves each row as soon as it is answered">saved at {{ mss(call.savedSecond) }}</div> }
+                      @if (call.rowState === 'not_covered') { <div class="cd-contact-sub">asked on the next try</div> }
+                    </td>
+                    <td colspan="3">{{ rowAnswer(call) || '—' }}</td>
+                    <td></td>
+                  </tr>
+                } @else {
                 <tr class="cd-row" (click)="openCall(call)" tabindex="0" (keydown.enter)="openCall(call)" [title]="'Open the call page'">
                   <td>
                     <div class="cd-contact-name">{{ call.resolvedContact?.name || '—' }}</div>
@@ -124,6 +157,7 @@
                     <lucide-icon name="chevron-right" [size]="16" class="cd-go" (click)="openCall(call)"></lucide-icon>
                   </td>
                 </tr>
+                }
               }
             }
           </tbody>
