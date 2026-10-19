@@ -34,10 +34,11 @@
   </div>
 
   @if (loading()) {
-    <div class="ra-empty">Loading agents…</div>
+    <div class="ra-empty ra-mark"><app-echo-mark mode="loader" [size]="44" /><span>Loading agents from Echo</span></div>
   } @else if (agents().length === 0) {
-    <div class="ra-empty">
-      No active agents yet. Agents made in Echo appear in <strong>Build &gt; Agent setup</strong>; switch one on to run it here.
+    <div class="ra-empty ra-mark">
+      <app-echo-mark mode="intro" [size]="48" />
+      <span>No active agents yet. Agents made in Echo appear in <strong>Build &gt; Agent setup</strong>; switch one on to run it here. In Echo, New agent reads your SOP and sheets and sets one up for you.</span>
     </div>
   } @else {
     <div class="ra-grid">

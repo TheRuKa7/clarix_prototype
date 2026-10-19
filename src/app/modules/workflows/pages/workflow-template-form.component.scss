@@ -1197,7 +1197,8 @@
   background: var(--bg-card, #fff);
 }
 .echo-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.echo-card-kicker { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ds-danger-fg); }
+.echo-card-kicker { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #047857; }
+:host-context([data-theme='dark']) .echo-card-kicker { color: #34d399; }
 .echo-card-title { font-size: 1.05rem; font-weight: 600; margin-top: 2px; }
 .echo-card-sync { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--bg-muted, var(--ds-surface-sunken)); font-size: 0.82rem; }
 .echo-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 20px; margin: 14px 0 8px; }

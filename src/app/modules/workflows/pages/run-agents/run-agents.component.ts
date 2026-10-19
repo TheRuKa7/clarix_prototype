@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { EchoMarkComponent } from '../../../../shared/ui/echo-mark/echo-mark.component';
 import { Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { finalize } from 'rxjs/operators';
@@ -16,7 +17,7 @@ import { CsvBulkUploadComponent } from '../csv-bulk-upload/csv-bulk-upload.compo
  */
 @Component({
   selector: 'app-run-agents',
-  imports: [CommonModule, LucideAngularModule, CsvBulkUploadComponent],
+  imports: [EchoMarkComponent, CommonModule, LucideAngularModule, CsvBulkUploadComponent],
   templateUrl: './run-agents.component.html',
   styleUrl: './run-agents.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

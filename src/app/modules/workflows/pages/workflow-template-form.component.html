@@ -60,7 +60,8 @@
         @if (isExchangeTemplate()) {
           <div class="echo-card">
             <div class="echo-card-head">
-              <div>
+              <app-echo-mark mode="intro" [size]="40" />
+              <div style="flex: 1; min-width: 0">
                 <div class="echo-card-kicker">From Echo</div>
                 <div class="echo-card-title">{{ form.get('name')?.value || 'Echo agent' }}</div>
               </div>

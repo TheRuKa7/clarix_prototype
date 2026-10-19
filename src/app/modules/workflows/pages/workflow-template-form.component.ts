@@ -11,6 +11,7 @@ import {
   ChangeDetectorRef,
   effect,
 } from '@angular/core';
+import { EchoMarkComponent } from '../../../shared/ui/echo-mark/echo-mark.component';
 import {
   FormBuilder,
   FormArray,
@@ -64,7 +65,7 @@ interface ReportColumnRef {
 
 @Component({
   selector: 'app-workflow-template-form',
-  imports: [CommonModule, ReactiveFormsModule, LucideAngularModule, DragDropModule],
+  imports: [EchoMarkComponent, CommonModule, ReactiveFormsModule, LucideAngularModule, DragDropModule],
   templateUrl: './workflow-template-form.component.html',
   styleUrl: './workflow-template-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

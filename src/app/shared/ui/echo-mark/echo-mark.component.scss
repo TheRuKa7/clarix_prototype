@@ -1,0 +1,27 @@
+:host { display: inline-block; flex: none; line-height: 0; --em-tile: #047857; --em-ink: #fff; --em-ghost: #10b981; }
+:host(.em-bare) { --em-ink: #047857; }
+svg { width: 100%; height: 100%; overflow: visible; }
+.em-bg { fill: var(--em-tile); }
+.em-s { fill: none; stroke: var(--em-ink); stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; }
+.em-r1 { opacity: 0.62; }
+.em-r2 { opacity: 0.32; }
+.em-g { fill: none; stroke: var(--em-ghost); stroke-width: 3; stroke-linecap: round; opacity: 0; transform-box: view-box; transform-origin: 35px 35px; }
+.em-tile { transform-box: view-box; transform-origin: 32px 32px; }
+:host(.em-intro) .em-tile { animation: emTile 0.52s cubic-bezier(0.2, 1.25, 0.3, 1) both; }
+:host(.em-intro) .em-e { animation: emDraw 0.52s cubic-bezier(0.65, 0, 0.35, 1) 0.2s both; }
+:host(.em-intro) .em-r1 { animation: emDraw 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) 0.64s both, emOp1 0.42s 0.64s both; }
+:host(.em-intro) .em-r2 { animation: emDraw 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) 0.78s both, emOp2 0.42s 0.78s both; }
+:host(.em-intro) .em-g1 { animation: emRip 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.9s both; }
+:host(.em-loader) .em-r1 { animation: emPulse1 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+:host(.em-loader) .em-r2 { animation: emPulse2 1.6s cubic-bezier(0.4, 0, 0.2, 1) 0.16s infinite; }
+:host(.em-loader) .em-g2 { animation: emRip 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.32s infinite; }
+:host(.em-live) .em-g1, :host(.em-live) .em-g2 { animation: emRip 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite; }
+:host(.em-live) .em-g1 { animation-delay: 0.6s; }
+@keyframes emTile { from { transform: scale(0.72); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes emDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes emOp1 { from { opacity: 0; } to { opacity: 0.62; } }
+@keyframes emOp2 { from { opacity: 0; } to { opacity: 0.32; } }
+@keyframes emRip { 0% { opacity: 0; transform: scale(0.92); } 25% { opacity: 0.5; } 100% { opacity: 0; transform: scale(1.18); } }
+@keyframes emPulse1 { 0%, 100% { opacity: 0.22; } 40% { opacity: 0.95; } }
+@keyframes emPulse2 { 0%, 100% { opacity: 0.12; } 45% { opacity: 0.7; } }
+@media (prefers-reduced-motion: reduce) { .em-tile, .em-s, .em-g { animation: none !important; } .em-s { stroke-dashoffset: 0; } }
