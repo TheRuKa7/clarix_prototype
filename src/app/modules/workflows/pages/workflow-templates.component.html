@@ -121,9 +121,13 @@
       <!-- Card Header -->
       <div class="card-header">
         <div class="card-title-row">
-          <span class="card-icon-box">
-            <lucide-icon name="git-branch" [size]="18" class="card-icon"></lucide-icon>
-          </span>
+          @if ((template.callProviderKey === 'exchange' || (template.templateKey || '').startsWith('EXCHANGE_'))) {
+            <app-echo-mark [size]="38" title="An Echo agent" />
+          } @else {
+            <span class="card-icon-box">
+              <lucide-icon name="git-branch" [size]="18" class="card-icon"></lucide-icon>
+            </span>
+          }
           <div class="card-title-text">
             <h3 class="card-name" [title]="template.name">{{ template.name }}</h3>
             <p class="template-key" [title]="template.templateKey">{{ template.templateKey }}</p>

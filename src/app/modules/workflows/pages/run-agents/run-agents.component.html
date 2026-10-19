@@ -49,7 +49,7 @@
           (keydown.enter)="openExecutions(agent)"
           (keydown.space)="$event.preventDefault(); openExecutions(agent)">
           <div class="ra-card-top">
-            <span class="ra-card-initial">{{ (agent.name || 'A').charAt(0) }}</span>
+            @if ((agent.callProviderKey === 'exchange' || (agent.templateKey || '').startsWith('EXCHANGE_'))) { <app-echo-mark [size]="36" title="An Echo agent" /> } @else { <span class="ra-card-initial">{{ (agent.name || 'A').charAt(0) }}</span> }
             <div class="ra-card-id">
               <h3 [title]="agent.name">{{ agent.name }}</h3>
               <span [title]="agent.templateKey">{{ agent.templateKey }}</span>

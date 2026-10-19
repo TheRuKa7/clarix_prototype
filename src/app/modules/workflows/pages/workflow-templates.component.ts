@@ -8,6 +8,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { EchoMarkComponent } from '../../../shared/ui/echo-mark/echo-mark.component';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
@@ -25,7 +26,7 @@ import { WorkflowTemplateFormComponent } from './workflow-template-form.componen
 
 @Component({
   selector: 'app-workflow-templates',
-  imports: [CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective],
+  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective],
   templateUrl: './workflow-templates.component.html',
   styleUrl: './workflow-templates.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
