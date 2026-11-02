@@ -93,7 +93,7 @@ export function scopeRows(rows, { from, to, agents = [], includeTests = false } 
     .map((r) => (includeTests ? asBusiness(r) : r));
 }
 
-const pct = (a, b) => (b ? a / b : 0);
+const pct = (a, b) => (b ? a / b : null);
 const line = (rows, key, label, extra = {}) => ({ key, label, count: rows.filter(BOX[key]).length, ...extra });
 
 /** The whole report for already scoped rows (scopeRows). Rates are unrounded; the page rounds them. */
@@ -120,7 +120,7 @@ export function buildReport(rows, { workspace = '', from = null, to = null, time
   const byAgent = [...new Set(planned.map((r) => r.agent))].sort().map((agent) => {
     const mine = rows.filter((r) => r.agent === agent); const a = mine.filter(BOX.answered); const s = mine.filter(BOX.success).length;
     const t = a.reduce((x, r) => x + (Number(r.duration_seconds) || 0), 0);
-    return { agent, agent_key: mine[0]?.agent_key || agent, planned: mine.filter(BOX.planned).length, picked_up: mine.filter(BOX.picked_up).length, not_finished: mine.filter(BOX.in_progress).length, answered: a.length, success: s, success_rate: pct(s, a.length), avg_talk_seconds: a.length ? t / a.length : 0 };
+    return { agent, agent_key: mine[0]?.agent_key || agent, planned: mine.filter(BOX.planned).length, picked_up: mine.filter(BOX.picked_up).length, not_finished: mine.filter(BOX.in_progress).length, answered: a.length, success: s, success_rate: pct(s, a.length), avg_talk_seconds: a.length ? t / a.length : null };
   });
   // Every box must equal the sum of the boxes under it (logic doc section 3); a gap is shown, never hidden.
   const checks = [
@@ -142,7 +142,54 @@ export function buildReport(rows, { workspace = '', from = null, to = null, time
     success_field: { yes: n('goal_yes'), no: n('goal_no'), na: n('goal_na') },
     sum_check: { ok: !gaps.length, gaps },
     agents: agentsAll,
+    trend: trendOf(rows, { from, to, timeZone }),
   };
+}
+
+// ── Trend and the previous period ─────────────────────────────────────────────
+const ymdIn = (ms, timeZone) => new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+const addDays = (ymd, n) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const mondayOf = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); const wd = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7; return addDays(ymd, -wd); };
+const isoWeek = (monday) => { const [y, m, d] = addDays(monday, 3).split('-').map(Number); const t = Date.UTC(y, m - 1, d); return Math.ceil(((t - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7); };
+const shortDay = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' }); };
+
+/**
+ * Logic doc section 7: the same formulas per ISO week (Monday to Sunday) in the workspace time zone, or per day when the
+ * period is two weeks or less. Planned rows only, by call date. A week cut by the period is marked partial.
+ */
+export function trendOf(rows, { from = null, to = null, timeZone = 'Asia/Kolkata' } = {}) {
+  const dated = rows.filter((r) => BOX.planned(r) && r.call_date);
+  if (!dated.length) return { unit: 'day', buckets: [] };
+  const times = dated.map((r) => Date.parse(r.call_date));
+  const first = ymdIn(from ? Date.parse(from) : Math.min(...times), timeZone); const last = ymdIn(to ? Date.parse(to) : Math.max(...times), timeZone);
+  const days = Math.round((Date.parse(last) - Date.parse(first)) / 86400000) + 1; const unit = days > 14 ? 'week' : 'day';
+  const keyOf = (ymd) => (unit === 'week' ? mondayOf(ymd) : ymd);
+  const buckets = new Map();
+  for (let k = keyOf(first); k <= last; k = addDays(k, unit === 'week' ? 7 : 1)) {
+    const end = unit === 'week' ? addDays(k, 6) : k;
+    buckets.set(k, { key: k, label: unit === 'week' ? `W${isoWeek(k)} · ${shortDay(k)}–${shortDay(end)}` : shortDay(k), partial: unit === 'week' && (k < first || end > last), rows: [] });
+  }
+  for (const r of dated) buckets.get(keyOf(ymdIn(Date.parse(r.call_date), timeZone)))?.rows.push(r);
+  return { unit, buckets: [...buckets.values()].map(({ rows: b, ...x }) => {
+    const n = (k) => b.filter(BOX[k]).length; const pl = b.length, fin = b.filter(BOX.finished).length, pu = n('picked_up'), an = n('answered'), su = n('success');
+    return { ...x, planned: pl, picked_up: pu, answered: an, success: su, picked_up_share: pct(pu, fin), answered_share: pct(an, pu), success_rate: pct(su, an) };
+  }) };
+}
+
+/** The period just before [from, to], the same length. */
+export function previousRange(from, to) {
+  const a = Date.parse(from), b = Date.parse(to); return { from: new Date(a - (b - a) - 1).toISOString(), to: new Date(a - 1).toISOString() };
+}
+
+/** The report for a scope, plus the headline of the period before it for the change shown on each rate. */
+export function callingReport(allRows, scope, opts = {}) {
+  const to = scope.to || new Date().toISOString();
+  const rep = buildReport(scopeRows(allRows, { ...scope, to }), { ...opts, from: scope.from, to, includeTests: scope.includeTests });
+  if (scope.from) {
+    const p = previousRange(scope.from, to); const h = buildReport(scopeRows(allRows, { ...scope, ...p }), { ...opts, ...p, includeTests: scope.includeTests }).headline;
+    rep.previous = { ...p, planned: h.planned, picked_up: h.picked_up, answered: h.answered, success: h.success, picked_up_share: h.picked_up_share, answered_share: h.answered_share, success_rate: h.success_rate };
+  }
+  return rep;
 }
 
 /** Rows behind one box, newest call first, for the drill-down lists. */

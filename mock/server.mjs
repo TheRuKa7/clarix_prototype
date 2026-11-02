@@ -19,7 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
-import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone } from './calling-report.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport } from './calling-report.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -772,7 +772,7 @@ function callingScope(q) {
 on('GET', '/api/v1/reports/calling', ({ q }) => {
   const all = callingRows(); const sc = callingScope(q);
   const agentsAll = agentChoices(all, sc);
-  ok(buildReport(scopeRows(all, sc), { workspace: 'Moglix', from: sc.from, to: sc.to || nowIso(), includeTests: sc.includeTests, agentsAll }));
+  ok(callingReport(all, sc, { workspace: 'Moglix', agentsAll }));
 });
 // Workspace test numbers: calls to these count only on the "Internal test calls" line.
 on('GET', '/api/v1/reports/calling/test-numbers', () => ok({ numbers: [...TEST_NUMBERS] }));

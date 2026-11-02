@@ -13,17 +13,23 @@ import { ActivatedRoute, Router } from '@angular/router';
 export type PeriodKey = 'today' | 'yesterday' | '7d' | '30d' | 'custom';
 /** from and to are ISO instants; days is the span, for pages that still think in days. */
 export interface ReportScope { period: PeriodKey; from: string; to: string; days: number; agents: string[]; includeTests: boolean; }
-export interface ReportLineView { key: string; label: string; count: number; share: number; strong?: boolean; sub?: boolean; good?: boolean; }
+export interface ReportLineView { key: string; label: string; count: number; share: number | null; strong?: boolean; sub?: boolean; good?: boolean; }
 export interface ReportBox { key: string; step: number; label: string; total: number; lines: ReportLineView[]; }
-export interface ByAgentRow { agent: string; agent_key: string; planned: number; picked_up: number; answered: number; success: number; success_rate: number; avg_talk_seconds: number; }
+export interface ByAgentRow { agent: string; agent_key: string; planned: number; picked_up: number; answered: number; success: number; success_rate: number | null; avg_talk_seconds: number | null; }
+export interface TrendBucket { key: string; label: string; partial: boolean; planned: number; picked_up: number; answered: number; success: number; picked_up_share: number | null; answered_share: number | null; success_rate: number | null; }
+type Rate = number | null;
 export interface CallingReport {
   generated_at: string; time_zone: string; definitions_version: string; workspace: string; from: string | null; to: string | null; tests_included: boolean;
-  headline: { uploaded: number; campaigns: number; planned: number; picked_up: number; answered: number; success: number; planned_share: number; picked_up_share: number; answered_share: number; success_rate: number; finished: number; not_finished: number };
+  headline: { uploaded: number; campaigns: number; planned: number; picked_up: number; answered: number; success: number; planned_share: Rate; picked_up_share: Rate; answered_share: Rate; success_rate: Rate; finished: number; not_finished: number };
   stats: { dials: number; avg_talk_seconds: number; total_talk_seconds: number; in_progress: number };
   funnel: ReportBox[]; by_agent: ByAgentRow[]; success_field: { yes: number; no: number; na: number };
   sum_check: { ok: boolean; gaps: { box: string; expected: number; got: number }[] };
   /** Agents with planned calls in the period (any agent filter ignored), with that count. */
   agents: { key: string; label: string; count: number }[];
+  /** Weekly (or daily, for two weeks or less) success, logic doc section 7. */
+  trend: { unit: 'week' | 'day'; buckets: TrendBucket[] };
+  /** The period just before this one, the same length: for the change shown on each rate. */
+  previous?: { from: string; to: string; planned: number; picked_up: number; answered: number; success: number; picked_up_share: Rate; answered_share: Rate; success_rate: Rate };
 }
 export interface ReportCallRow {
   id: string; call_id: string | null; campaign_id: string; primary_id?: string; call_date: string | null; agent: string; campaign: string; caller_name: string; phone: string;
@@ -39,6 +45,8 @@ export interface CallingReportSource {
   openCallLogs?(scope: ReportScope, box: string): void;
   /** The workspace's internal test numbers: calls to them count only as Internal test calls. */
   testNumbers?(): Promise<string[]>;
+  /** Opens the Follow ups page, where the product has one. */
+  openFollowUps?(): void;
   saveTestNumbers?(numbers: string[]): Promise<string[]>;
 }
 
@@ -127,15 +135,31 @@ const PAGE = 10;
         <div class="cr-cards">
           <button type="button" class="cr-card" (click)="open('uploaded', 'Uploaded')"><span>Uploaded</span><b>{{ num(rep.headline.uploaded) }}</b><small>{{ rep.headline.campaigns }} campaign{{ rep.headline.campaigns === 1 ? '' : 's' }}</small></button>
           <button type="button" class="cr-card" (click)="open('planned', 'Planned')"><span>Planned</span><b>{{ num(rep.headline.planned) }}</b><small>{{ pct(rep.headline.planned_share) }} of uploaded</small></button>
-          <button type="button" class="cr-card" (click)="open('picked_up', 'Picked up')"><span>Picked up</span><b>{{ num(rep.headline.picked_up) }}</b><small>{{ pct(rep.headline.picked_up_share) }} of {{ rep.headline.not_finished ? num(rep.headline.finished) + ' finished' : 'planned' }}</small></button>
-          <button type="button" class="cr-card" (click)="open('answered', 'Answered')"><span>Answered</span><b>{{ num(rep.headline.answered) }}</b><small>{{ pct(rep.headline.answered_share) }} of picked up</small></button>
-          <button type="button" class="cr-card good" (click)="open('success', 'Success')"><span>Success</span><b>{{ num(rep.headline.success) }}</b><small>Success rate {{ pct(rep.headline.success_rate) }}</small></button>
+          <button type="button" class="cr-card" (click)="open('picked_up', 'Picked up')"><span>Picked up</span><b>{{ num(rep.headline.picked_up) }}</b><small>{{ pct(rep.headline.picked_up_share) }} of {{ rep.headline.not_finished ? num(rep.headline.finished) + ' finished' : 'planned' }}</small>@if (delta('picked_up_share'); as d) { <em class="cr-delta" [class.up]="d.v > 0" [class.down]="d.v < 0" [title]="d.title">{{ d.text }}</em> }</button>
+          <button type="button" class="cr-card" (click)="open('answered', 'Answered')"><span>Answered</span><b>{{ num(rep.headline.answered) }}</b><small>{{ pct(rep.headline.answered_share) }} of picked up</small>@if (delta('answered_share'); as d) { <em class="cr-delta" [class.up]="d.v > 0" [class.down]="d.v < 0" [title]="d.title">{{ d.text }}</em> }</button>
+          <button type="button" class="cr-card good" (click)="open('success', 'Success')"><span>Success</span><b>{{ num(rep.headline.success) }}</b><small>Success rate {{ pct(rep.headline.success_rate) }}</small>@if (delta('success_rate'); as d) { <em class="cr-delta" [class.up]="d.v > 0" [class.down]="d.v < 0" [title]="d.title">{{ d.text }}</em> }</button>
         </div>
         <div class="cr-stats">
           <div><span>Dials</span><b>{{ num(rep.stats.dials) }}</b></div>
           <div><span>Avg talk time</span><b>{{ mmss(rep.stats.avg_talk_seconds) }}</b></div>
           <div><span>Total talk time</span><b>{{ hms(rep.stats.total_talk_seconds) }}</b></div>
           <button type="button" (click)="open('in_progress', 'Not finished')" [disabled]="!rep.stats.in_progress" title="Still being dialled or waiting for a retry: no result yet, so not in any rate"><span>Not finished</span><b>{{ num(rep.stats.in_progress) }}</b></button>
+        </div>
+
+        <div class="cr-insights">
+          @if (loss(); as l) {
+            <button type="button" class="cr-insight warn" (click)="open(l.key, l.label)" title="The largest reason answered calls ended without a result. Opens those calls.">
+              <span>Biggest loss</span><b>{{ l.label }}: {{ num(l.count) }}</b><small>{{ pct(l.share) }} of answered calls</small>
+            </button>
+          }
+          <div class="cr-insight">
+            <span>Needs action</span>
+            <div class="cr-acts">
+              <button type="button" (click)="open('callback', 'Callback requested')">Callback requested <b>{{ num(lineCount('callback')) }}</b></button>
+              <button type="button" (click)="open('follow_up', 'Follow-up required')">Follow-up required <b>{{ num(lineCount('follow_up')) }}</b></button>
+              @if (source().openFollowUps) { <button type="button" class="cr-link" (click)="source().openFollowUps!()">Open Follow ups →</button> }
+            </div>
+          </div>
         </div>
 
         <h3 class="cr-section">Funnel</h3>
@@ -156,6 +180,21 @@ const PAGE = 10;
           @else { Counts do not match: @for (g of rep.sum_check.gaps; track g.box) { {{ g.box }} is {{ g.expected }}, its parts add to {{ g.got }}. } }
           <span class="cr-ver">Definitions {{ rep.definitions_version }}</span>
         </p>
+
+        @if (rep.trend.buckets.length > 1) {
+          <h3 class="cr-section">Trend <span class="cr-sec-note">success rate by {{ rep.trend.unit }}{{ rep.trend.unit === 'week' ? ' · * part of a week' : '' }}</span></h3>
+          <div class="cr-trend" role="list" aria-label="Success rate trend">
+            @for (t of rep.trend.buckets; track t.key) {
+              <div class="cr-tcol" role="listitem" [title]="t.label + ': ' + t.planned + ' planned, ' + t.picked_up + ' picked up (' + pct(t.picked_up_share) + '), ' + t.answered + ' answered (' + pct(t.answered_share) + '), ' + t.success + ' success'">
+                <span class="cr-tval">{{ pct(t.success_rate) }}</span>
+                <div class="cr-tbar"><i [style.height.%]="(t.success_rate ?? 0) * 100"></i></div>
+                <span class="cr-tlab">{{ t.label.split(' · ')[0] }}{{ t.partial ? '*' : '' }}</span>
+                @if (t.label.includes(' · ')) { <small>{{ t.label.split(' · ')[1] }}</small> }
+                <small>{{ num(t.planned) }} planned</small>
+              </div>
+            }
+          </div>
+        }
 
         <h3 class="cr-section">By agent</h3>
         @if (rep.by_agent.length) {
@@ -274,6 +313,27 @@ const PAGE = 10;
     .cr-chips { display: flex; gap: 10px; flex-wrap: wrap; }
     .cr-chips button { border: 1px solid var(--cr-line); border-radius: 999px; background: var(--cr-bg); padding: 6px 16px; font: inherit; font-size: 14px; color: var(--cr-muted); cursor: pointer; }
     .cr-chips b { color: var(--cr-text); margin-left: 4px; }
+    .cr-delta { font-style: normal; font-size: 11.5px; color: var(--cr-muted); margin-top: 2px; }
+    .cr-delta.up { color: var(--cr-good); }
+    .cr-delta.down { color: var(--cr-bad); }
+    .cr-insights { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+    .cr-insight { display: grid; gap: 4px; align-content: start; text-align: left; border: 1px solid var(--cr-line); border-radius: 12px; padding: 12px 14px; background: var(--cr-bg); font: inherit; color: var(--cr-text); }
+    button.cr-insight { cursor: pointer; }
+    .cr-insight.warn { border-color: var(--ds-warning-border, #fcd9a4); background: var(--ds-warning-bg, #fff8eb); }
+    .cr-insight > span { font-size: 12px; color: var(--cr-muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+    .cr-insight > b { font-size: 15px; }
+    .cr-insight > small { font-size: 12.5px; color: var(--cr-muted); }
+    .cr-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .cr-acts > button:not(.cr-link) { border: 1px solid var(--cr-line); border-radius: 8px; background: var(--cr-bg); padding: 6px 10px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; }
+    .cr-acts b { margin-left: 4px; }
+    .cr-sec-note { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+    .cr-trend { display: flex; gap: 10px; align-items: flex-end; border: 1px solid var(--cr-line); border-radius: 12px; padding: 12px 14px; background: var(--cr-bg); overflow-x: auto; }
+    .cr-tcol { flex: 1 0 64px; display: grid; justify-items: center; gap: 3px; font-size: 12px; text-align: center; }
+    .cr-tval { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .cr-tbar { width: 26px; height: 80px; background: var(--cr-soft); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
+    .cr-tbar i { display: block; width: 100%; background: var(--cr-good); border-radius: 6px 6px 0 0; }
+    .cr-tlab { font-weight: 600; }
+    .cr-tcol small { color: var(--cr-muted); font-size: 11px; }
     .cr-opt-l { flex: 1; }
     .cr-opt small { color: var(--cr-muted); font-variant-numeric: tabular-nums; }
     .cr-pad { padding: 6px 8px; }
@@ -303,7 +363,7 @@ const PAGE = 10;
     .cr-note.bad { color: var(--cr-bad); }
     .cr-link { border: 0; background: none; text-decoration: underline; color: inherit; cursor: pointer; font: inherit; }
     .cr-empty { margin: 0; color: var(--cr-muted); font-size: 13px; }
-    @media (max-width: 900px) { .cr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-funnel { grid-template-columns: 1fr; }
+    @media (max-width: 900px) { .cr-insights { grid-template-columns: 1fr; } .cr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-funnel { grid-template-columns: 1fr; }
       .cr-tr { grid-template-columns: 1.6fr repeat(6, minmax(44px, 1fr)); font-size: 12.5px; } .cr-calls .cr-tr { grid-template-columns: 1fr 1fr 1fr; } .cr-calls .cr-tr > :nth-child(n+4) { display: none; } }
   `],
 })
@@ -380,6 +440,16 @@ export class CallingReportComponent {
     for (const k of this.agents()) out.push({ key: `agent:${k}`, label: `Agent: ${this.r()?.agents.find((a) => a.key === k)?.label ?? k}` });
     if (this.includeTests()) out.push({ key: 'tests', label: 'Test calls included' });
     return out;
+  });
+
+  /** "previous 7 days" and the like, for the change shown on each rate. */
+  private readonly prevLabel = computed(() => ({ today: 'yesterday', yesterday: 'the day before', '7d': 'the previous 7 days', '30d': 'the previous 30 days', custom: `the previous ${this.days()} days` })[this.period()]);
+  /** The largest reason answered calls ended without a result. */
+  protected readonly loss = computed(() => {
+    const rep = this.r(); if (!rep?.headline.answered) return null;
+    const box = rep.funnel.find((b) => b.key === 'answered'); const lines = (box?.lines ?? []).filter((l) => ['not_given_time', 'left', 'wrong_number'].includes(l.key));
+    const top = [...lines].sort((a, b) => b.count - a.count)[0];
+    return top?.count ? { key: top.key, label: top.label, count: top.count, share: top.count / rep.headline.answered } : null;
   });
 
   constructor() {
@@ -526,7 +596,8 @@ export class CallingReportComponent {
     y += row1 + 14 + row2 + 36; text('BY AGENT', M, y, 12, mute, 600); y += 12;
     const cols = ['Agent', 'Planned', 'Picked up', 'Answered', 'Success', 'Success rate', 'Avg talk time']; const cx = [M + 14, 520, 610, 700, 790, 890, W - M - 14];
     rect(M, y, W - 2 * M, 34, soft, '', 8); cols.forEach((t, i) => text(t, cx[i], y + 22, 12.5, mute, 500, i ? 'right' : 'left')); y += 34;
-    rep.by_agent.forEach((a) => { y += 38; [a.agent, this.num(a.planned), this.num(a.picked_up), this.num(a.answered), this.num(a.success), this.pct(a.success_rate), this.mmss(a.avg_talk_seconds)]
+    const fit = (t: string, w: number) => { g.font = `400 13.5px ${F}`; if (g.measureText(t).width <= w) return t; let x = t; while (x.length > 1 && g.measureText(x + '…').width > w) x = x.slice(0, -1); return x + '…'; };
+    rep.by_agent.forEach((a) => { y += 38; [fit(a.agent, cx[1] - cx[0] - 70), this.num(a.planned), this.num(a.picked_up), this.num(a.answered), this.num(a.success), this.pct(a.success_rate), this.mmss(a.avg_talk_seconds)]
       .forEach((t, i) => text(t, cx[i], y - 13, 13.5, i === 5 ? green : ink, i === 5 ? 600 : 400, i ? 'right' : 'left')); g.fillStyle = line; g.fillRect(M, y, W - 2 * M, 1); });
     y += 44; text('SUCCESS FIELD', M, y, 12, mute, 600); y += 14; let x = M;
     for (const [l, v] of [['Yes', rep.success_field.yes], ['No', rep.success_field.no], ['N/A', rep.success_field.na]] as [string, number][]) {
@@ -535,9 +606,19 @@ export class CallingReportComponent {
     return c;
   }
 
+  protected lineCount(key: string): number { return this.r()?.funnel.flatMap((b) => b.lines).find((l) => l.key === key)?.count ?? 0; }
+  /** Change in percentage points against the previous period; nothing when either side has nothing to divide by. */
+  protected delta(k: 'picked_up_share' | 'answered_share' | 'success_rate'): { v: number; text: string; title: string } | null {
+    const rep = this.r(); const cur = rep?.headline[k]; const prev = rep?.previous?.[k];
+    if (cur == null || !rep?.previous) return null;
+    if (prev == null) return { v: 0, text: `Nothing to compare`, title: `No calls to compare in ${this.prevLabel()}` };
+    const v = Math.round(cur * 100) - Math.round(prev * 100);
+    return { v, text: v > 0 ? `+${v} pts` : v < 0 ? `−${-v} pts` : 'No change', title: `Against ${this.prevLabel()}: ${this.pct(prev)}` };
+  }
   protected num(n: number): string { return (n ?? 0).toLocaleString('en-IN'); }
-  protected pct(x: number): string { return `${Math.round((x || 0) * 100)}%`; }
-  protected mmss(s: number): string { const t = Math.round(s || 0); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; }
+  /** A rate as a whole percent; a dash when there was nothing to divide by. */
+  protected pct(x: number | null | undefined): string { return x == null ? '—' : `${Math.round(x * 100)}%`; }
+  protected mmss(s: number | null | undefined): string { if (s == null) return '—'; const t = Math.round(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; }
   protected hms(s: number): string { const t = Math.round(s || 0), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60; return h ? `${h}h ${m}m` : `${m}m ${sec}s`; }
   protected when(iso: string): string {
     return new Date(iso).toLocaleString('en-GB', { timeZone: this.r()?.time_zone || 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });

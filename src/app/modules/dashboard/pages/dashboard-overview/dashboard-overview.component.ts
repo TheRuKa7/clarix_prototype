@@ -31,6 +31,7 @@ export class DashboardOverviewComponent {
     exportXlsx: (sc, box) => firstValueFrom(this.reports.callingReportExport(sc, box)),
     testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),
     saveTestNumbers: (n) => firstValueFrom(this.reports.saveReportTestNumbers(n)),
+    openFollowUps: () => this.router.navigate(['/workflows/follow-ups']),
     openCallLogs: () => this.router.navigate(['/workflows/calls']),
     openCall: (row) => { if (row.call_id && !row.id.includes(':bad:')) this.router.navigate(['/workflows/templates', (row as any).agent_key, 'executions', row.call_id], { queryParams: { returnUrl: this.router.url } }); },
   };
