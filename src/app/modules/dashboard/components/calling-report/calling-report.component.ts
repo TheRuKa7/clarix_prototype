@@ -35,10 +35,12 @@ export interface ReportCallRow {
   id: string; call_id: string | null; campaign_id: string; primary_id?: string; call_date: string | null; agent: string; campaign: string; caller_name: string; phone: string;
   call_status: string; status_reason: string; goal_reached: string; duration_seconds: number | null; callback_at: string | null; uploaded_by: string; summary?: string; retries?: number;
 }
+/** The call log's search box and per-column "contains" filters; the export uses the same. */
+export interface LogFilters { q: string; cols: Record<string, string> }
 export interface CallingReportSource {
   report(scope: ReportScope): Promise<CallingReport>;
-  calls(scope: ReportScope, box: string, skip: number, limit: number): Promise<{ rows: ReportCallRow[]; total: number }>;
-  exportXlsx(scope: ReportScope, box: string): Promise<Blob>;
+  calls(scope: ReportScope, box: string, skip: number, limit: number, filters?: LogFilters): Promise<{ rows: ReportCallRow[]; total: number }>;
+  exportXlsx(scope: ReportScope, box: string, filters?: LogFilters): Promise<Blob>;
   /** Opens the call page for a row (phase 2 makes this the one call page everywhere). */
   openCall(row: ReportCallRow): void;
   /** Opens the full Call logs page, where the product has one. */
@@ -55,6 +57,9 @@ const PERIODS: { key: PeriodKey; label: string }[] = [{ key: 'today', label: 'To
 const BOX_LABELS: Record<string, string> = { uploaded: 'Uploaded', planned: 'Planned', picked_up: 'Picked up', answered: 'Answered', success: 'Success', in_progress: 'Not finished',
   goal_yes: 'Goal reached: Yes', goal_no: 'Goal reached: No', goal_na: 'Goal reached: N/A' };
 const PAGE = 10;
+/** The call log's columns, in order: key, header. */
+const LOG_COLUMNS: [string, string][] = [['call_date', 'Call date'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['caller_name', 'Caller'], ['phone', 'Phone'], ['summary', 'Call summary'],
+  ['call_status', 'Call status'], ['status_reason', 'Status reason'], ['callback_at', 'Call back'], ['duration_seconds', 'Duration'], ['retries', 'Retries'], ['goal_reached', 'Goal']];
 const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation: '#7c3aed', not_picked_up: '#d97706', in_progress: '#a8a29e', not_planned: '#d6d3d1' };
 
 @Component({
@@ -75,18 +80,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             <input type="date" aria-label="To" [value]="customTo()" [min]="customFrom()" [max]="today()" (change)="setCustom(customFrom(), $any($event.target).value)">
           </span>
         }
-        <div class="cr-drop">
-          <button type="button" class="cr-btn" [class.on]="agents().length" (click)="agentsOpen.set(!agentsOpen())" [attr.aria-expanded]="agentsOpen()">{{ agents().length ? agentLabel() : 'All agents' }} ▾</button>
-          @if (agentsOpen()) {
-            <div class="cr-menu" role="listbox" aria-label="Agents">
-              <label class="cr-opt"><input type="checkbox" [checked]="!agents().length" (change)="setAgents([])"> All agents</label>
-              @for (a of r()?.agents ?? []; track a.key) {
-                <label class="cr-opt"><input type="checkbox" [checked]="agents().includes(a.key)" (change)="toggleAgent(a.key)"> <span class="cr-opt-l">{{ a.label }}</span><small>{{ num(a.count) }}</small></label>
-              } @empty { <p class="cr-empty cr-pad">No agent had calls planned in this period.</p> }
-            </div>
-          }
-        </div>
-        @if (agents().length || period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Clear filters</button> }
+        @if (agents().length || period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Reset period</button> }
         <span class="cr-grow"></span>
         <span class="cr-meta">{{ periodLabel() }} · {{ tzLabel() }}</span>
         <div class="cr-drop">
@@ -141,14 +135,19 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             <b>Calls</b>
             @if (box(); as bx) { <span class="cr-fchip">{{ bx.label }}<button type="button" (click)="close()" aria-label="Show every call">✕</button></span> }
             <span class="cr-muted">{{ num(drillTotal()) }} call{{ drillTotal() === 1 ? '' : 's' }}</span>
+            <input class="cr-search" type="search" placeholder="Search every column" [value]="search()" (input)="setSearch($any($event.target).value)" aria-label="Search calls">
+            @if (logFiltered()) { <button type="button" class="cr-link" (click)="clearLogFilters()">Clear column filters</button> }
             <span class="cr-grow"></span>
             @if (source().openCallLogs) { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
-            <button type="button" class="cr-btn" (click)="exportBox()">Export</button>
+            <button type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
           </div>
-          @if (drillRows().length) {
-            <div class="cr-scroll">
-              <table class="cr-table">
-                <thead><tr><th>Call date</th><th>Agent</th><th>Campaign</th><th>Caller</th><th>Phone</th><th>Call summary</th><th>Call status</th><th>Status reason</th><th>Call back</th><th>Duration</th><th>Retries</th><th>Goal</th></tr></thead>
+          <div class="cr-scroll">
+            <table class="cr-table">
+              <thead>
+                <tr>@for (col of LOG_COLUMNS; track col[0]) { <th>{{ col[1] }}</th> }</tr>
+                <tr class="cr-frow">@for (col of LOG_COLUMNS; track col[0]) { <th><input type="text" [value]="colFilters()[col[0]] || ''" (input)="setCol(col[0], $any($event.target).value)" [attr.aria-label]="'Filter ' + col[1]" placeholder="Filter"></th> }</tr>
+              </thead>
+              @if (drillRows().length) {
                 <tbody>
                   @for (c of drillRows(); track c.id) {
                     <tr tabindex="0" (click)="source().openCall(c)" (keydown.enter)="source().openCall(c)" [title]="'Open the call with ' + (c.caller_name || c.phone)">
@@ -158,14 +157,16 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
                     </tr>
                   }
                 </tbody>
-              </table>
-            </div>
+              }
+            </table>
+          </div>
+          @if (drillRows().length) {
             <div class="cr-pager">
               <button type="button" class="cr-btn" [disabled]="drillPage() === 0" (click)="page(-1)">Newer</button>
               <span>{{ drillPage() * PAGE + 1 }}–{{ drillPage() * PAGE + drillRows().length }} of {{ num(drillTotal()) }}</span>
               <button type="button" class="cr-btn" [disabled]="(drillPage() + 1) * PAGE >= drillTotal()" (click)="page(1)">Older</button>
             </div>
-          } @else { <p class="cr-empty cr-pad">No calls here in this period.</p> }
+          } @else { <p class="cr-empty cr-pad">{{ logFiltered() ? 'No calls match these filters.' : 'No calls here in this period.' }}</p> }
         </div>
       } @else if (!error()) { <p class="cr-empty">Loading…</p> }
     </section>
@@ -227,6 +228,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-fchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--cr-soft); border: 1px solid var(--cr-line); font-size: 12.5px; }
     .cr-fchip button { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
     .cr-scroll { overflow-x: auto; }
+    .cr-search { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); width: 220px; }
+    .cr-frow th { background: var(--cr-bg); padding: 4px 6px; }
+    .cr-frow input { width: 100%; min-width: 64px; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
     .cr-table th { text-align: left; font-weight: 500; color: var(--cr-muted); background: var(--cr-soft); padding: 7px 10px; white-space: nowrap; }
     .cr-table td { padding: 7px 10px; border-top: 1px solid var(--cr-line); white-space: nowrap; }
@@ -274,6 +278,11 @@ export class CallingReportComponent {
   protected readonly drillRows = signal<ReportCallRow[]>([]);
   protected readonly drillTotal = signal(0);
   protected readonly drillPage = signal(0);
+  protected readonly LOG_COLUMNS = LOG_COLUMNS;
+  protected readonly search = signal('');
+  protected readonly colFilters = signal<Record<string, string>>({});
+  protected readonly logFiltered = computed(() => !!this.search().trim() || Object.values(this.colFilters()).some((v) => v.trim()));
+  private typing: ReturnType<typeof setTimeout> | null = null;
   private seq = 0;
 
   /** The workspace time zone: days start at midnight there. */
@@ -381,13 +390,14 @@ export class CallingReportComponent {
     if (p === 'custom') { this.customFrom.set(q.get('from') || ''); this.customTo.set(q.get('to') || ''); }
     this.agents.set((q.get('agents') || '').split(',').filter(Boolean));
     this.includeTests.set(q.get('tests') === '1');
+    this.search.set(q.get('q') || ''); try { this.colFilters.set(JSON.parse(q.get('f') || '{}')); } catch { /* ignore bad filters */ }
     const box = q.get('box'); if (box) { this.box.set({ key: box, label: BOX_LABELS[box] || box }); this.drillPage.set(Math.max(0, Number(q.get('page') || 0))); }
   }
   private writeUrl(): void {
     const b = this.box(); const custom = this.period() === 'custom';
     this.router.navigate([], { relativeTo: this.route, replaceUrl: true, queryParamsHandling: 'merge', queryParams: {
       period: this.period() === '30d' ? null : this.period(), from: custom ? this.customFrom() || null : null, to: custom ? this.customTo() || null : null,
-      agents: this.agents().join(',') || null, tests: this.includeTests() ? '1' : null, box: b?.key ?? null, page: b && this.drillPage() ? this.drillPage() : null } });
+      agents: this.agents().join(',') || null, tests: this.includeTests() ? '1' : null, box: b?.key ?? null, page: this.drillPage() || null, q: this.search().trim() || null, f: this.logFilters().cols && Object.keys(this.logFilters().cols).length ? JSON.stringify(this.logFilters().cols) : null } });
   }
 
   async load(): Promise<void> {
@@ -436,7 +446,7 @@ export class CallingReportComponent {
   protected close(): void { this.box.set(null); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }
   protected page(step: number): void { this.drillPage.set(Math.max(0, this.drillPage() + step)); this.writeUrl(); this.fetchBox(); }
   private async fetchBox(): Promise<void> {
-    try { const res = await this.source().calls(this.scope(), this.box()?.key ?? 'uploaded', this.drillPage() * PAGE, PAGE); this.drillRows.set(res.rows); this.drillTotal.set(res.total); }
+    try { const res = await this.source().calls(this.scope(), this.box()?.key ?? 'uploaded', this.drillPage() * PAGE, PAGE, this.logFilters()); this.drillRows.set(res.rows); this.drillTotal.set(res.total); }
     catch { this.drillRows.set([]); this.drillTotal.set(0); this.error.set('Could not load these calls.'); }
   }
 
@@ -449,7 +459,14 @@ export class CallingReportComponent {
     if (this.agentsOpen() || this.shareOpen() || this.testsOpen()) { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); } else if (this.box()) this.close();
   }
 
-  protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k), `${this.fileName()}-${k}.xlsx`); }
+  protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k, this.logFilters()), `${this.fileName()}-${k}${this.logFiltered() ? '-filtered' : ''}.xlsx`); }
+  /** Non-empty column filters and the search box, as sent to the call log and the export. */
+  private logFilters(): LogFilters { return { q: this.search().trim(), cols: Object.fromEntries(Object.entries(this.colFilters()).filter(([, v]) => v.trim())) }; }
+  protected setSearch(v: string): void { this.search.set(v); this.refilter(); }
+  protected setCol(k: string, v: string): void { this.colFilters.set({ ...this.colFilters(), [k]: v }); this.refilter(); }
+  protected clearLogFilters(): void { this.search.set(''); this.colFilters.set({}); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }
+  /** Typing waits a moment before the log reloads. */
+  private refilter(): void { if (this.typing) clearTimeout(this.typing); this.typing = setTimeout(() => { this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }, 300); }
   protected async shareSheet(): Promise<void> { this.shareOpen.set(false); this.save(await this.source().exportXlsx(this.scope(), 'uploaded'), `${this.fileName()}.xlsx`); }
   protected async sharePicture(): Promise<void> { this.shareOpen.set(false); const c = this.draw(); if (c) c.toBlob((b) => b && this.save(b, `${this.fileName()}.png`), 'image/png'); }
   protected sharePdf(): void {

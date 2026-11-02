@@ -27,13 +27,13 @@ export class DashboardOverviewComponent {
   /** Where the calling report reads from. Every row opens its call (execution) page. */
   protected readonly reportSource: CallingReportSource = {
     report: (sc) => firstValueFrom(this.reports.callingReport(sc)),
-    calls: (sc, box, skip, limit) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit)),
-    exportXlsx: (sc, box) => firstValueFrom(this.reports.callingReportExport(sc, box)),
+    calls: (sc, box, skip, limit, f) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit, f)),
+    exportXlsx: (sc, box, f) => firstValueFrom(this.reports.callingReportExport(sc, box, f)),
     testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),
     saveTestNumbers: (n) => firstValueFrom(this.reports.saveReportTestNumbers(n)),
     openFollowUps: () => this.router.navigate(['/workflows/follow-ups']),
     openCallLogs: () => this.router.navigate(['/workflows/calls']),
-    openCall: (row) => { if (row.call_id && !row.id.includes(':bad:')) this.router.navigate(['/workflows/templates', (row as any).agent_key, 'executions', row.call_id], { queryParams: { returnUrl: this.router.url } }); },
+    openCall: (row) => this.router.navigate(['/workflows/calls', row.id]),
   };
   /** The report's period and single agent drive the sections below it. */
   protected onReportScope(sc: ReportScope): void { this.days.set(sc.days); this.setAgent(sc.agents.length === 1 ? sc.agents[0] : ''); }

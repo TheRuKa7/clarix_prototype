@@ -16,6 +16,7 @@ import { RunAgentsComponent } from './modules/workflows/pages/run-agents/run-age
 import { CampaignDetailComponent } from './modules/workflows/pages/campaign-detail/campaign-detail.component';
 import { CallLogsComponent } from './modules/workflows/pages/call-logs/call-logs.component';
 import { FollowUpsComponent } from './modules/workflows/pages/follow-ups/follow-ups.component';
+import { CallPageRouteComponent } from './modules/workflows/pages/call-page/call-page-route.component';
 import { DataHubComponent } from './modules/workflows/pages/data-hub/data-hub.component';
 import { OrchestrationHubComponent } from './modules/workflows/pages/orchestration-hub/orchestration-hub.component';
 import { LoginComponent } from './pages/login.component';
@@ -78,6 +79,12 @@ export const routes: Routes = [
             component: CallLogsComponent,
             title: 'Call Logs | Clarix'
           },
+          // One call page for every call list (same page as Echo).
+          {
+            path: 'calls/:id',
+            component: CallPageRouteComponent,
+            title: 'Call | Clarix'
+          },
           {
             path: 'follow-ups',
             component: FollowUpsComponent,
@@ -102,8 +109,7 @@ export const routes: Routes = [
           },
           {
             path: 'templates/:templateId/executions/:executionId',
-            component: WorkflowExecutionDetailComponent,
-            title: 'Execution Details | Clarix'
+            redirectTo: '/workflows/calls/:executionId'
           },
           // Build > Agents — same component/editor as before ("Templates"), reachable from the new nav.
           {

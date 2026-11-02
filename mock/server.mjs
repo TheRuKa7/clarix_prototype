@@ -19,7 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
-import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS } from './calling-report.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters } from './calling-report.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -807,12 +807,12 @@ on('PUT', '/api/v1/reports/calling/test-numbers', ({ body }) => {
   TEST_NUMBERS.clear(); list.forEach((p) => TEST_NUMBERS.add(p)); ok({ numbers: list });
 });
 on('GET', '/api/v1/reports/calling/calls', ({ q }) => {
-  const rows = rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded');
+  const rows = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded'), logFilters(q));
   const skip = Number(q.get('skip') || 0); const limit = Number(q.get('limit') || 25);
   ok({ rows: rows.slice(skip, skip + limit), total: rows.length });
 });
 on('GET', '/api/v1/reports/calling/export.xlsx', ({ q }) => {
-  const rows = rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded');
+  const rows = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded'), logFilters(q));
   file(writeXlsx(exportTable(rows), 'Calls'), XLSX, `calling-report-${nowIso().slice(0, 10)}.xlsx`);
 });
 on('GET', '/api/v1/dashboard/voice', ({ q }) => ok(voiceMetrics(q)));

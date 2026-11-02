@@ -261,3 +261,21 @@ export function neighbours(rows, row) {
   const same = rows.filter((r) => r.campaign_id === row.campaign_id); const i = same.findIndex((r) => r.id === row.id);
   return { prev_id: i > 0 ? same[i - 1].id : null, next_id: i >= 0 && i < same.length - 1 ? same[i + 1].id : null, position: i + 1, of: same.length };
 }
+
+// ── Call log search and column filters ───────────────────────────────────────
+/** What a cell reads as on screen and in the export, so "2 Nov" or "1:05" finds what people see. */
+function cellText(r, k, timeZone = 'Asia/Kolkata') {
+  const v = r[k];
+  if (k === 'call_date') return v ? new Date(v).toLocaleString('en-GB', { timeZone, day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  if (k === 'duration_seconds') return v == null ? '' : `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, '0')}`;
+  return String(v ?? '');
+}
+/** Search across every column, and "contains" per column (case does not matter). The export uses the same filters. */
+export function filterRows(rows, { q = '', cols = {} } = {}) {
+  const term = String(q || '').trim().toLowerCase(); const want = Object.entries(cols || {}).filter(([, v]) => String(v ?? '').trim());
+  if (!term && !want.length) return rows;
+  return rows.filter((r) => (!term || COLUMNS.some(([k]) => cellText(r, k).toLowerCase().includes(term)))
+    && want.every(([k, v]) => cellText(r, k).toLowerCase().includes(String(v).trim().toLowerCase())));
+}
+/** Reads ?q= and ?filters= (JSON of column: text) from a request. */
+export function logFilters(q) { let cols = {}; try { cols = JSON.parse(q.get('filters') || '{}'); } catch { /* ignore bad filters */ } return { q: q.get('q') || '', cols }; }
