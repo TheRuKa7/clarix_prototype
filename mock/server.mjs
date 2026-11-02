@@ -19,7 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
-import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters } from './calling-report.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction } from './calling-report.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -769,7 +769,7 @@ function callingRows() {
 function callingScope(q) {
   const days = Number(q.get('days') || 0);
   return { from: q.get('from') || (days ? new Date(Date.now() - days * 86400000).toISOString() : null), to: q.get('to') || null,
-    agents: (q.get('agents') || '').split(',').filter(Boolean), includeTests: q.get('include_tests') === '1' };
+    agents: (q.get('agents') || '').split(',').filter(Boolean), includeTests: q.get('include_tests') === '1', campaign: q.get('campaign') || '' };
 }
 on('GET', '/api/v1/reports/calling', ({ q }) => {
   const all = callingRows(); const sc = callingScope(q);
@@ -792,6 +792,52 @@ function callDetail(id) {
     timeline: e ? eventsOf(e).map((v) => ({ at: v.createdAt, type: v.eventType.replace(/_/g, ' ').toLowerCase(), status: v.status, detail: v.errorMessage || '' })) : [],
     outcome_options: ANSWERED_REASONS, product: 'clarix' };
 }
+// ── Shared screens (phase 3): campaigns, follow ups, new campaign. Same paths and shapes as the Echo mock. ──
+const campaignScope = (q) => ({ from: q.get('from') || null, to: q.get('to') || null, state: q.get('state') || 'all', q: q.get('q') || '' });
+on('GET', '/api/v1/reports/calling/campaigns', ({ q }) => {
+  const list = filterCampaigns(campaignSummaries(callingRows()), campaignScope(q)); const skip = Number(q.get('skip') || 0), limit = Number(q.get('limit') || 20);
+  ok({ rows: list.slice(skip, skip + limit), total: list.length, running: list.filter((c) => c.status === 'Running').length });
+});
+on('GET', '/api/v1/reports/calling/campaigns/:id', ({ p }) => { const c = campaignSummaries(callingRows()).find((x) => x.campaign_id === p.id); c ? ok(c) : fail(404, 'Campaign not found'); });
+on('POST', '/api/v1/reports/calling/campaigns/:id/stop', ({ p }) => {
+  const live = executions.filter((e) => e.batchId === p.id && e.status === 'IN_PROGRESS'); live.forEach((e) => finishExecution(e, 'STOPPED', { by: USER })); ok({ stopped: live.length });
+});
+on('GET', '/api/v1/reports/calling/follow-ups', ({ q }) => ok(followUpRows(scopeRows(callingRows(), callingScope(q)), q.get('tab') || 'callback', q.get('show') || 'open')));
+on('POST', '/api/v1/reports/calling/follow-ups/:id', ({ p, body }) => ok(followUpAction(p.id, body?.action || 'open', USER)));
+// New campaign: pick an agent, get its template, check the file, start.
+const newCampaignAgents = () => templates.filter((t) => t.status === 'ACTIVE').map((t) => ({ key: t.id, label: t.name, inputs: ['contact_name', 'contact_phone', 'contact_email', ...(t.contextMappings || []).map((m) => m.fieldName)] }));
+on('GET', '/api/v1/reports/calling/new-campaign/agents', () => ok(newCampaignAgents()));
+on('GET', '/api/v1/reports/calling/new-campaign/template.xlsx', ({ q }) => {
+  const a = newCampaignAgents().find((x) => x.key === q.get('agent')); if (!a) return fail(404, 'Agent not found'); file(writeXlsx([a.inputs], 'Contacts'), XLSX, `${a.label.replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`);
+});
+function newCampaignRows(t, form) {
+  const [headers, ...data] = readSheet(form.file); const col = (k) => headers.findIndex((h) => String(h).trim().toLowerCase().replace(/[^a-z0-9]/g, '') === k.replace(/_/g, ''));
+  const keys = ['contact_name', 'contact_phone', 'contact_email', ...(t.contextMappings || []).map((m) => m.fieldName)]; const seen = new Set();
+  const rows = data.filter((r) => r.some((v) => String(v ?? '').trim())).map((r, i) => {
+    const get = (k) => { const c = col(k); return c >= 0 ? String(r[c] ?? '').trim() : ''; }; const phone = get('contact_phone').replace(/\D/g, '').slice(-10);
+    const context = Object.fromEntries((t.contextMappings || []).map((m) => [m.fieldName, get(m.fieldName)])); const missing = (t.contextMappings || []).filter((m) => m.required && !context[m.fieldName]).map((m) => m.fieldName);
+    const bad = phone.length !== 10 ? `contact_phone "${get('contact_phone')}" is not a valid number` : missing.length ? `Missing ${missing.join(', ')}` : seen.has(phone) ? 'Same phone number as an earlier row' : null; seen.add(phone);
+    return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, email: get('contact_email'), context, bad };
+  });
+  return { rows, matched: keys.filter((k) => col(k) >= 0), missing: keys.filter((k) => col(k) < 0) };
+}
+on('POST', '/api/v1/reports/calling/new-campaign/check', ({ q, req, raw }) => {
+  const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent'); const form = multipart(req, raw); if (!form.file?.content) return fail(400, 'Choose a file');
+  let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
+  const bad = r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })); const tests = r.rows.filter((x) => !x.bad && TEST_NUMBERS.has(normalisePhone(x.phone))).length;
+  ok({ file: form.file.filename, rows: r.rows.length, will_dial: r.rows.length - bad.length - tests, calls: r.rows.length - bad.length, bad, tests, matched: r.matched, missing: r.missing });
+});
+on('POST', '/api/v1/reports/calling/new-campaign/start', async ({ q, req, raw }) => {
+  const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent'); const form = multipart(req, raw); if (!form.file?.content) return fail(400, 'Choose a file');
+  let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
+  const sheet = { id: hex24(), orgId: ORG, templateId: t.id, templateName: t.name, eventType: t.triggerEventTypes?.[0], sourceSystem: 'CSV', originalFilename: form.file.filename, fileUrl: null, uploadedBy: USER,
+    total: r.rows.length, triggered: 0, failed: 0, failedRows: r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })), createdAt: nowIso() };
+  const good = r.rows.filter((x) => !x.bad).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
+  good.forEach((row) => addExecution({ id: row.primary_id, template: t, batch: sheet, row, status: 'IN_PROGRESS', submittedAt: nowIso(), completedAt: null, duration: null, extracted: null, conv: { callStatus: 'QUEUED', attempts: 0 } }));
+  sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; sheets.push(sheet);
+  const mine = R; if (good.length) await dispatchToEcho(t, sheet, good); R = mine;
+  ok({ campaign_id: sheet.id, dialled: good.length });
+});
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
 on('PATCH', '/api/v1/reports/calling/call/:id/outcome', ({ p, body }) => {
   const row = callingRows().find((r) => r.id === p.id); if (!row) return fail(404, 'Call not found');

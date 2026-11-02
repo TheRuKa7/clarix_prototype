@@ -44,9 +44,24 @@ export class ReportService {
   private data<T>(o: Observable<{ data: T }>): Observable<T> { return o.pipe(map((r) => r.data)); }
   /** Calling report: same scope for the dashboard, any box's calls and the 14-column export. */
   private reportParams(sc: { from: string; to: string; agents: string[]; includeTests: boolean }): HttpParams {
-    return new HttpParams().set('from', sc.from).set('to', sc.to).set('agents', sc.agents.join(',')).set('include_tests', sc.includeTests ? '1' : '');
+    return new HttpParams().set('from', sc.from).set('to', sc.to).set('agents', sc.agents.join(',')).set('include_tests', sc.includeTests ? '1' : '').set('campaign', (sc as any).campaign || '');
   }
   callingReport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }): Observable<any> { return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.report, { params: this.reportParams(sc) })); }
+  // ── Shared screens: campaigns, follow ups, new campaign ──
+  private get callingBase(): string { return ENDPOINTS.callingReport.report; }
+  reportCampaigns(p: { from: string | null; to: string | null; state: string; q: string; skip: number; limit: number }): Observable<any> {
+    return this.data(this.http.get<{ data: any }>(`${this.callingBase}/campaigns`, { params: new HttpParams().set('from', p.from || '').set('to', p.to || '').set('state', p.state).set('q', p.q).set('skip', p.skip).set('limit', p.limit) }));
+  }
+  reportCampaign(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/campaigns/${encodeURIComponent(id)}`)); }
+  stopReportCampaign(id: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/campaigns/${encodeURIComponent(id)}/stop`, {})); }
+  reportFollowUps(tab: string, show: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/follow-ups`, { params: new HttpParams().set('tab', tab).set('show', show) })); }
+  reportFollowUpAct(id: string, action: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/follow-ups/${encodeURIComponent(id)}`, { action })); }
+  newCampaignAgents(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/new-campaign/agents`)); }
+  newCampaignTemplate(agent: string): Observable<Blob> { return this.http.get(`${this.callingBase}/new-campaign/template.xlsx`, { params: new HttpParams().set('agent', agent), responseType: 'blob' }); }
+  newCampaignPost(step: 'check' | 'start', agent: string, file: File): Observable<any> {
+    const fd = new FormData(); fd.append('file', file, file.name);
+    return this.data(this.http.post<{ data: any }>(`${this.callingBase}/new-campaign/${step}`, fd, { params: new HttpParams().set('agent', agent) }));
+  }
   private logParams(p: HttpParams, f?: { q: string; cols: Record<string, string> }): HttpParams { return f ? p.set('q', f.q).set('filters', Object.keys(f.cols).length ? JSON.stringify(f.cols) : '') : p; }
   callingReportCalls(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string, skip: number, limit: number, f?: { q: string; cols: Record<string, string> }): Observable<any> {
     return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.calls, { params: this.logParams(this.reportParams(sc).set('box', box).set('skip', skip).set('limit', limit), f) }));

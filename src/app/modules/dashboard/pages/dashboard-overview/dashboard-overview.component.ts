@@ -32,7 +32,7 @@ export class DashboardOverviewComponent {
     testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),
     saveTestNumbers: (n) => firstValueFrom(this.reports.saveReportTestNumbers(n)),
     openFollowUps: () => this.router.navigate(['/workflows/follow-ups']),
-    openCallLogs: () => this.router.navigate(['/workflows/calls']),
+    openCallLogs: () => this.router.navigate(['/workflows/calls'], { queryParamsHandling: 'preserve' }),
     openCall: (row) => this.router.navigate(['/workflows/calls', row.id]),
   };
   /** The report's period and single agent drive the sections below it. */

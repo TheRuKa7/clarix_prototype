@@ -90,9 +90,9 @@ export const BOX = {
 const asBusiness = (r) => (r.call_status === 'Internal test call' && r.test_status ? { ...r, call_status: r.test_status, goal_reached: r.test_goal ?? r.goal_reached, is_test: true } : r);
 
 /** Rows in the period and agents asked for. Rows with no call date (bad data) count by their upload date. */
-export function scopeRows(rows, { from, to, agents = [], includeTests = false } = {}) {
+export function scopeRows(rows, { from, to, agents = [], includeTests = false, campaign = '' } = {}) {
   const lo = from ? Date.parse(from) : -Infinity; const hi = to ? Date.parse(to) : Infinity;
-  return rows.filter((r) => { const t = Date.parse(r.call_date || r.uploaded_at || ''); return (!Number.isFinite(t) || (t >= lo && t <= hi)) && (!agents.length || agents.includes(r.agent_key || r.agent)); })
+  return rows.filter((r) => { const t = Date.parse(r.call_date || r.uploaded_at || ''); return (!Number.isFinite(t) || (t >= lo && t <= hi)) && (!agents.length || agents.includes(r.agent_key || r.agent)) && (!campaign || r.campaign_id === campaign); })
     .map((r) => (includeTests ? asBusiness(r) : r));
 }
 
@@ -279,3 +279,39 @@ export function filterRows(rows, { q = '', cols = {} } = {}) {
 }
 /** Reads ?q= and ?filters= (JSON of column: text) from a request. */
 export function logFilters(q) { let cols = {}; try { cols = JSON.parse(q.get('filters') || '{}'); } catch { /* ignore bad filters */ } return { q: q.get('q') || '', cols }; }
+
+// ── Shared screens (phase 3): campaigns list, follow ups ──────────────────────
+/** One line per campaign, from its rows: the same funnel counts as the dashboard, and a status. */
+export function campaignSummaries(rows) {
+  const by = new Map();
+  for (const r of rows) { if (!r.campaign_id || r.campaign_id === 'console') continue; (by.get(r.campaign_id) || by.set(r.campaign_id, []).get(r.campaign_id)).push(r); }
+  return [...by.entries()].map(([id, mine]) => {
+    const n = (k) => mine.filter(BOX[k]).length; const an = n('answered'), su = n('success'), open = n('in_progress'), stopped = n('stopped');
+    const first = mine.reduce((m, r) => (!m || (r.uploaded_at && r.uploaded_at < m) ? r.uploaded_at : m), null);
+    const status = open ? 'Running' : n('planned') === 0 ? 'Failed' : stopped ? 'Stopped' : 'Completed';
+    return { campaign_id: id, campaign: mine[0].campaign, agent: mine[0].agent, agent_key: mine[0].agent_key, uploaded_by: mine[0].uploaded_by || '', created_at: first,
+      uploaded: mine.length, planned: n('planned'), picked_up: n('picked_up'), answered: an, success: su, success_rate: pct(su, an), not_finished: open, bad_data: n('bad_data'), status };
+  }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+}
+/** Campaigns created in the period, by state (all, running, finished) and search (file, agent or uploader). */
+export function filterCampaigns(list, { from = null, to = null, state = 'all', q = '' } = {}) {
+  const lo = from ? Date.parse(from) : -Infinity, hi = to ? Date.parse(to) : Infinity; const term = String(q).trim().toLowerCase();
+  return list.filter((c) => { const t = Date.parse(c.created_at || ''); return (!Number.isFinite(t) || (t >= lo && t <= hi))
+    && (state === 'all' || (state === 'running' ? c.status === 'Running' : c.status !== 'Running'))
+    && (!term || [c.campaign, c.agent, c.uploaded_by].some((v) => String(v || '').toLowerCase().includes(term))); });
+}
+
+/** Follow-up work a person does in the mock: done, reopened, or sent back for a call. Kept by row id. */
+export const followState = new Map();
+const FOLLOW_TABS = { callback: 'callback', follow_up: 'follow_up' };
+/** Callbacks requested, or answers the team must act on, with each row's follow-up state. */
+export function followUpRows(rows, tab = 'callback', show = 'open') {
+  const list = rowsInBox(rows, FOLLOW_TABS[tab] || 'callback').map((r) => ({ ...r, follow: followState.get(r.id) || { state: 'open' } }));
+  return { rows: list.filter((r) => (show === 'all' ? true : show === 'done' ? r.follow.state === 'done' : r.follow.state !== 'done')),
+    counts: { callback: rowsInBox(rows, 'callback').filter((r) => (followState.get(r.id)?.state || 'open') !== 'done').length, follow_up: rowsInBox(rows, 'follow_up').filter((r) => (followState.get(r.id)?.state || 'open') !== 'done').length } };
+}
+export function followUpAction(id, action, by) {
+  const at = new Date().toISOString();
+  const next = action === 'done' ? { state: 'done', by, at } : action === 'call_again' ? { state: 'queued', by, at } : { state: 'open', by, at };
+  followState.set(id, next); return next;
+}

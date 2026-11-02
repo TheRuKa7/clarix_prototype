@@ -17,6 +17,7 @@ import { CampaignDetailComponent } from './modules/workflows/pages/campaign-deta
 import { CallLogsComponent } from './modules/workflows/pages/call-logs/call-logs.component';
 import { FollowUpsComponent } from './modules/workflows/pages/follow-ups/follow-ups.component';
 import { CallPageRouteComponent } from './modules/workflows/pages/call-page/call-page-route.component';
+import { ClarixCallLogsPage, ClarixCampaignPage, ClarixCampaignsPage, ClarixFollowUpsPage, ClarixNewCampaignPage } from './modules/workflows/pages/shared-screens/shared-screen-routes';
 import { DataHubComponent } from './modules/workflows/pages/data-hub/data-hub.component';
 import { OrchestrationHubComponent } from './modules/workflows/pages/orchestration-hub/orchestration-hub.component';
 import { LoginComponent } from './pages/login.component';
@@ -65,19 +66,25 @@ export const routes: Routes = [
             canActivate: [permissionGuard('workflows:template:read')]
           },
           {
+            // Campaigns, New campaign, Campaign, Call logs and Follow ups: the same screens as Echo.
             path: 'campaigns',
-            component: ExecutionSheetsComponent,
+            component: ClarixCampaignsPage,
             title: 'Campaigns | Clarix'
           },
           {
+            path: 'campaigns/new',
+            component: ClarixNewCampaignPage,
+            title: 'New campaign | Clarix'
+          },
+          {
             path: 'campaigns/:batchId',
-            component: CampaignDetailComponent,
+            component: ClarixCampaignPage,
             title: 'Campaign | Clarix'
           },
           {
             path: 'calls',
-            component: CallLogsComponent,
-            title: 'Call Logs | Clarix'
+            component: ClarixCallLogsPage,
+            title: 'Call logs | Clarix'
           },
           // One call page for every call list (same page as Echo).
           {
@@ -87,7 +94,7 @@ export const routes: Routes = [
           },
           {
             path: 'follow-ups',
-            component: FollowUpsComponent,
+            component: ClarixFollowUpsPage,
             title: 'Follow ups | Clarix'
           },
           {

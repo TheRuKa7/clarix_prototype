@@ -10,9 +10,9 @@ import { ActivatedRoute, Router } from '@angular/router';
  * reload and a shared link all show the same report.
  */
 
-export type PeriodKey = 'today' | 'yesterday' | '7d' | '30d' | 'custom';
+export type PeriodKey = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
 /** from and to are ISO instants; days is the span, for pages that still think in days. */
-export interface ReportScope { period: PeriodKey; from: string; to: string; days: number; agents: string[]; includeTests: boolean; }
+export interface ReportScope { period: PeriodKey; from: string; to: string; days: number; agents: string[]; includeTests: boolean; campaign?: string; }
 export interface ReportLineView { key: string; label: string; count: number; share: number | null; strong?: boolean; sub?: boolean; good?: boolean; }
 export interface ReportBox { key: string; step: number; label: string; total: number; lines: ReportLineView[]; }
 export interface ByAgentRow { agent: string; agent_key: string; planned: number; picked_up: number; answered: number; success: number; success_rate: number | null; avg_talk_seconds: number | null; }
@@ -52,7 +52,7 @@ export interface CallingReportSource {
   saveTestNumbers?(numbers: string[]): Promise<string[]>;
 }
 
-const PERIODS: { key: PeriodKey; label: string }[] = [{ key: 'today', label: 'Today' }, { key: 'yesterday', label: 'Yesterday' }, { key: '7d', label: 'Last 7 days' }, { key: '30d', label: 'Last 30 days' }, { key: 'custom', label: 'Custom' }];
+const PERIODS: { key: PeriodKey; label: string }[] = [{ key: 'all', label: 'All time' }, { key: 'today', label: 'Today' }, { key: 'yesterday', label: 'Yesterday' }, { key: '7d', label: 'Last 7 days' }, { key: '30d', label: 'Last 30 days' }, { key: 'custom', label: 'Custom' }];
 /** Names for boxes that are not a funnel line, so an open list can be restored from the address. */
 const BOX_LABELS: Record<string, string> = { uploaded: 'Uploaded', planned: 'Planned', picked_up: 'Picked up', answered: 'Answered', success: 'Success', in_progress: 'Not finished',
   goal_yes: 'Goal reached: Yes', goal_no: 'Goal reached: No', goal_na: 'Goal reached: N/A' };
@@ -98,6 +98,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
       @if (r(); as rep) {
+        @if (mode() === 'dashboard') {
         <!-- The funnel, one row: each step's count and its share of the step before. Click a step to see its calls below. -->
         <div class="cr-card">
           <div class="cr-funnel" role="list" aria-label="Funnel">
@@ -128,6 +129,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           </div>
           @if (!rep.sum_check.ok) { <p class="cr-note bad">Counts do not match: @for (g of rep.sum_check.gaps; track g.box) { {{ g.box }} is {{ g.expected }}, its parts add to {{ g.got }}. } </p> }
         </div>
+        }
 
         <!-- The call log: every row, newest first, or only the step or status picked above. A row opens its call. -->
         <div class="cr-card cr-log">
@@ -138,7 +140,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             <input class="cr-search" type="search" placeholder="Search every column" [value]="search()" (input)="setSearch($any($event.target).value)" aria-label="Search calls">
             @if (logFiltered()) { <button type="button" class="cr-link" (click)="clearLogFilters()">Clear column filters</button> }
             <span class="cr-grow"></span>
-            @if (source().openCallLogs) { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
+            @if (source().openCallLogs && mode() === 'dashboard') { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
             <button type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
           </div>
           <div class="cr-scroll">
@@ -252,6 +254,10 @@ export class CallingReportComponent {
   readonly source = input.required<CallingReportSource>();
   /** Workspace name shown until the first report loads. */
   readonly workspace = input('');
+  /** dashboard: funnel, call status and the call log. log: the call log alone (the Call logs page). */
+  readonly mode = input<'dashboard' | 'log'>('dashboard');
+  /** Only this campaign's rows (the campaign page); the period starts at All time. */
+  readonly campaign = input('');
   /** Tells the page around the report when the period or agents change. */
   readonly scopeChange = output<ReportScope>();
 
@@ -291,6 +297,7 @@ export class CallingReportComponent {
   /** [from, to] in ms for the chosen period: calendar days in the workspace time zone, up to now. */
   private readonly range = computed<[number, number]>(() => {
     const p = this.period(); const today = this.today(); const now = Date.now();
+    if (p === 'all') return [0, now];
     if (p === 'today') return [this.dayStart(today), now];
     if (p === 'yesterday') return [this.dayStart(this.addDays(today, -1)), this.dayStart(today) - 1];
     if (p === '7d') return [this.dayStart(this.addDays(today, -7)), now];
@@ -301,13 +308,14 @@ export class CallingReportComponent {
   protected readonly days = computed(() => { const [a, b] = this.range(); return Math.max(1, Math.round((b - a) / 86400000)); });
   protected readonly scope = computed<ReportScope>(() => {
     const [a, b] = this.range();
-    return { period: this.period(), from: new Date(a).toISOString(), to: new Date(b).toISOString(), days: this.days(), agents: this.agents(), includeTests: this.includeTests() };
+    return { period: this.period(), from: new Date(a).toISOString(), to: new Date(b).toISOString(), days: this.days(), agents: this.agents(), includeTests: this.includeTests(), campaign: this.campaign() || undefined };
   });
   protected readonly periodLabel = computed(() => {
     const [a, b] = this.range(); const from = this.ymd(a), to = this.ymd(b);
     const f = (ymd: string, year = true) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) }); };
     const span = from === to ? f(to) : `${f(from, from.slice(0, 4) !== to.slice(0, 4))}–${f(to)}`;
-    const word: Record<PeriodKey, string> = { today: 'today', yesterday: 'yesterday', '7d': 'last 7 days', '30d': 'last 30 days', custom: 'custom range' };
+    if (this.period() === 'all') return 'All time';
+    const word: Record<PeriodKey, string> = { all: 'all time', today: 'today', yesterday: 'yesterday', '7d': 'last 7 days', '30d': 'last 30 days', custom: 'custom range' };
     return `${span} (${word[this.period()]})`;
   });
   protected readonly agentLabel = computed(() => {
@@ -329,7 +337,7 @@ export class CallingReportComponent {
   });
 
   /** "previous 7 days" and the like, for the change shown on each rate. */
-  private readonly prevLabel = computed(() => ({ today: 'yesterday', yesterday: 'the day before', '7d': 'the previous 7 days', '30d': 'the previous 30 days', custom: `the previous ${this.days()} days` })[this.period()]);
+  private readonly prevLabel = computed(() => ({ all: 'before', today: 'yesterday', yesterday: 'the day before', '7d': 'the previous 7 days', '30d': 'the previous 30 days', custom: `the previous ${this.days()} days` })[this.period()]);
   private line(key: string) { return this.r()?.funnel.flatMap((b) => b.lines).find((l) => l.key === key) ?? { key, label: key, count: 0, share: null }; }
   /** The funnel in one row: each step's count and its share of the step before. */
   protected readonly steps = computed(() => {
@@ -376,8 +384,11 @@ export class CallingReportComponent {
     return top?.count ? { key: top.key, label: top.label, count: top.count, share: top.count / rep.headline.answered } : null;
   });
 
+  private urlPeriod = false;
   constructor() {
     this.readUrl();
+    // A campaign page starts at All time unless the address says otherwise.
+    effect(() => { if (this.campaign() && !this.urlPeriod) untracked(() => this.period.set('all')); });
     effect(() => { this.scope(); untracked(() => this.load()); });
     effect(() => { const src = this.source(); untracked(() => src.testNumbers?.().then((n) => this.testNumbers.set(n)).catch(() => {})); });
   }
@@ -386,7 +397,7 @@ export class CallingReportComponent {
   private readUrl(): void {
     const q = this.route.snapshot.queryParamMap;
     const p = q.get('period') as PeriodKey | null;
-    if (p && PERIODS.some((x) => x.key === p)) this.period.set(p);
+    if (p && PERIODS.some((x) => x.key === p)) { this.period.set(p); this.urlPeriod = true; }
     if (p === 'custom') { this.customFrom.set(q.get('from') || ''); this.customTo.set(q.get('to') || ''); }
     this.agents.set((q.get('agents') || '').split(',').filter(Boolean));
     this.includeTests.set(q.get('tests') === '1');
