@@ -304,6 +304,7 @@ export class CampaignPageComponent {
     .nc-nums b { font-size: 20px; }
     .nc-bad { max-height: 200px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; }
     .nc-foot { display: flex; gap: 8px; justify-content: flex-end; }
+    .nc-stop { color: var(--ds-danger-fg, #b91c1c); }
     .nc-note { border: 1px solid color-mix(in srgb, var(--s-accent) 35%, var(--s-line)); background: color-mix(in srgb, var(--s-accent) 5%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
     .nc-note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
     .nc-note small { color: var(--s-muted); }
@@ -346,7 +347,8 @@ export class CampaignPageComponent {
               <div><span>Rows</span><b>{{ k.rows }}</b></div><div><span>Will be dialled</span><b>{{ k.will_dial }}</b></div>
               <div><span>Bad data</span><b>{{ k.bad.length }}</b></div><div><span>Internal tests</span><b>{{ k.tests }}</b></div>
             </div>
-            @if (k.missing.length) { <p class="s-note">Columns not found in the file: {{ k.missing.join(', ') }}. Rows that need them will fail the check.</p> }
+            @if (k.missing.includes('contact_phone')) { <p class="s-note nc-stop" role="alert"><b>contact_phone is missing.</b> Every row needs the supplier's 10-digit mobile: it is the number called and it ties each call to the row's POs and items. Add the column and upload again.</p> }
+            @if (missingOther(k).length) { <p class="s-note">Columns not found in the file: {{ missingOther(k).join(', ') }}. Rows that need them will fail the check.</p> }
             @if (k.fixed?.length) { <b class="s-muted">Fixed for you ({{ k.fixed!.length }} row{{ k.fixed!.length === 1 ? '' : 's' }}): these will be called</b><div class="nc-fixed">@for (f of k.fixed!; track f.row) { <span>Row {{ f.row }}: {{ f.notes.join('; ') }}</span> }</div> }
             @if (k.warnings?.length) { <b class="s-muted">Check these ({{ k.warnings!.length }}): they will still be called</b><div class="nc-warn">@for (w of k.warnings!; track w.row) { <span>Row {{ w.row }}: {{ w.notes.join('; ') }}</span> }</div> }
             @if (k.bad.length) { <b class="s-muted">Not called ({{ k.bad.length }})</b><div class="nc-bad">@for (b of k.bad; track b.row) { <span>Row {{ b.row }}: {{ b.reason }}</span> }</div> }
@@ -360,7 +362,7 @@ export class CampaignPageComponent {
           }
           <div class="nc-foot">
             <button type="button" class="s-btn" (click)="step.set(1)">Back</button>
-            <button type="button" class="s-btn s-primary" [disabled]="!check()?.will_dial" (click)="step.set(3)">Next</button>
+            <button type="button" class="s-btn s-primary" [disabled]="!check()?.will_dial || check()?.missing?.includes('contact_phone')" (click)="step.set(3)">Next</button>
           </div>
         }
         @if (step() === 3) {
@@ -426,6 +428,7 @@ export class NewCampaignComponent {
     }); });
   }
   private pickRule(): void { const a = this.agent(); const r = this.rules.find((x) => x.agent === a)?.rule; this.rule.set(a && r ? { ...r } : null); }
+  protected missingOther(k: { missing: string[] }): string[] { return k.missing.filter((m) => m !== 'contact_phone'); }
   protected setRule(part: Partial<RetryRule>): void { const r = this.rule(); if (r) this.rule.set({ ...r, ...part }); }
   protected async template(): Promise<void> { save(await this.source().template(this.agent()), `${this.agentLabel().replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`); }
   protected async pick(f: File | undefined): Promise<void> {

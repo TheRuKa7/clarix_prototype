@@ -460,7 +460,8 @@ export function agentTips(agentLabel, inputs) {
   const tips = [];
   const dates = inputs.filter(isDateKey); if (dates.length) tips.push(`Dates (${dates.join(', ')}) as DD/MM/YYYY. A date that is not a real day stops the row.`);
   const lists = inputs.filter((k) => isPoKey(k) || /count|details|items/i.test(k)); if (lists.length) tips.push(`Several POs in one row are fine: separate values in ${lists.join(', ')} with commas, no comma at the end, the same order in each column.`);
-  tips.push('One supplier contact per row, with a 10-digit mobile. Our own numbers are counted as internal tests, not called as suppliers.');
+  if (inputs.includes('contact_phone')) tips.push("contact_phone is required on every row: the supplier's 10-digit mobile. It is the number called, and it ties each call to this row's POs and items in the reports.");
+  tips.push('One supplier contact per row. Our own numbers are counted as internal tests, not called as suppliers.');
   return { title: `Before you fill ${agentLabel}'s template`, lines: tips, source: 'From this agent\'s template (demo stand-in for the AI note).' };
 }
 

@@ -850,11 +850,11 @@ on('POST', '/api/v1/reports/calling/new-campaign/check', ({ q, req, raw }) => {
   let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
   const bad = r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })); const tests = r.rows.filter((x) => !x.bad && TEST_NUMBERS.has(normalisePhone(x.phone))).length;
   ok({ file: form.file.filename, rows: r.rows.length, will_dial: r.rows.length - bad.length - tests, calls: r.rows.length - bad.length, bad, tests, matched: r.matched, missing: r.missing,
-    fixed: r.rows.filter((x) => x.check?.fixes.length).map((x) => ({ row: x.row, notes: x.check.fixes.map((f) => f.note) })),
-    warnings: r.rows.filter((x) => x.check?.warnings.length).map((x) => ({ row: x.row, notes: x.check.warnings.map((f) => f.note) })),
+    fixed: r.rows.filter((x) => x.check?.fixes.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.fixes.map((f) => f.note) })),
+    warnings: r.rows.filter((x) => x.check?.warnings.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.warnings.map((f) => f.note) })),
     note: uploadNote(t.name, r.rows.map((x) => x.check), r.rows.length) });
 });
-on('GET', '/api/v1/reports/calling/new-campaign/tips', ({ q }) => { const t = templates.find((x) => x.id === q.get('agent')); t ? ok(agentTips(t.name, (t.contextMappings || []).map((m) => m.fieldName))) : fail(404, 'Agent not found'); });
+on('GET', '/api/v1/reports/calling/new-campaign/tips', ({ q }) => { const t = templates.find((x) => x.id === q.get('agent')); t ? ok(agentTips(t.name, newCampaignAgents().find((x) => x.key === t.id)?.inputs ?? [])) : fail(404, 'Agent not found'); });
 // Retry rules per agent: how often and when a row that was not reached is called again.
 const cleanRule = (b) => { const d = defaultRetryRule(); const r = { ...d, ...(b || {}) };
   return { schedule: RETRY_SCHEDULES.some((s) => s.key === r.schedule) ? r.schedule : d.schedule, base_minutes: Math.min(1440, Math.max(1, Number(r.base_minutes) || d.base_minutes)),
