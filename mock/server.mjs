@@ -20,7 +20,8 @@ import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
-  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns } from './calling-report.mjs';
+  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns,
+  checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage } from './calling-report.mjs';
 /** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
 const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
 
@@ -446,7 +447,15 @@ function multipart(req, buf) {
 }
 function readSheet(file) {
   if (/\.xlsx?$|\.xlsm$/i.test(file.filename)) return readXlsx(file.content);
-  return file.content.toString('utf8').split(/\r?\n/).filter((l) => l.trim()).map((l) => l.split(',').map((c) => c.replace(/^"|"$/g, '').trim()));
+  // CSV with quoted cells: "5000101, 5000102" stays one cell.
+  const text = file.content.toString('utf8').replace(/^﻿/, ''); const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; continue; }
+    if (c === '"') q = true; else if (c === ',') { row.push(cell.trim()); cell = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell.trim()); rows.push(row); row = []; cell = ''; } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell.trim()); rows.push(row); }
+  return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
 }
 
 async function dispatchToEcho(template, sheet, rows) {
@@ -827,9 +836,12 @@ function newCampaignRows(t, form) {
   const keys = ['contact_name', 'contact_phone', 'contact_email', ...(t.contextMappings || []).map((m) => m.fieldName)]; const seen = new Set();
   const rows = data.filter((r) => r.some((v) => String(v ?? '').trim())).map((r, i) => {
     const get = (k) => { const c = col(k); return c >= 0 ? String(r[c] ?? '').trim() : ''; }; const phone = get('contact_phone').replace(/\D/g, '').slice(-10);
-    const context = Object.fromEntries((t.contextMappings || []).map((m) => [m.fieldName, get(m.fieldName)])); const missing = (t.contextMappings || []).filter((m) => m.required && !context[m.fieldName]).map((m) => m.fieldName);
-    const bad = phone.length !== 10 ? `contact_phone "${get('contact_phone')}" is not a valid number` : missing.length ? `Missing ${missing.join(', ')}` : seen.has(phone) ? 'Same phone number as an earlier row' : null; seen.add(phone);
-    return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, email: get('contact_email'), context, bad };
+    // The upload check fixes what it can (extra commas, stray quotes), warns on a PO listed twice, and stops only rows it cannot call.
+    const check = checkUploadRow(Object.fromEntries((t.contextMappings || []).map((m) => [m.fieldName, get(m.fieldName)]))); const context = check.ctx;
+    const missing = (t.contextMappings || []).filter((m) => m.required && !context[m.fieldName]).map((m) => m.fieldName);
+    const bad = phone.length !== 10 ? `contact_phone "${get('contact_phone')}" is not a valid number` : missing.length ? `Missing ${missing.join(', ')}` : check.error ? check.error.note : seen.has(phone) ? 'Same phone number as an earlier row' : null; seen.add(phone);
+    if (bad && !check.error) check.error = { kind: phone.length !== 10 ? 'phone' : 'other', field: '', note: bad };
+    return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, email: get('contact_email'), context, bad, check };
   });
   return { rows, matched: keys.filter((k) => col(k) >= 0), missing: keys.filter((k) => col(k) < 0) };
 }
@@ -837,8 +849,19 @@ on('POST', '/api/v1/reports/calling/new-campaign/check', ({ q, req, raw }) => {
   const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent'); const form = multipart(req, raw); if (!form.file?.content) return fail(400, 'Choose a file');
   let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
   const bad = r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })); const tests = r.rows.filter((x) => !x.bad && TEST_NUMBERS.has(normalisePhone(x.phone))).length;
-  ok({ file: form.file.filename, rows: r.rows.length, will_dial: r.rows.length - bad.length - tests, calls: r.rows.length - bad.length, bad, tests, matched: r.matched, missing: r.missing });
+  ok({ file: form.file.filename, rows: r.rows.length, will_dial: r.rows.length - bad.length - tests, calls: r.rows.length - bad.length, bad, tests, matched: r.matched, missing: r.missing,
+    fixed: r.rows.filter((x) => x.check?.fixes.length).map((x) => ({ row: x.row, notes: x.check.fixes.map((f) => f.note) })),
+    warnings: r.rows.filter((x) => x.check?.warnings.length).map((x) => ({ row: x.row, notes: x.check.warnings.map((f) => f.note) })),
+    note: uploadNote(t.name, r.rows.map((x) => x.check), r.rows.length) });
 });
+on('GET', '/api/v1/reports/calling/new-campaign/tips', ({ q }) => { const t = templates.find((x) => x.id === q.get('agent')); t ? ok(agentTips(t.name, (t.contextMappings || []).map((m) => m.fieldName))) : fail(404, 'Agent not found'); });
+// Retry rules per agent: how often and when a row that was not reached is called again.
+const cleanRule = (b) => { const d = defaultRetryRule(); const r = { ...d, ...(b || {}) };
+  return { schedule: RETRY_SCHEDULES.some((s) => s.key === r.schedule) ? r.schedule : d.schedule, base_minutes: Math.min(1440, Math.max(1, Number(r.base_minutes) || d.base_minutes)),
+    retries: Math.min(10, Math.max(0, Number(r.retries) || 0)), from: /^\d{2}:\d{2}$/.test(r.from) ? r.from : d.from, to: /^\d{2}:\d{2}$/.test(r.to) ? r.to : d.to, skip_sunday: !!r.skip_sunday, avoid_lunch: !!r.avoid_lunch }; };
+on('GET', '/api/v1/reports/calling/retry-rules', () => ok({ schedules: RETRY_SCHEDULES, agents: templates.map((t) => { const rule = retryRuleOf(t.id); return { agent: t.id, label: t.name, rule, gaps: retryGaps(rule) }; }) }));
+on('PUT', '/api/v1/reports/calling/retry-rules/:agent', ({ p, body }) => { if (!templates.some((t) => t.id === p.agent)) return fail(404, 'Agent not found'); const rule = cleanRule(body); retryRules.set(p.agent, rule);
+  ok({ agent: p.agent, rule, gaps: retryGaps(rule), example: retryPlan(rule, new Date().toISOString()) }); });
 on('POST', '/api/v1/reports/calling/new-campaign/start', async ({ q, req, raw }) => {
   const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent'); const form = multipart(req, raw); if (!form.file?.content) return fail(400, 'Choose a file');
   let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
@@ -851,6 +874,10 @@ on('POST', '/api/v1/reports/calling/new-campaign/start', async ({ q, req, raw })
   ok({ campaign_id: sheet.id, dialled: good.length });
 });
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
+// Next steps on the call page: the retry plan and WhatsApp / email messages (the demo records them, it does not send).
+on('GET', '/api/v1/reports/calling/call/:id/steps', ({ p }) => { const row = callingRows().find((r) => r.id === p.id); row ? ok(callSteps(row)) : fail(404, 'Call not found'); });
+on('POST', '/api/v1/reports/calling/call/:id/messages', ({ p, body }) => { const row = callingRows().find((r) => r.id === p.id); if (!row) return fail(404, 'Call not found');
+  if (!String(body?.text || '').trim()) return fail(400, 'Write a message first'); sendMessage(row, body, USER); ok(callSteps(row)); });
 on('PATCH', '/api/v1/reports/calling/call/:id/outcome', ({ p, body }) => {
   const row = callingRows().find((r) => r.id === p.id); if (!row) return fail(404, 'Call not found');
   const err = checkOutcomeChange(row, body); if (err) return fail(400, err);

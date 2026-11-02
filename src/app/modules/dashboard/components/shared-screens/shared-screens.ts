@@ -28,10 +28,40 @@ export interface CampaignsSource {
   /** Where Back goes from a campaign. */
   listPath: string;
 }
+/** A short note for the person uploading: from the agent's template, or from this sheet's check (the AI note). */
+export interface UploadNote { title: string; summary?: string; lines: string[]; source: string }
+/** How a row that was not reached is called again: the gaps grow linearly, stay the same or double. */
+export interface RetryRule { schedule: 'linear' | 'increasing' | 'doubling'; base_minutes: number; retries: number; from: string; to: string; skip_sunday: boolean; avoid_lunch: boolean }
+export const RETRY_SCHEDULES: { key: RetryRule['schedule']; label: string; hint: string }[] = [
+  { key: 'linear', label: 'Linear', hint: 'the same gap every time' }, { key: 'increasing', label: 'Linear increasing', hint: 'each gap one step longer' }, { key: 'doubling', label: 'Doubling', hint: 'each gap twice the last' }];
+/** Minutes between retries, as the mock and the product work them out. */
+export function retryGaps(r: RetryRule): number[] {
+  const b = Math.max(1, Number(r.base_minutes) || 30); const n = Math.min(10, Math.max(0, Number(r.retries) || 0));
+  return Array.from({ length: n }, (_, i) => (r.schedule === 'linear' ? b : r.schedule === 'doubling' ? b * 2 ** i : b * (i + 1)));
+}
+/** Retry times after a missed call at `start`, moved into calling hours (IST), skipping lunch and Sundays when set. */
+export function retryTimes(r: RetryRule, start: number): number[] {
+  const IST = 330 * 60000; const hm = (x: string) => { const [h, m] = x.split(':').map(Number); return h * 60 + (m || 0); }; const open = hm(r.from || '10:00'), close = hm(r.to || '18:00');
+  const fit = (ms: number) => {
+    for (let g = 0; g < 14; g += 1) {
+      const l = new Date(ms + IST); const mins = l.getUTCHours() * 60 + l.getUTCMinutes(); const day = ms - mins * 60000 - l.getUTCSeconds() * 1000 - l.getUTCMilliseconds();
+      if (r.skip_sunday && l.getUTCDay() === 0) ms = day + 86400000 + open * 60000; else if (mins < open) ms = day + open * 60000; else if (mins >= close) ms = day + 86400000 + open * 60000;
+      else if (r.avoid_lunch && mins >= 780 && mins < 840) ms = day + 840 * 60000; else return ms;
+    }
+    return ms;
+  };
+  let t = start; return retryGaps(r).map((g) => (t = fit(t + g * 60000)));
+}
 export interface NewCampaignSource {
   agents(): Promise<{ key: string; label: string; inputs: string[] }[]>;
   template(agent: string): Promise<Blob>;
-  check(agent: string, file: File): Promise<{ file: string; rows: number; will_dial: number; calls: number; bad: { row: number; reason: string }[]; tests: number; matched: string[]; missing: string[] }>;
+  check(agent: string, file: File): Promise<{ file: string; rows: number; will_dial: number; calls: number; bad: { row: number; reason: string }[]; tests: number; matched: string[]; missing: string[];
+    fixed?: { row: number; notes: string[] }[]; warnings?: { row: number; notes: string[] }[]; note?: UploadNote }>;
+  /** Tips for the agent's template, shown when it is picked. */
+  tips?(agent: string): Promise<UploadNote>;
+  /** Each agent's retry rule, and saving one. */
+  retryRules?(): Promise<{ agents: { agent: string; label: string; rule: RetryRule }[] }>;
+  saveRetryRule?(agent: string, rule: RetryRule): Promise<unknown>;
   start(agent: string, file: File): Promise<{ campaign_id: string; dialled: number }>;
   opened(campaignId: string): void;
   cancel(): void;
@@ -274,6 +304,19 @@ export class CampaignPageComponent {
     .nc-nums b { font-size: 20px; }
     .nc-bad { max-height: 200px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; }
     .nc-foot { display: flex; gap: 8px; justify-content: flex-end; }
+    .nc-note { border: 1px solid color-mix(in srgb, var(--s-accent) 35%, var(--s-line)); background: color-mix(in srgb, var(--s-accent) 5%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
+    .nc-note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+    .nc-note small { color: var(--s-muted); }
+    .nc-note-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    .nc-ai { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--s-accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; }
+    .nc-fixed { max-height: 160px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; color: var(--s-good); }
+    .nc-warn { max-height: 120px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; color: #a16207; }
+    .nc-retry { border: 1px solid var(--s-line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; font-size: 13px; }
+    .nc-retry-row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+    .nc-retry input[type=number] { width: 72px; } .nc-retry input[type=number], .nc-retry input[type=time] { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; background: var(--s-bg); color: var(--s-text); }
+    .nc-retry label { display: inline-flex; gap: 6px; align-items: center; }
+    .nc-times { display: flex; flex-wrap: wrap; gap: 6px; }
+    .nc-times span { background: var(--s-soft); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
   `],
   template: `
     <div class="s">
@@ -286,6 +329,9 @@ export class CampaignPageComponent {
           <div class="nc-agents">
             @for (a of agents(); track a.key) { <button type="button" class="nc-agent" [class.on]="agent() === a.key" (click)="agent.set(a.key)">{{ a.label }}<small>{{ a.inputs.length }} columns in its template</small></button> }
           </div>
+          @if (agent() && tips(); as t) {
+            <div class="nc-note"><div class="nc-note-head"><span class="nc-ai">AI NOTE</span><b>{{ t.title }}</b></div><ul>@for (l of t.lines; track $index) { <li>{{ l }}</li> }</ul><small>{{ t.source }}</small></div>
+          }
           <div class="nc-foot">
             <button type="button" class="s-btn" (click)="source().cancel()">Cancel</button>
             <button type="button" class="s-btn" [disabled]="!agent()" (click)="template()">Download template</button>
@@ -301,7 +347,16 @@ export class CampaignPageComponent {
               <div><span>Bad data</span><b>{{ k.bad.length }}</b></div><div><span>Internal tests</span><b>{{ k.tests }}</b></div>
             </div>
             @if (k.missing.length) { <p class="s-note">Columns not found in the file: {{ k.missing.join(', ') }}. Rows that need them will fail the check.</p> }
-            @if (k.bad.length) { <div class="nc-bad">@for (b of k.bad; track b.row) { <span>Row {{ b.row }}: {{ b.reason }}</span> }</div> }
+            @if (k.fixed?.length) { <b class="s-muted">Fixed for you ({{ k.fixed!.length }} row{{ k.fixed!.length === 1 ? '' : 's' }}): these will be called</b><div class="nc-fixed">@for (f of k.fixed!; track f.row) { <span>Row {{ f.row }}: {{ f.notes.join('; ') }}</span> }</div> }
+            @if (k.warnings?.length) { <b class="s-muted">Check these ({{ k.warnings!.length }}): they will still be called</b><div class="nc-warn">@for (w of k.warnings!; track w.row) { <span>Row {{ w.row }}: {{ w.notes.join('; ') }}</span> }</div> }
+            @if (k.bad.length) { <b class="s-muted">Not called ({{ k.bad.length }})</b><div class="nc-bad">@for (b of k.bad; track b.row) { <span>Row {{ b.row }}: {{ b.reason }}</span> }</div> }
+            @if (k.note; as n) {
+              <div class="nc-note">
+                <div class="nc-note-head"><span class="nc-ai">AI NOTE</span><b>{{ n.title }}</b><span class="s-muted">{{ n.summary }}</span><span class="s-grow"></span>
+                  <button type="button" class="s-btn" (click)="noteSent.set(true)" [disabled]="noteSent()">{{ noteSent() ? 'Emailed to you (demo)' : 'Email me this note' }}</button></div>
+                <ul>@for (l of n.lines; track $index) { <li>{{ l }}</li> }</ul><small>{{ n.source }}</small>
+              </div>
+            }
           }
           <div class="nc-foot">
             <button type="button" class="s-btn" (click)="step.set(1)">Back</button>
@@ -311,9 +366,26 @@ export class CampaignPageComponent {
         @if (step() === 3) {
           <b>Start calling {{ check()?.will_dial }} contacts with {{ agentLabel() }}?</b>
           <p class="s-muted">{{ file()?.name }} · bad data and test rows are not dialled. Calls start now and the campaign page shows them as they finish.</p>
+          @if (rule(); as ru) {
+            <div class="nc-retry">
+              <div class="nc-note-head"><b>If a call is not answered</b><span class="s-muted">{{ agentLabel() }}'s retry rule, used for every campaign of this agent</span></div>
+              <div class="nc-retry-row">
+                <div class="s-seg" role="group" aria-label="Retry schedule">@for (sc of SCHEDULES; track sc.key) { <button type="button" [class.on]="ru.schedule === sc.key" (click)="setRule({ schedule: sc.key })" [title]="sc.hint">{{ sc.label }}</button> }</div>
+                <label>First gap <input type="number" min="1" max="1440" [value]="ru.base_minutes" (change)="setRule({ base_minutes: +$any($event.target).value })" aria-label="First gap in minutes"> min</label>
+                <label><input type="number" min="0" max="10" [value]="ru.retries" (change)="setRule({ retries: +$any($event.target).value })" aria-label="Number of retries"> retries</label>
+              </div>
+              <div class="nc-retry-row">
+                <label>Calling hours <input type="time" [value]="ru.from" (change)="setRule({ from: $any($event.target).value })" aria-label="From"> to <input type="time" [value]="ru.to" (change)="setRule({ to: $any($event.target).value })" aria-label="To"></label>
+                <label><input type="checkbox" [checked]="ru.skip_sunday" (change)="setRule({ skip_sunday: $any($event.target).checked })"> No Sundays</label>
+                <label><input type="checkbox" [checked]="ru.avoid_lunch" (change)="setRule({ avoid_lunch: $any($event.target).checked })"> Not 1–2 pm</label>
+              </div>
+              <span class="s-muted">Gaps: {{ gapsText() }} minutes. Missed at 10:00 today, it is called again at:</span>
+              <div class="nc-times">@for (t of example(); track $index) { <span>{{ t }}</span> } @empty { <span>No retries</span> }</div>
+            </div>
+          }
           <div class="nc-foot">
             <button type="button" class="s-btn" (click)="step.set(2)">Back</button>
-            <button type="button" class="s-btn s-primary" [disabled]="busy()" (click)="start()">{{ busy() ? 'Starting…' : 'Start campaign' }}</button>
+            <button type="button" class="s-btn s-primary" [disabled]="busy()" (click)="start()">{{ busy() ? 'Starting…' : 'Save rule and start' }}</button>
           </div>
         }
       </div>
@@ -330,15 +402,42 @@ export class NewCampaignComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly agentLabel = computed(() => this.agents().find((a) => a.key === this.agent())?.label ?? '');
-  constructor() { effect(() => { const s = this.source(); untracked(() => s.agents().then((a) => this.agents.set(a)).catch(() => this.error.set('Could not load the agents.'))); }); }
+  protected readonly tips = signal<UploadNote | null>(null);
+  protected readonly noteSent = signal(false);
+  protected readonly SCHEDULES = RETRY_SCHEDULES;
+  protected readonly rule = signal<RetryRule | null>(null);
+  private rules: { agent: string; rule: RetryRule }[] = [];
+  protected readonly gapsText = computed(() => { const r = this.rule(); return r ? retryGaps(r).join(', ') || 'none' : ''; });
+  /** Example retry times for a call missed at 10:00 today (IST). */
+  protected readonly example = computed(() => {
+    const r = this.rule(); if (!r) return [];
+    const ist = new Date(Date.now() + 330 * 60000); const ten = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), 10, 0) - 330 * 60000;
+    return retryTimes(r, ten).map((t) => new Date(t).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }));
+  });
+  constructor() {
+    effect(() => { const s = this.source(); untracked(() => s.agents().then((a) => this.agents.set(a)).catch(() => this.error.set('Could not load the agents.'))); });
+    effect(() => { const s = this.source(); untracked(() => s.retryRules?.().then((r) => { this.rules = r.agents; this.pickRule(); }).catch(() => {})); });
+    // The picked agent's tips and retry rule.
+    effect(() => { const a = this.agent(); untracked(() => {
+      this.tips.set(null); this.pickRule(); if (!a) return;
+      this.source().tips?.(a).then((t) => { if (this.agent() === a) this.tips.set(t); }).catch(() => {});
+      // The rules may not have loaded with the page (first visit after an update): ask again.
+      if (!this.rules.length) this.source().retryRules?.().then((r) => { this.rules = r.agents; this.pickRule(); }).catch(() => {});
+    }); });
+  }
+  private pickRule(): void { const a = this.agent(); const r = this.rules.find((x) => x.agent === a)?.rule; this.rule.set(a && r ? { ...r } : null); }
+  protected setRule(part: Partial<RetryRule>): void { const r = this.rule(); if (r) this.rule.set({ ...r, ...part }); }
   protected async template(): Promise<void> { save(await this.source().template(this.agent()), `${this.agentLabel().replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`); }
   protected async pick(f: File | undefined): Promise<void> {
-    this.file.set(f ?? null); this.check.set(null); this.error.set(''); if (!f) return;
+    this.file.set(f ?? null); this.check.set(null); this.error.set(''); this.noteSent.set(false); if (!f) return;
     try { this.check.set(await this.source().check(this.agent(), f)); } catch (e) { this.error.set(e instanceof Error ? e.message : 'Could not read that file.'); }
   }
   protected async start(): Promise<void> {
     const f = this.file(); if (!f) return; this.busy.set(true);
-    try { const r = await this.source().start(this.agent(), f); this.source().opened(r.campaign_id); } catch { this.error.set('Could not start the campaign.'); } finally { this.busy.set(false); }
+    try {
+      const ru = this.rule(); if (ru && this.source().saveRetryRule) await this.source().saveRetryRule!(this.agent(), ru);
+      const r = await this.source().start(this.agent(), f); this.source().opened(r.campaign_id);
+    } catch { this.error.set('Could not start the campaign.'); } finally { this.busy.set(false); }
   }
 }
 

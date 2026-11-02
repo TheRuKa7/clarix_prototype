@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 /**
@@ -75,6 +75,8 @@ const PAGE = 10;
 /** The call log's columns, in order: key, header. */
 /** Columns filtered by picking values (several at once); the rest by typing. */
 const PICK_COLUMNS = new Set(['agent', 'campaign', 'call_status', 'status_reason', 'goal_reached', 'retries']);
+/** Column filters that scope the whole page (funnel and call status); the others narrow only the calls list. */
+const SCOPE_COLUMNS = new Set(['agent', 'campaign', 'uploaded_by']);
 const LOG_COLUMNS: [string, string][] = [['call_date', 'Call date'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['caller_name', 'Caller'], ['phone', 'Phone'], ['summary', 'Call summary'],
   ['call_status', 'Call status'], ['status_reason', 'Status reason'], ['callback_at', 'Call back'], ['duration_seconds', 'Duration'], ['retries', 'Retries'], ['goal_reached', 'Goal']];
 const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation: '#7c3aed', not_picked_up: '#d97706', in_progress: '#a8a29e', not_planned: '#d6d3d1' };
@@ -108,9 +110,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         }
         @if (mode() === 'dashboard' && !campaign() && source().agentStats) {
           <div class="cr-drop">
-            <button type="button" class="cr-link" (click)="openStats()">Custom stats</button>
+            <button type="button" class="cr-link" (click)="place($event, false, 360); openStats()">Custom stats</button>
             @if (statsOpen()) {
-              <div class="cr-menu cr-stats-menu" role="dialog" aria-label="Custom stats per agent">
+              <div class="cr-menu cr-stats-menu" role="dialog" aria-label="Custom stats per agent" [style]="menuStyle()">
                 <b>Custom stats per agent</b>
                 <p class="cr-muted">Count the funnel and campaigns in what each agent's upload carries, as well as calls.</p>
                 @for (a of statsDraft(); track a.agent) {
@@ -127,9 +129,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         <span class="cr-grow"></span>
         <span class="cr-meta">{{ campaign() ? 'Whole campaign' : periodLabel() }} · {{ tzLabel() }}</span>
         <div class="cr-drop">
-          <button type="button" class="cr-btn" (click)="shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
+          <button type="button" class="cr-btn" (click)="place($event, true, 220); shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
           @if (shareOpen()) {
-            <div class="cr-menu cr-right" role="menu">
+            <div class="cr-menu" role="menu" [style]="menuStyle()">
               <button type="button" role="menuitem" (click)="sharePicture()">Picture (.png)</button>
               <button type="button" role="menuitem" (click)="sharePdf()">PDF</button>
               <button type="button" role="menuitem" (click)="shareSheet()">Excel (every call)</button>
@@ -141,8 +143,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
       @if (r(); as rep) {
-        @if (mode() === 'dashboard' && logFiltered()) {
-          <p class="cr-note cr-filtered">Filtered by {{ filterSummary() }}. The funnel, call status and calls below all follow these filters. <button type="button" class="cr-link" (click)="clearLogFilters()">Clear filters</button></p>
+        @if (mode() === 'dashboard' && pageFiltered()) {
+          <p class="cr-note cr-filtered">Showing {{ filterSummary() }}: the funnel, call status and calls all follow this. <button type="button" class="cr-link" (click)="clearScopeFilters()">Show all</button></p>
         }
         @if (mode() === 'dashboard' && !campaign() && tasks(); as t) {
           <div class="cr-tasks" role="list" aria-label="Follow ups and active tasks">
@@ -207,9 +209,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
                 <tr class="cr-frow">@for (col of cols(); track col[0]) {
                   <th>@if (isPick(col[0])) {
                     <div class="cr-drop">
-                      <button type="button" class="cr-pick" [class.on]="picked(col[0]).length" (click)="openPick(col[0])">{{ picked(col[0]).length ? picked(col[0]).length + ' selected' : 'All' }} ▾</button>
+                      <button type="button" class="cr-pick" [class.on]="picked(col[0]).length" (click)="place($event, false, 280); openPick(col[0])">{{ picked(col[0]).length ? picked(col[0]).length + ' selected' : 'All' }} ▾</button>
                       @if (pickOpen() === col[0]) {
-                        <div class="cr-menu cr-pick-menu" role="listbox" [attr.aria-label]="'Filter ' + col[1]">
+                        <div class="cr-menu cr-pick-menu" role="listbox" [attr.aria-label]="'Filter ' + col[1]" [style]="menuStyle()">
                           <label class="cr-opt"><input type="checkbox" [checked]="!picked(col[0]).length" (change)="setPicked(col[0], [])"> All</label>
                           @for (v of pickValues(); track v.value) { <label class="cr-opt"><input type="checkbox" [checked]="picked(col[0]).includes(v.value)" (change)="togglePicked(col[0], v.value)"> <span class="cr-opt-l">{{ v.value || '(blank)' }}</span><small>{{ v.count }}</small></label> }
                         </div>
@@ -262,8 +264,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-range { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cr-muted); }
     .cr-range input { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-drop { position: relative; }
-    .cr-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px; background: var(--cr-bg); border: 1px solid var(--cr-line); border-radius: 10px; padding: 6px; display: grid; box-shadow: 0 8px 24px -12px rgba(0,0,0,.25); }
-    .cr-menu.cr-right { left: auto; right: 0; }
+    .cr-menu { position: fixed; z-index: 1000; overflow: auto; overscroll-behavior: contain; min-width: 200px; background: var(--cr-bg); border: 1px solid var(--cr-line); border-radius: 10px; padding: 6px; display: grid; box-shadow: 0 8px 24px -12px rgba(0,0,0,.25); }
     .cr-menu button, .cr-opt { border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; display: flex; gap: 8px; align-items: center; }
     .cr-menu button:hover, .cr-opt:hover { background: var(--cr-soft); }
     .cr-opt-l { flex: 1; }
@@ -304,8 +305,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-frow th { background: var(--cr-bg); padding: 4px 6px; }
     .cr-pick { width: 100%; min-width: 72px; text-align: left; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-muted); cursor: pointer; white-space: nowrap; }
     .cr-pick.on { border-color: var(--cr-accent); color: var(--cr-accent); }
-    .cr-pick-menu { max-height: 280px; overflow: auto; font-weight: 400; }
-    .cr-stats-menu { width: 340px; gap: 8px; padding: 12px; max-height: 420px; overflow: auto; }
+    .cr-pick-menu { font-weight: 400; text-align: left; white-space: normal; }
+    .cr-opt input[type=checkbox] { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--cr-accent); }
+    .cr-stats-menu { gap: 8px; padding: 12px; }
     .cr-stat-agent { display: grid; gap: 2px; border-top: 1px solid var(--cr-line); padding-top: 6px; }
     .cr-stat-agent > span { font-weight: 600; font-size: 13px; }
     .cr-tests-foot { display: flex; gap: 8px; }
@@ -315,7 +317,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-tasks button:hover { background: var(--cr-soft); }
     .cr-tasks b { font-size: 16px; }
     .cr-tasks small { color: var(--cr-muted); font-size: 12px; }
-    .cr-frow input { width: 100%; min-width: 64px; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); }
+    .cr-frow input[type=text] { width: 100%; min-width: 64px; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
     .cr-table th { text-align: left; font-weight: 500; color: var(--cr-muted); background: var(--cr-soft); padding: 7px 10px; white-space: nowrap; }
     .cr-table td { padding: 7px 10px; border-top: 1px solid var(--cr-line); white-space: nowrap; }
@@ -400,9 +402,8 @@ export class CallingReportComponent {
   /** The filters in force, in words, for the note above the funnel. */
   protected readonly filterSummary = computed(() => {
     const name = (k: string) => this.cols().find((c) => c[0] === k)?.[1] ?? LOG_COLUMNS.find((c) => c[0] === k)?.[1] ?? k;
-    const parts = Object.entries(this.colFilters()).filter(([, v]) => (Array.isArray(v) ? v.length : v.trim()))
+    const parts = Object.entries(this.colFilters()).filter(([k, v]) => SCOPE_COLUMNS.has(k) && (Array.isArray(v) ? v.length : v.trim()))
       .map(([k, v]) => `${name(k)}: ${Array.isArray(v) ? (v.length > 2 ? `${v.length} values` : v.map((x) => x || '(blank)').join(', ')) : `"${v}"`}`);
-    if (this.search().trim()) parts.unshift(`search "${this.search().trim()}"`);
     return parts.join(' · ');
   });
   protected readonly pickOpen = signal('');
@@ -515,6 +516,8 @@ export class CallingReportComponent {
     // A campaign page starts at All time unless the address says otherwise.
     effect(() => { if (this.campaign() && !this.urlPeriod) untracked(() => this.period.set('all')); });
     effect(() => { this.scope(); untracked(() => this.load()); });
+    window.addEventListener('scroll', this.follow, true); window.addEventListener('resize', this.follow);
+    inject(DestroyRef).onDestroy(() => { window.removeEventListener('scroll', this.follow, true); window.removeEventListener('resize', this.follow); });
     effect(() => { const src = this.source(); untracked(() => src.testNumbers?.().then((n) => this.testNumbers.set(n)).catch(() => {})); });
   }
 
@@ -541,7 +544,7 @@ export class CallingReportComponent {
     const my = ++this.seq; const sc = this.scope();
     this.loading.set(true); this.error.set('');
     try {
-      const rep = await this.source().report(sc, this.logFilters());
+      const rep = await this.source().report(sc, this.scopeFilters());
       if (my !== this.seq) return;
       this.r.set(rep);
       // A list restored from the address gets its proper name once the report is in.
@@ -588,18 +591,42 @@ export class CallingReportComponent {
     catch { this.drillRows.set([]); this.drillTotal.set(0); this.error.set('Could not load these calls.'); }
   }
 
+  // ── Popups: fixed to the viewport, next to their button, flipped up when there is no room below ──
+  protected readonly menuStyle = signal<Record<string, string>>({});
+  private anchor: { el: HTMLElement; right: boolean; width: number } | null = null;
+  /** Remembers the button a menu opens from and places the menu inside the viewport. */
+  protected place(ev: Event, right = false, width = 240): void {
+    const el = ev.currentTarget as HTMLElement | null; if (!el) return;
+    this.anchor = { el, right, width }; this.reposition();
+  }
+  private reposition(): void {
+    const a = this.anchor; if (!a || !a.el.isConnected) return;
+    const r = a.el.getBoundingClientRect(); const vw = window.innerWidth, vh = window.innerHeight;
+    // The button scrolled out of sight: close its menu rather than leave it floating.
+    if (r.bottom < 0 || r.top > vh) { this.closeMenus(); return; }
+    const w = Math.min(a.width, vw - 16); const left = Math.max(8, Math.min(a.right ? r.right - w : r.left, vw - w - 8));
+    const below = vh - r.bottom - 12, above = r.top - 12; const up = below < 240 && above > below;
+    const room = Math.max(140, Math.min(440, up ? above : below));
+    this.menuStyle.set({ left: `${left}px`, width: `${w}px`, 'max-height': `${room}px`, ...(up ? { bottom: `${vh - r.top + 4}px`, top: 'auto' } : { top: `${r.bottom + 4}px`, bottom: 'auto' }) });
+  }
+  private closeMenus(): void { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false); }
+  private readonly follow = () => { if (this.shareOpen() || this.statsOpen() || this.pickOpen()) this.reposition(); };
+
   /** Menus close on a click anywhere else; Escape closes a menu, then the list. */
   protected onDocClick(ev: Event): void {
     const t = ev.target as HTMLElement | null; if (t?.closest('.cr-drop')) return;
-    this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false);
+    this.closeMenus();
   }
   protected onEscape(): void {
-    if (this.agentsOpen() || this.shareOpen() || this.testsOpen()) { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); } else if (this.box()) this.close();
+    if (this.agentsOpen() || this.shareOpen() || this.testsOpen() || this.pickOpen() || this.statsOpen()) this.closeMenus(); else if (this.box()) this.close();
   }
 
   protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k, this.logFilters()), `${this.fileName()}-${k}${this.logFiltered() ? '-filtered' : ''}.xlsx`); }
   /** Non-empty column filters and the search box, as sent to the call log and the export. */
   private logFilters(): LogFilters { return { q: this.search().trim(), cols: Object.fromEntries(Object.entries(this.colFilters()).filter(([, v]) => (Array.isArray(v) ? v.length : v.trim()))) }; }
+  /** The Agent, Campaign and Uploaded-by picks: they scope the funnel and call status too. */
+  private scopeFilters(): LogFilters { const f = this.logFilters(); return { q: '', cols: Object.fromEntries(Object.entries(f.cols).filter(([k]) => SCOPE_COLUMNS.has(k))) }; }
+  protected readonly pageFiltered = computed(() => Object.entries(this.colFilters()).some(([k, v]) => SCOPE_COLUMNS.has(k) && (Array.isArray(v) ? v.length : v.trim())));
   protected textFilter(k: string): string { const v = this.colFilters()[k]; return typeof v === 'string' ? v : ''; }
   protected picked(k: string): string[] { const v = this.colFilters()[k]; return Array.isArray(v) ? v : []; }
   /** Opens a column's value list, counted with the other filters on. */
@@ -626,9 +653,11 @@ export class CallingReportComponent {
   }
   protected setSearch(v: string): void { this.search.set(v); this.refilter(); }
   protected setCol(k: string, v: string): void { this.colFilters.set({ ...this.colFilters(), [k]: v }); this.refilter(); }
+  protected clearScopeFilters(): void { this.colFilters.set(Object.fromEntries(Object.entries(this.colFilters()).filter(([k]) => !SCOPE_COLUMNS.has(k)))); this.drillPage.set(0); this.writeUrl(); this.load(); }
   protected clearLogFilters(): void { this.search.set(''); this.colFilters.set({}); this.drillPage.set(0); this.writeUrl(); this.load(); }
   /** Typing waits a moment before the page reloads: the filters scope the funnel and statuses as well as the log. */
   private refilter(): void { if (this.typing) clearTimeout(this.typing); this.typing = setTimeout(() => { this.drillPage.set(0); this.writeUrl(); this.load(); }, 300); }
+  // load() fetches the report with the Agent / Campaign / Uploaded-by picks, then the list with every filter.
   protected async shareSheet(): Promise<void> { this.shareOpen.set(false); this.save(await this.source().exportXlsx(this.scope(), 'uploaded'), `${this.fileName()}.xlsx`); }
   protected async sharePicture(): Promise<void> { this.shareOpen.set(false); const c = this.draw(); if (c) c.toBlob((b) => b && this.save(b, `${this.fileName()}.png`), 'image/png'); }
   protected sharePdf(): void {

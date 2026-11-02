@@ -402,3 +402,146 @@ export function tasksSummary(rows) {
   const f = followChecklist(rows); const camps = campaignSummaries(rows);
   return { follow_ups: f.counts.open, callbacks: f.counts.callback, follow_up_required: f.counts.follow_up, running_campaigns: camps.filter((c) => c.status === 'Running').length, not_finished: rows.filter(BOX.in_progress).length };
 }
+
+// ── Upload check (ideas doc 2.1): fix what can be fixed, warn on doubtful, reject only what cannot be called ──
+const LIST_SPLIT = /\s*[,;]\s*/;
+const isPoKey = (k) => /(^|_)(po|order)(_?(no|number|numbers|nos|id|ids))?s?$/i.test(k) || /po_?numbers?/i.test(k);
+const isDateKey = (k) => /date/i.test(k);
+/** A date the sheet could mean: DD/MM/YYYY, DD-MM-YYYY or YYYY-MM-DD, a real day between 2000 and 2100. */
+export function validDate(v) {
+  const s = String(v).trim(); let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s); let y, mo, d;
+  if (m) { d = +m[1]; mo = +m[2]; y = +m[3]; } else if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))) { y = +m[1]; mo = +m[2]; d = +m[3]; } else return false;
+  const t = new Date(Date.UTC(y, mo - 1, d)); return y >= 2000 && y <= 2100 && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+/**
+ * One uploaded row. Fixes: "quot;" and HTML entities removed, empty list entries (an extra comma) dropped. Warnings: a PO listed
+ * twice (asked once). Repeated counts such as item_count "1, 1" are fine. Error (not dialled): a date that is not a real date.
+ * Returns { ctx (fixed), fixes: [{ kind, field, note }], warnings: [...], error: null | { kind, field, note } }.
+ */
+export function checkUploadRow(ctx) {
+  const out = { ...ctx }; const fixes = [], warnings = []; let error = null;
+  for (const [k, raw] of Object.entries(ctx || {})) {
+    if (raw == null || typeof raw === 'object') continue;
+    let v = String(raw);
+    const clean = v.replace(/&(quot|amp|apos|#39);/g, (m) => ({ '&quot;': '"', '&amp;': '&', '&apos;': "'", '&#39;': "'" })[m]).replace(/(^|[^&])quot;/g, '$1').replace(/"/g, '').trim();
+    if (clean !== v.trim()) { fixes.push({ kind: 'entities', field: k, note: `Removed stray quote marks in ${k}` }); v = clean; }
+    if (LIST_SPLIT.test(v)) {
+      const parts = v.split(LIST_SPLIT);
+      if (parts.some((p) => p === '')) { fixes.push({ kind: 'empty_entry', field: k, note: `Removed an empty entry (extra comma) in ${k}` }); v = parts.filter((p) => p !== '').join(', '); }
+      const list = v.split(LIST_SPLIT);
+      if (isPoKey(k)) { const dup = list.filter((p, i) => list.indexOf(p) !== i); if (dup.length) { warnings.push({ kind: 'po_twice', field: k, note: `PO ${[...new Set(dup)].join(', ')} is listed twice in ${k}; it will be asked once` }); v = [...new Set(list)].join(', '); } }
+      else if (/count|qty|quantity/i.test(k) && list.some((p, i) => list.indexOf(p) !== i)) fixes.push({ kind: 'repeated_counts', field: k, note: `Repeated counts in ${k} ("${v}") are fine: accepted as they are` });
+    }
+    if (isDateKey(k) && v !== '' && !error) { const bad = v.split(LIST_SPLIT).find((p) => p && !validDate(p)); if (bad) error = { kind: 'bad_date', field: k, note: `${k} is not a valid date ("${bad}")` }; }
+    out[k] = v;
+  }
+  return { ctx: out, fixes, warnings, error };
+}
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/**
+ * The best-practice note for one agent after a check (demo stand-in for the AI note): what failed or was fixed in this sheet,
+ * and the one habit that would avoid it next time. checks: [{ row, fixes, warnings, error }].
+ */
+export function uploadNote(agentLabel, checks, total) {
+  const count = (list, kind) => checks.filter((c) => c[list]?.some?.((x) => x.kind === kind) || c[list]?.kind === kind).length;
+  const lines = [];
+  const rep = count('fixes', 'repeated_counts'); if (rep) lines.push(`${plural(rep, 'row')} ${rep === 1 ? 'repeats' : 'repeat'} a count (for example item_count "1, 1"). That is correct for several POs with the same count, and they are accepted. The old check rejected these.`);
+  const empty = count('fixes', 'empty_entry'); if (empty) lines.push(`${plural(empty, 'row')} had a comma at the end of a list. Fixed for you; next time put commas only between values.`);
+  const ent = count('fixes', 'entities'); if (ent) lines.push(`${plural(ent, 'row')} had stray quote marks (quot;) copied from the ERP export. Fixed for you; paste values only (Ctrl+Shift+V) to avoid them.`);
+  const twice = count('warnings', 'po_twice'); if (twice) lines.push(`${plural(twice, 'row')} ${twice === 1 ? 'lists' : 'list'} the same PO twice. Each PO is asked once; check the export for duplicate lines.`);
+  const dates = count('error', 'bad_date'); if (dates) lines.push(`${plural(dates, 'row')} ${dates === 1 ? 'has' : 'have'} a date that is not a real date, and will not be called. Use DD/MM/YYYY, and check the year.`);
+  const phone = checks.filter((c) => c.error?.kind === 'phone').length; if (phone) lines.push(`${plural(phone, 'row')} ${phone === 1 ? 'has' : 'have'} no valid 10-digit phone number. Use the supplier contact's mobile, digits only.`);
+  if (!lines.length) lines.push('This sheet is clean. Keep dates as DD/MM/YYYY and lists comma-separated with no comma at the end.');
+  const fixed = checks.filter((c) => c.fixes.length && !c.error).length; const stopped = checks.filter((c) => c.error).length;
+  return { title: `Note for ${agentLabel}`, summary: `${plural(total, 'row')} checked: ${fixed} fixed automatically, ${stopped} cannot be called.`, lines, source: 'Written from this sheet\'s check (demo stand-in for the AI note).' };
+}
+/** Tips shown when an agent is picked, from its template's columns (demo stand-in for the AI note). */
+export function agentTips(agentLabel, inputs) {
+  const tips = [];
+  const dates = inputs.filter(isDateKey); if (dates.length) tips.push(`Dates (${dates.join(', ')}) as DD/MM/YYYY. A date that is not a real day stops the row.`);
+  const lists = inputs.filter((k) => isPoKey(k) || /count|details|items/i.test(k)); if (lists.length) tips.push(`Several POs in one row are fine: separate values in ${lists.join(', ')} with commas, no comma at the end, the same order in each column.`);
+  tips.push('One supplier contact per row, with a 10-digit mobile. Our own numbers are counted as internal tests, not called as suppliers.');
+  return { title: `Before you fill ${agentLabel}'s template`, lines: tips, source: 'From this agent\'s template (demo stand-in for the AI note).' };
+}
+
+// ── Retry rules per agent (ideas doc 2.3) ─────────────────────────────────────
+export const RETRY_SCHEDULES = [{ key: 'linear', label: 'Linear' }, { key: 'increasing', label: 'Linear increasing' }, { key: 'doubling', label: 'Doubling' }];
+export const defaultRetryRule = () => ({ schedule: 'increasing', base_minutes: 30, retries: 5, from: '10:00', to: '18:00', skip_sunday: true, avoid_lunch: true });
+/** agent key -> rule. Unset agents use the default. */
+export const retryRules = new Map();
+export const retryRuleOf = (agent) => ({ ...defaultRetryRule(), ...(retryRules.get(agent) || {}) });
+/** Minutes between retries: linear b, b, b…; increasing b, 2b, 3b…; doubling b, 2b, 4b… */
+export function retryGaps(rule) {
+  const b = Math.max(1, Number(rule.base_minutes) || 30); const n = Math.min(10, Math.max(0, Number(rule.retries) || 0));
+  return Array.from({ length: n }, (_, i) => (rule.schedule === 'linear' ? b : rule.schedule === 'doubling' ? b * 2 ** i : b * (i + 1)));
+}
+/** Retry times after a call at startIso (`done` retries already made), each moved into calling hours (IST): not before from, not after to, not 13–14 h, not Sunday. */
+export function retryPlan(rule, startIso, done = 0) {
+  const IST = 330 * 60000; const hm = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
+  const open = hm(rule.from || '10:00'), close = hm(rule.to || '18:00');
+  const fit = (ms) => {
+    for (let guard = 0; guard < 14; guard += 1) {
+      const local = new Date(ms + IST); const mins = local.getUTCHours() * 60 + local.getUTCMinutes(); const dayStart = ms - mins * 60000 - local.getUTCSeconds() * 1000 - local.getUTCMilliseconds();
+      if (rule.skip_sunday && local.getUTCDay() === 0) { ms = dayStart + 86400000 + open * 60000; continue; }
+      if (mins < open) { ms = dayStart + open * 60000; continue; }
+      if (mins >= close) { ms = dayStart + 86400000 + open * 60000; continue; }
+      if (rule.avoid_lunch && mins >= 780 && mins < 840) { ms = dayStart + 840 * 60000; continue; }
+      return ms;
+    }
+    return ms;
+  };
+  let t = Date.parse(startIso) || Date.now(); const out = [];
+  for (const g of retryGaps(rule).slice(done)) { t = fit(t + g * 60000); out.push(new Date(t).toISOString()); }
+  return out;
+}
+
+// ── Next steps on the call page: retries and WhatsApp / email (ideas doc section 2) ──
+export const DEMO_CALLER_ID = '+91 80 4718 2290';
+/** Messages sent from call pages: row id -> [{ channel, key, text, at, by }]. The demo does not really send them. */
+export const sentMessages = new Map();
+const poOf = (r) => { const i = r.inputs || {}; const k = Object.keys(i).find(isPoKey) || Object.keys(i).find((x) => /order/i.test(x)); return k ? i[k] : ''; };
+const firstName = (r) => String(r.caller_name || '').trim().split(/\s+/)[0] || 'there';
+/** Which statuses get another call, and from when. */
+function retryFor(r) {
+  const s = r.call_status, why = r.status_reason;
+  if (['Not picked', 'Voicemail', 'No reply', 'System issue'].includes(s)) return { label: s === 'Voicemail' ? 'Voicemail: call again the next working day, same time' : 'Not reached: call again', next_day: s === 'Voicemail' };
+  if (s === 'DND') return { label: 'DND: two more tries, then ask the supplier to unblock the number', cap: 2 };
+  if (s === 'Answered' && ['Agent not given time to speak', 'Left before answering'].includes(why)) return { label: 'Cut short: call again with a shorter opening (name, Moglix, PO number)' };
+  if (s === 'Answered' && why === 'Success: Partial') return { label: 'Partial: call again for full confirmation if the supplier does not confirm on WhatsApp', cap: 1 };
+  if (s === 'Answered' && why === 'Success: Callback requested') return { label: 'Callback: call at the agreed time (2 hours later if none was saved)', callback: true };
+  return null;
+}
+/** Suggested messages for a call, by its status. Each: { key, channel, title, text }. */
+export function messageSuggestions(r, nextAt) {
+  const po = poOf(r); const ref = po ? `PO ${po}` : 'your pending Moglix PO'; const hi = `Hi ${firstName(r)}`; const at = nextAt ? new Date(nextAt).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : 'later today';
+  const s = r.call_status, why = r.status_reason; const out = [];
+  const both = (key, title, wa, mail) => { out.push({ key, channel: 'whatsapp', title, text: wa }); out.push({ key, channel: 'email', title, text: mail }); };
+  if (s === 'DND') both('unblock', 'Ask to unblock and save the number', `${hi}, Moglix procurement calls you from ${DEMO_CALLER_ID} about ${ref}. Please save this number (contact card attached) and unblock it. Reply CALL to get a call now.`, `Subject: Please save our number: Moglix procurement\n\n${hi},\n\nWe call from ${DEMO_CALLER_ID} about ${ref}. Our calls are not reaching you; please save this number (contact card attached) and unblock it if it was blocked.\n\nOr reply to this email with your update.\n\nMoglix procurement`);
+  else if (s === 'Not picked' || s === 'No reply' || s === 'System issue') both('heads_up', 'Tell them when we will call', `${hi}, Saniya from Moglix tried to reach you about ${ref}. We will call again ${at} from ${DEMO_CALLER_ID} (please save it). Reply ACCEPT if the PO is accepted, or CALL for a call now.`, `Subject: ${ref}: we will call you ${at}\n\n${hi},\n\nWe tried to call you about ${ref}. We will call again ${at} from ${DEMO_CALLER_ID}; please save the number.\n\nIf the PO is already accepted, just reply "accepted".\n\nMoglix procurement`);
+  else if (s === 'Voicemail') both('voicemail', 'Same as the voicemail', `${hi}, we left you a voicemail about ${ref}. We will call again ${at}. Reply ACCEPT, or CALL to get a call now.`, `Subject: ${ref}: voicemail from Moglix\n\n${hi},\n\nWe left you a voicemail about ${ref} and will call again ${at}. Reply to this email with your update if that is easier.\n\nMoglix procurement`);
+  else if (why === 'Agent not given time to speak' || why === 'Left before answering') both('cut_short', 'Ask for the update by message', `${hi}, Moglix here about ${ref} (details attached). Can you accept it? Reply ACCEPT, NEED COPY, or a time that suits you for a 1-minute call.`, `Subject: ${ref}: can you accept it?\n\n${hi},\n\nWe called about ${ref}; the PO details are attached. Please reply with:\n- Accepted, and the dispatch date, or\n- what you need from us, or\n- a time for a 1-minute call.\n\nMoglix procurement`);
+  else if (why === 'Success: Follow-up required') both('follow_up', 'Send the PO and say the team will follow up', `${hi}, as discussed, here are the details of ${ref} (PDF attached) and the portal link. Our team will follow up by ${at}. Reply ACCEPTED once done.`, `Subject: ${ref}: details as discussed\n\n${hi},\n\nAs discussed on the call, the PO copy is attached and the portal link is below. Our team will follow up by ${at}.\n\nPortal: [supplier portal link]\n\nMoglix procurement`);
+  else if (why === 'Success: Callback requested') both('callback', 'Confirm the callback time', `${hi}, as you asked, we will call you back ${r.callback_at || at} about ${ref}. Reply with another time if that does not suit you.`, `Subject: ${ref}: we will call you back\n\n${hi},\n\nAs you asked, we will call you back ${r.callback_at || at} about ${ref}. Reply with another time if that does not suit you.\n\nMoglix procurement`);
+  else if (why === 'Success: Partial') both('confirm', 'Ask for full confirmation', `${hi}, please confirm what we noted for ${ref}: ${Object.entries(r.answers || {}).slice(0, 3).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v}`).join(', ') || 'acceptance and dispatch date'}. Reply YES, or send the right details.`, `Subject: ${ref}: please confirm\n\n${hi},\n\nPlease confirm what we noted on the call for ${ref}. Reply YES, or send the right details.\n\nMoglix procurement`);
+  else if (why === 'Success: Accepted') out.push({ key: 'thanks', channel: 'whatsapp', title: 'Thank and confirm', text: `${hi}, thanks for accepting ${ref}. We have noted it. Reply here for anything about this PO.` });
+  else if (why === 'Wrong number') out.push({ key: 'fix_contact', channel: 'email', title: 'Ask the uploader to fix the contact', text: `Subject: Wrong contact for ${ref}\n\nThe number ${r.phone} for ${r.caller_name || 'this supplier'} is wrong or no longer handles POs. Please update the supplier contact and re-upload the row.` });
+  return out;
+}
+/** The call page's next steps: the retry plan from the agent's rule, the suggested messages and what was already sent. */
+export function callSteps(r) {
+  const rule = retryRuleOf(r.agent_key || r.agent); const rt = retryFor(r);
+  let plan = [];
+  if (rt) {
+    const from = rt.callback ? (Date.parse(r.callback_at || '') ? new Date(Date.parse(r.callback_at)).toISOString() : new Date(Date.parse(r.call_date || '') + 2 * 3600000 || Date.now()).toISOString()) : r.call_date || new Date().toISOString();
+    const done = Math.min(Number(r.retries) || 0, rule.retries);
+    if (rt.callback) plan = [from];
+    else if (rt.next_day) plan = retryPlan({ ...rule, schedule: 'linear', base_minutes: 24 * 60, retries: 1 }, from);
+    else plan = retryPlan(rule, from, done).slice(0, rt.cap || undefined);
+  }
+  return { rule, schedules: RETRY_SCHEDULES, retry: rt ? { label: rt.label, plan, left: plan.length } : null,
+    messages: messageSuggestions(r, plan[0]), sent: sentMessages.get(r.id) || [], caller_id: DEMO_CALLER_ID };
+}
+export function sendMessage(r, { channel, key, text }, by) {
+  const list = sentMessages.get(r.id) || []; list.push({ channel: channel === 'email' ? 'email' : 'whatsapp', key: key || '', text: String(text || '').slice(0, 2000), at: new Date().toISOString(), by, to: channel === 'email' ? r.email || '(no email on file)' : r.phone });
+  sentMessages.set(r.id, list); return list;
+}

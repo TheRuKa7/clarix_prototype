@@ -16,8 +16,21 @@ export interface CallDetail {
   has_audio: boolean; audio_path: string | null; dials: { n: number; at: string; ring_seconds: number | null; talk_seconds: number | null; result: string; provider: string }[];
   timeline: { at: string; type: string; status: string; detail: string }[]; prev_id: string | null; next_id: string | null; position: number; of: number; outcome_options: string[];
 }
+/** A message the page suggests for this call, by its status. */
+export interface StepMessage { key: string; channel: 'whatsapp' | 'email'; title: string; text: string }
+/** What happens next for a call: when it is called again and what to send. Messages are recorded by the demo, not sent. */
+export interface CallSteps {
+  rule: { schedule: string; base_minutes: number; retries: number; from: string; to: string; skip_sunday: boolean; avoid_lunch: boolean };
+  retry: { label: string; plan: string[]; left: number } | null;
+  messages: StepMessage[];
+  sent: { channel: 'whatsapp' | 'email'; key: string; text: string; at: string; by: string; to: string }[];
+  caller_id: string;
+}
 export interface CallPageSource {
   detail(id: string): Promise<CallDetail>;
+  /** Next steps: the retry plan and messages; sending one returns the steps again. */
+  steps?(id: string): Promise<CallSteps>;
+  sendMessage?(id: string, m: { channel: string; key: string; text: string }): Promise<CallSteps>;
   audio(path: string): Promise<Blob>;
   changeOutcome(id: string, statusReason: string, note: string): Promise<CallDetail>;
   /** Where Back goes when the page was opened directly (no list to go back to). */
@@ -106,6 +119,36 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
             }
           </div>
           <div class="cp-col">
+            @if (steps(); as st) {
+              <section class="cp-card cp-steps">
+                <h2>Next steps</h2>
+                @if (st.retry; as rt) {
+                  <div class="cp-retry">
+                    <b>{{ rt.label }}</b>
+                    @if (rt.plan.length) {
+                      <div class="cp-times">@for (t of rt.plan; track $index) { <span [class.first]="$first">{{ $first ? 'Next ' : '' }}{{ when(t) }}</span> }</div>
+                    } @else { <span class="cp-muted">No retries left under this agent's rule.</span> }
+                    <span class="cp-muted">Agent's rule: {{ ruleText(st) }}</span>
+                  </div>
+                } @else { <p class="cp-muted">No more calls planned for this row.</p> }
+                @if (st.messages.length) {
+                  <div class="cp-seg" role="group" aria-label="Channel">
+                    @for (ch of channels(st); track ch) { <button type="button" [class.on]="channel() === ch" (click)="channel.set(ch)">{{ ch === 'whatsapp' ? 'WhatsApp' : 'Email' }}</button> }
+                  </div>
+                  @for (m of shown(st); track m.key + m.channel) {
+                    <div class="cp-msg">
+                      <div class="cp-msg-head"><b>{{ m.title }}</b><span class="cp-muted">to {{ m.channel === 'email' ? (c.email || 'no email on file') : c.phone }}</span></div>
+                      <textarea [rows]="m.channel === 'email' ? 7 : 4" [value]="draft(m)" (input)="setDraft(m, $any($event.target).value)" [attr.aria-label]="m.title"></textarea>
+                      <div class="cp-msg-foot"><span class="cp-muted">From {{ st.caller_id }} · demo: recorded here, not sent</span><span class="cp-grow"></span>
+                        <button type="button" class="cp-btn cp-primary" [disabled]="sending() || (m.channel === 'email' && !c.email)" (click)="send(m)">{{ m.channel === 'email' ? 'Send email' : 'Send on WhatsApp' }}</button></div>
+                    </div>
+                  }
+                }
+                @if (st.sent.length) {
+                  <div class="cp-rows">@for (x of st.sent; track $index) { <div class="cp-row"><span class="cp-muted">{{ when(x.at) }}</span><span>{{ x.channel === 'email' ? 'Email' : 'WhatsApp' }} to {{ x.to }}</span><span class="cp-muted">by {{ x.by }}</span></div> }</div>
+                }
+              </section>
+            }
             @if (c.has_audio) {
               <section class="cp-card"><h2>Recording</h2>
                 @if (audioUrl()) { <audio controls [src]="audioUrl()" preload="metadata"></audio> } @else { <p class="cp-muted">Loading the recording…</p> }
@@ -171,6 +214,18 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
     .cp-turn { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--cp-soft); font-size: 13.5px; max-width: 92%; }
     .cp-turn.agent { background: var(--ds-info-bg, #f2f1fd); justify-self: end; }
     .cp-turn b { font-size: 11.5px; color: var(--cp-muted); font-weight: 600; }
+    .cp-steps { border-color: color-mix(in srgb, var(--cp-accent, #4c4184) 35%, var(--cp-line)); }
+    .cp-retry { display: grid; gap: 6px; font-size: 13px; }
+    .cp-times { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cp-times span { background: var(--cp-soft); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
+    .cp-times span.first { background: var(--cp-text); color: var(--cp-bg); }
+    .cp-seg { display: inline-flex; border: 1px solid var(--cp-line); border-radius: 8px; overflow: hidden; justify-self: start; }
+    .cp-seg button { border: 0; background: var(--cp-bg); color: var(--cp-text); padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+    .cp-seg button.on { background: var(--cp-text); color: var(--cp-bg); }
+    .cp-msg { display: grid; gap: 6px; border: 1px solid var(--cp-line); border-radius: 10px; padding: 10px; }
+    .cp-msg-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+    .cp-msg textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--cp-line); border-radius: 8px; padding: 8px; font: inherit; font-size: 13px; background: var(--cp-bg); color: var(--cp-text); resize: vertical; }
+    .cp-msg-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
     .cp-kv { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 6px 12px; font-size: 13px; }
     .cp-kv span { color: var(--cp-muted); text-transform: capitalize; }
     .cp-kv b { font-weight: 500; word-break: break-word; }
@@ -195,6 +250,10 @@ export class CallPageComponent implements OnDestroy {
   protected readonly pick = signal('');
   protected readonly note = signal('');
   protected readonly copied = signal(false);
+  protected readonly steps = signal<CallSteps | null>(null);
+  protected readonly channel = signal<'whatsapp' | 'email'>('whatsapp');
+  protected readonly sending = signal(false);
+  private readonly drafts = signal<Record<string, string>>({});
   private seq = 0;
 
   protected readonly answered = computed(() => { const c = this.d(); return !!c && c.call_status === 'Answered'; });
@@ -217,6 +276,8 @@ export class CallPageComponent implements OnDestroy {
     const my = ++this.seq; this.loading.set(true); this.error.set(''); this.editing.set(false); this.revoke();
     try {
       const c = await this.source().detail(id); if (my !== this.seq) return; this.d.set(c);
+      this.steps.set(null); this.drafts.set({});
+      this.source().steps?.(id).then((st) => { if (my !== this.seq) return; this.steps.set(st); if (!st.messages.some((m) => m.channel === this.channel())) this.channel.set(st.messages[0]?.channel ?? 'whatsapp'); }).catch(() => {});
       if (c.has_audio && c.audio_path) this.source().audio(c.audio_path).then((b) => { if (my === this.seq) this.audioUrl.set(URL.createObjectURL(b)); }).catch(() => {});
     } catch { if (my === this.seq) this.error.set('Could not load this call.'); }
     finally { if (my === this.seq) this.loading.set(false); }
@@ -231,6 +292,20 @@ export class CallPageComponent implements OnDestroy {
   }
   /** Previous and Next replace this page in history, so Back still returns to the list. */
   protected go(id: string | null): void { if (id) this.router.navigate([this.source().base, id], { replaceUrl: true }); }
+
+  // ── Next steps: messages ──
+  protected channels(st: CallSteps): ('whatsapp' | 'email')[] { return (['whatsapp', 'email'] as const).filter((ch) => st.messages.some((m) => m.channel === ch)); }
+  protected shown(st: CallSteps): StepMessage[] { return st.messages.filter((m) => m.channel === this.channel()); }
+  protected draft(m: StepMessage): string { return this.drafts()[`${m.key}:${m.channel}`] ?? m.text; }
+  protected setDraft(m: StepMessage, v: string): void { this.drafts.set({ ...this.drafts(), [`${m.key}:${m.channel}`]: v }); }
+  protected async send(m: StepMessage): Promise<void> {
+    const c = this.d(); if (!c || !this.source().sendMessage) return; this.sending.set(true);
+    try { this.steps.set(await this.source().sendMessage!(c.id, { channel: m.channel, key: m.key, text: this.draft(m) })); } catch { this.error.set('Could not record the message.'); } finally { this.sending.set(false); }
+  }
+  protected ruleText(st: CallSteps): string {
+    const r = st.rule; const name = ({ linear: 'linear', increasing: 'linear increasing', doubling: 'doubling' } as Record<string, string>)[r.schedule] ?? r.schedule;
+    return `${r.retries} retries, ${name} from ${r.base_minutes} min, ${r.from}–${r.to}${r.skip_sunday ? ', no Sundays' : ''}${r.avoid_lunch ? ', not 1–2 pm' : ''}`;
+  }
 
   protected startEdit(): void { const c = this.d(); if (!c) return; this.pick.set(c.status_reason); this.note.set(''); this.editing.set(true); }
   protected async saveOutcome(): Promise<void> {

@@ -64,6 +64,9 @@ export class ReportService {
   reportFollowUps(tab: string, show: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/follow-ups`, { params: new HttpParams().set('tab', tab).set('show', show) })); }
   reportFollowUpAct(id: string, action: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/follow-ups/${encodeURIComponent(id)}`, { action })); }
   newCampaignAgents(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/new-campaign/agents`)); }
+  newCampaignTips(agent: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/new-campaign/tips`, { params: new HttpParams().set('agent', agent) })); }
+  retryRules(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/retry-rules`)); }
+  saveRetryRule(agent: string, rule: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/retry-rules/${encodeURIComponent(agent)}`, rule)); }
   newCampaignTemplate(agent: string): Observable<Blob> { return this.http.get(`${this.callingBase}/new-campaign/template.xlsx`, { params: new HttpParams().set('agent', agent), responseType: 'blob' }); }
   newCampaignPost(step: 'check' | 'start', agent: string, file: File): Observable<any> {
     const fd = new FormData(); fd.append('file', file, file.name);
@@ -77,6 +80,8 @@ export class ReportService {
   saveReportTestNumbers(numbers: string[]): Observable<string[]> { return this.data(this.http.put<{ data: { numbers: string[] } }>(ENDPOINTS.callingReport.testNumbers, { numbers })).pipe(map((d) => d.numbers ?? [])); }
   /** One call page: a call by report row id, its recording, and a person's change of outcome. */
   callDetail(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${ENDPOINTS.callingReport.report}/call/${encodeURIComponent(id)}`)); }
+  callSteps(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${ENDPOINTS.callingReport.report}/call/${encodeURIComponent(id)}/steps`)); }
+  sendCallMessage(id: string, m: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${ENDPOINTS.callingReport.report}/call/${encodeURIComponent(id)}/messages`, m)); }
   changeCallOutcome(id: string, status_reason: string, note: string): Observable<any> { return this.data(this.http.patch<{ data: any }>(`${ENDPOINTS.callingReport.report}/call/${encodeURIComponent(id)}/outcome`, { status_reason, note })); }
   /** A file under the API (the recording), with the signed-in headers. */
   blobAt(path: string): Observable<Blob> { return this.http.get(ENDPOINTS.callingReport.report.replace('/api/v1/reports/calling', '') + path, { responseType: 'blob' }); }
