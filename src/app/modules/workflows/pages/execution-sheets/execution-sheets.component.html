@@ -1,0 +1,154 @@
+<div class="es">
+  <div class="es__header">
+    <div>
+      <h1 class="es__title">Campaigns</h1>
+      <p class="es__subtitle">Each uploaded sheet is one campaign. Open one to see every call and its result.</p>
+    </div>
+    <button type="button" class="es__trigger-btn" (click)="openUpload()">
+      <lucide-icon name="cloud-upload" [size]="16"></lucide-icon>
+      New campaign
+    </button>
+  </div>
+
+  <!-- One filter bar: search, agent, when, status. Active filters show as chips with one Clear all. -->
+  <div class="es__filters">
+    <label class="es__search">
+      <lucide-icon name="search" [size]="15"></lucide-icon>
+      <input type="search" class="es__input" placeholder="Search file, agent or uploader" [value]="q()"
+        (input)="q.set($any($event.target).value)" aria-label="Search campaigns" />
+    </label>
+    <div class="es__picker">
+      <app-template-picker [selectedId]="templateId()" [allowAny]="true" anyLabel="Any agent" (selected)="onTemplateFilter($event)"></app-template-picker>
+    </div>
+    <div class="es__toggle" role="group" aria-label="Uploaded">
+      @for (r of RANGES; track r.key) {
+        <button type="button" [class.on]="range() === r.key" (click)="setRange(r.key)">{{ r.label }}</button>
+      }
+    </div>
+    <div class="es__toggle" role="group" aria-label="Status">
+      @for (st of STATES; track st.key) {
+        <button type="button" [class.on]="stateFilter() === st.key" (click)="stateFilter.set(st.key)">{{ st.label }}</button>
+      }
+    </div>
+    @if (range() === 'custom') {
+      <div class="es__dates">
+        <input type="date" class="es__input" [value]="fromDate()" (change)="onFromDate($any($event.target).value)" aria-label="From" />
+        <span>to</span>
+        <input type="date" class="es__input" [value]="toDate()" (change)="onToDate($any($event.target).value)" aria-label="To" />
+      </div>
+    }
+    @if (hasFilters()) {
+      <button type="button" class="es__clear" (click)="clearFilters()">
+        <lucide-icon name="x" [size]="14"></lucide-icon> Clear all
+      </button>
+    }
+  </div>
+
+  @if (error()) {
+    <div class="es__error">{{ error() }}</div>
+  }
+
+  @if (loading() && !sheets().length) {
+    <div class="es__state">Loading…</div>
+  } @else if (shown().length === 0) {
+    <div class="es__state">
+      {{ hasFilters() ? 'No campaigns match these filters.' : 'No campaigns yet. Use New campaign to upload a sheet.' }}
+    </div>
+  } @else {
+    <div class="es__table-wrap">
+    <table class="es__table">
+      <thead>
+        <tr>
+          <th>Campaign</th>
+          <th>Agent</th>
+          <th class="es__campaign-h">Progress</th>
+          <th>Run time</th>
+          <th>Status</th>
+          <th class="es__action-h"><span class="es__sr">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (sheet of shown(); track sheet.id) {
+          <tr class="es__row" (click)="open(sheet)" tabindex="0" (keydown.enter)="open(sheet)" [attr.aria-label]="'Open campaign ' + (sheet.originalFilename || sheet.id)">
+            <td>
+              <div class="es__name" [title]="sheet.originalFilename || ''">{{ sheet.originalFilename || 'Untitled sheet' }}</div>
+              <div class="es__sub">{{ sheet.uploadedBy || '—' }} · {{ sheet.createdAt ? (sheet.createdAt | date: 'd MMM, h:mm a') : '—' }}</div>
+            </td>
+            <td>{{ sheet.templateName || '—' }}</td>
+            <td class="es__campaign">
+              @if (progress(sheet); as pg) {
+                @if (pg.total > 0) {
+                  <div class="es__bar" [title]="pg.title">
+                    @for (g of pg.parts; track g.key) { <span [class]="'es__seg es__seg--' + g.key" [style.width.%]="g.pct"></span> }
+                  </div>
+                  <div class="es__sub">
+                    <b>{{ pg.done }}</b> of {{ pg.total }} done · {{ pg.reached }} reached
+                  </div>
+                } @else {
+                  <span class="es__campaign-empty">No calls yet</span>
+                }
+              }
+            </td>
+            <td class="es__date" [title]="sheet.firstDialAt ? 'From the first dial to the end of the last call' : 'Not dialled yet'">
+              {{ runTime(sheet.runSeconds) }}@if ((sheet.inProgressCount ?? 0) > 0 && sheet.runSeconds != null) { <span class="es__sub"> so far</span> }
+            </td>
+            <td>
+              <span class="es__state-chip" [attr.data-state]="state(sheet).cls" [title]="rule(state(sheet).cls)">{{ state(sheet).label }}</span>
+            </td>
+            <td class="es__actions" (click)="$event.stopPropagation()">
+              @if (sheet.fileUrl) {
+                <a class="es__icon-btn" [href]="sheet.fileUrl" target="_blank" rel="noopener" title="Uploaded sheet" aria-label="Download the uploaded sheet"><lucide-icon name="file-spreadsheet" [size]="15"></lucide-icon></a>
+              } @else {
+                <span class="es__icon-btn es__icon-btn--off" title="The uploaded sheet is not stored for this campaign"><lucide-icon name="file-spreadsheet" [size]="15"></lucide-icon></span>
+              }
+              @if (sheet.templateId) {
+                <a class="es__icon-btn" [routerLink]="['/workflows/build/agents']" [queryParams]="{ templateId: sheet.templateId }" title="Open the agent" aria-label="Open the agent"><lucide-icon name="bot" [size]="15"></lucide-icon></a>
+                <button type="button" class="es__icon-btn" [disabled]="downloadingId() !== null" title="Download report" [attr.aria-label]="'Download report for ' + (sheet.originalFilename || sheet.id)" (click)="downloadBatchReport(sheet)">
+                  @if (downloadingId() === sheet.id) { <lucide-icon name="loader-circle" [size]="15" class="es__spin"></lucide-icon> } @else { <lucide-icon name="download" [size]="15"></lucide-icon> }
+                </button>
+              }
+              @if ((sheet.inProgressCount ?? 0) > 0) {
+                <button type="button" class="es__icon-btn es__icon-btn--stop" [disabled]="stoppingId() !== null" [title]="'Stop the ' + sheet.inProgressCount + ' open calls'"
+                  [attr.aria-label]="'Stop ' + sheet.inProgressCount + ' open calls'" (click)="stopBatch(sheet)">
+                  @if (stoppingId() === sheet.id) { <lucide-icon name="loader-circle" [size]="15" class="es__spin"></lucide-icon> } @else { <lucide-icon name="phone-off" [size]="15"></lucide-icon> }
+                </button>
+              }
+              <lucide-icon name="chevron-right" [size]="15" class="es__go"></lucide-icon>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    </div>
+
+    <div class="es__pager">
+      <span class="es__pager-count">
+        Showing <strong>{{ firstRow() }}</strong>–<strong>{{ lastRow() }}</strong> of
+        <strong>{{ total() }}</strong>
+      </span>
+      <div class="es__pager-controls">
+        <button type="button" class="es__page-btn" [disabled]="page() === 0" (click)="prevPage()">
+          <lucide-icon name="chevron-left" [size]="15"></lucide-icon>
+          Previous
+        </button>
+        <span class="es__pager-page">Page {{ page() + 1 }} of {{ pageCount() }}</span>
+        <button
+          type="button"
+          class="es__page-btn"
+          [disabled]="page() + 1 >= pageCount()"
+          (click)="nextPage()"
+        >
+          Next
+          <lucide-icon name="chevron-right" [size]="15"></lucide-icon>
+        </button>
+      </div>
+    </div>
+  }
+</div>
+
+@if (showUpload()) {
+  <app-csv-bulk-upload
+    (closed)="closeUpload()"
+    (completed)="onUploadCompleted()"
+  ></app-csv-bulk-upload>
+}

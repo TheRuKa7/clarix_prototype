@@ -1,0 +1,245 @@
+<div class="erf">
+  <div class="erf__header">
+    <button type="button" class="erf__back" (click)="cancel()">
+      <lucide-icon name="arrow-left" [size]="18"></lucide-icon>
+    </button>
+    <h1 class="erf__title">{{ isEdit() ? 'Edit Report' : 'New Report' }}</h1>
+  </div>
+
+  @if (error()) {
+  <div class="erf__error">{{ error() }}</div>
+  }
+
+  <!-- Tabs -->
+  <div class="erf__tabs" role="tablist">
+    <button type="button" role="tab" class="erf__tab"
+      [attr.aria-selected]="activeTab() === 'details'"
+      [class.erf__tab--active]="activeTab() === 'details'" (click)="activeTab.set('details')">
+      Basic Details
+    </button>
+    <button type="button" role="tab" class="erf__tab" [attr.aria-selected]="activeTab() === 'data'"
+      [class.erf__tab--active]="activeTab() === 'data'" (click)="activeTab.set('data')">
+      Report Data
+    </button>
+    <button type="button" role="tab" class="erf__tab"
+      [attr.aria-selected]="activeTab() === 'schedules'"
+      [class.erf__tab--active]="activeTab() === 'schedules'" (click)="activeTab.set('schedules')">
+      Mail Schedules
+    </button>
+  </div>
+
+  <!-- ── Tab: Details ── -->
+  @if (activeTab() === 'details') {
+  <section class="erf__card">
+    <div class="erf__details-grid">
+      <div class="erf__field">
+        <label class="erf__label">Workflow Template</label>
+        <select class="erf__select" [disabled]="isEdit()"
+          (change)="onTemplateChange($any($event.target).value)">
+          <option value="" [selected]="!selectedTemplateId()">Select a template…</option>
+          @for (t of templates(); track t.id) {
+          <option [value]="t.id" [selected]="t.id === selectedTemplateId()">{{ t.name }}</option>
+          }
+        </select>
+        @if (isEdit()) {
+        <span class="erf__hint">Template can't be changed after creation.</span>
+        }
+      </div>
+
+      <div class="erf__field">
+        <label class="erf__label">Title</label>
+        <input class="erf__input" type="text" placeholder="e.g. PO acceptance weekly report"
+          [value]="title()" (input)="onTitle($any($event.target).value)" />
+      </div>
+
+      <div class="erf__field">
+        <label class="erf__label" for="erf-date-format">Date Format</label>
+        <select id="erf-date-format" class="erf__select"
+          (change)="onDateFormat($any($event.target).value)">
+          @for (opt of dateFormatOptions; track opt.value) {
+          <option [value]="opt.value" [selected]="opt.value === dateFormat()">{{ opt.label }}</option>
+          }
+        </select>
+        <span class="erf__hint">Applies to every date column in this report's CSV.</span>
+      </div>
+
+      <div class="erf__field erf__field--full">
+        <label class="erf__label">Description</label>
+        <input class="erf__input" type="text" placeholder="Optional description"
+          [value]="description()" (input)="onDescription($any($event.target).value)" />
+      </div>
+    </div>
+  </section>
+  }
+
+  <!-- ── Tab: Report Data ── -->
+  @if (activeTab() === 'data') {
+  @if (loading()) {
+  <div class="erf__state">Loading…</div>
+  } @else if (!selectedTemplateId()) {
+  <div class="erf__state">Select a workflow template on the <strong>Details</strong> tab first.
+  </div>
+  } @else if (columns().length > 0) {
+  <div class="erf__main">
+    <section class="erf__card erf__card--columns">
+      <h3 class="erf__section-title">Columns</h3>
+      <app-report-column-selector [columns]="columns()" [initialSelection]="initialSelection()"
+        (selectionChange)="onColumnsChange($event)">
+      </app-report-column-selector>
+    </section>
+
+    <section class="erf__card erf__card--filters">
+      <h3 class="erf__section-title">Filters</h3>
+      <app-report-filters [columns]="filterableColumns()" [initialFilters]="initialFilters()"
+        (filtersChange)="onFiltersChange($event)">
+      </app-report-filters>
+    </section>
+  </div>
+  }
+  }
+
+  <!-- ── Tab: Mail Schedules ── -->
+  @if (activeTab() === 'schedules') {
+  @if (!isEdit()) {
+  <div class="erf__state">Save the report first, then reopen it to add mail schedules.</div>
+  } @else {
+
+  <!-- The one thing you came to this tab to check: when does the next mail go out. -->
+  @if (nextSend(); as next) {
+  <section class="erf__next" role="status" aria-live="polite">
+    <span class="erf__next-icon">
+      <lucide-icon name="send" [size]="18"></lucide-icon>
+    </span>
+    <div class="erf__next-body">
+      <p class="erf__next-line">
+        Next report will be sent in <strong class="erf__next-countdown">{{ countdown() }}</strong>
+      </p>
+      <p class="erf__next-meta">
+        {{ next.at | date: 'EEE, d MMM y, h:mm a' }}
+        @if (next.summary) { · {{ next.summary }} }
+        @if (nextSchedule(); as s) { · {{ dataWindowLabel(s.dataWindow) }} }
+      </p>
+    </div>
+  </section>
+  }
+
+  <section class="erf__card">
+    <div class="erf__sched-head">
+      <div>
+        <h3 class="erf__section-title">Mail Schedules</h3>
+        <p class="erf__hint">Automatically email this report on a schedule.</p>
+      </div>
+      <button type="button" class="erf__add-sched" (click)="openAddSchedule()">
+        <lucide-icon name="plus" [size]="16"></lucide-icon>
+        Add schedule
+      </button>
+    </div>
+
+    @if (schedules().length === 0) {
+    <p class="erf__hint">No schedules yet.</p>
+    } @else {
+    <div class="erf__sched-list">
+      @for (s of schedules(); track s.id) {
+      <div class="erf__sched" [class.erf__sched--paused]="!s.enabled">
+        <div class="erf__sched-main">
+          <!-- 1. When it runs, and how much data it carries. -->
+          <div class="erf__sched-row1">
+            <span class="erf__sched-summary">{{ s.summary || (s.scheduleType === 'ONCE' ? 'One-time'
+              : s.cron) }}</span>
+            <span class="erf__chip erf__chip--window" title="Executions included in each send">
+              <lucide-icon name="calendar-range" [size]="12"></lucide-icon>
+              {{ dataWindowLabel(s.dataWindow) }}
+            </span>
+            <span class="erf__badge" [class.erf__badge--paused]="!s.enabled">{{ s.enabled ? 'Active'
+              : 'Paused' }}</span>
+            @if (s.singleThread) { <span class="erf__badge erf__badge--muted">Threaded</span> }
+          </div>
+
+          <!-- 2. The subject line, the way it lands in an inbox. -->
+          <p class="erf__sched-subject">
+            <lucide-icon name="mail" [size]="14"></lucide-icon>
+            {{ s.subject }}
+          </p>
+
+          <!-- 3. Who receives it — To and Cc each get their own row. -->
+          <div class="erf__recip-row">
+            <span class="erf__recip-label">To</span>
+            <div class="erf__pills">
+              @for (to of s.recipientsTo || []; track to) {
+              <span class="erf__pill erf__pill--to">
+                <span class="erf__avatar erf__avatar--to">{{ initial(to) }}</span>{{ to }}
+              </span>
+              }
+            </div>
+          </div>
+          @if ((s.recipientsCc || []).length > 0) {
+          <div class="erf__recip-row">
+            <span class="erf__recip-label">Cc</span>
+            <div class="erf__pills">
+              @for (cc of s.recipientsCc || []; track cc) {
+              <span class="erf__pill erf__pill--cc">
+                <span class="erf__avatar erf__avatar--cc">{{ initial(cc) }}</span>{{ cc }}
+              </span>
+              }
+            </div>
+          </div>
+          }
+
+          <!-- 4. Run history, deliberately the quietest line. -->
+          @if (s.nextRunAt || s.lastRunStatus) {
+          <div class="erf__sched-meta">
+            @if (s.nextRunAt) {
+            <span>Next <strong>{{ s.nextRunAt | date: 'd MMM, h:mm a' }}</strong></span>
+            }
+            @if (s.lastRunStatus) {
+            <span class="erf__run" [class.erf__run--ok]="s.lastRunStatus === 'SUCCESS'"
+              [class.erf__run--fail]="s.lastRunStatus === 'FAILED'"
+              [class.erf__run--none]="s.lastRunStatus === 'NO_DATA'"
+              [title]="s.lastError || ''">
+              <span class="erf__run-dot" aria-hidden="true"></span>
+              Last run: <strong>{{ s.lastRunStatus }}</strong>
+            </span>
+            }
+          </div>
+          }
+        </div>
+        <div class="erf__sched-actions">
+          <button type="button" title="Run now" (click)="runScheduleNow(s)">
+            <lucide-icon name="send" [size]="15"></lucide-icon>
+          </button>
+          <button type="button" [title]="s.enabled ? 'Pause' : 'Resume'"
+            (click)="toggleSchedule(s)">
+            <lucide-icon [name]="s.enabled ? 'pause' : 'play'" [size]="15"></lucide-icon>
+          </button>
+          <button type="button" title="Edit" (click)="openEditSchedule(s)">
+            <lucide-icon name="pencil" [size]="15"></lucide-icon>
+          </button>
+          <button type="button" title="Delete" class="erf__danger" (click)="deleteSchedule(s)">
+            <lucide-icon name="trash-2" [size]="15"></lucide-icon>
+          </button>
+        </div>
+      </div>
+      }
+    </div>
+    }
+
+  </section>
+  }
+  }
+
+  <!-- Report save footer (not on the Schedules tab — schedules persist on their own) -->
+  @if (activeTab() !== 'schedules') {
+  <div class="erf__footer">
+    <button type="button" class="erf__btn erf__btn--ghost" (click)="cancel()">Cancel</button>
+    <button type="button" class="erf__btn erf__btn--primary" (click)="save()" [disabled]="saving()">
+      {{ saving() ? 'Saving…' : (isEdit() ? 'Save Changes' : 'Create Report') }}
+    </button>
+  </div>
+  }
+
+  @if (showScheduleModal()) {
+  <app-email-schedule-modal [reportId]="reportId()!" [schedule]="editingSchedule()"
+    (saved)="onScheduleSaved()" (cancelled)="closeScheduleModal()">
+  </app-email-schedule-modal>
+  }
+</div>

@@ -1,0 +1,44 @@
+<main class="gate">
+  <section class="gate-card" aria-labelledby="login-title">
+    <div class="brand">
+      <img class="brand-mark" src="favicon.svg" alt="" width="40" height="40" />
+      <span class="brand-txt"><b>Clarix</b><small>Workflows and calls</small></span>
+    </div>
+
+    <header class="head">
+      <h1 id="login-title">Sign in</h1>
+      <p>Run calling campaigns from a sheet and get every answer back.</p>
+    </header>
+
+    @if (demo) {
+      <p class="note">Demo with sample data. No account needed.</p>
+    }
+
+    <button type="button" class="sso-btn" (click)="handleMicrosoftLogin()" [disabled]="isLoading()"
+      [attr.aria-label]="demo ? 'Open the demo workspace' : 'Sign in with Microsoft'">
+      @if (isLoading()) {
+        <lucide-icon class="spin" name="loader-circle" [size]="16" aria-hidden="true"></lucide-icon>
+        <span>Signing in&hellip;</span>
+      } @else if (demo) {
+        <lucide-icon name="arrow-right" [size]="16" aria-hidden="true"></lucide-icon>
+        <span>Open the demo workspace</span>
+      } @else {
+        <svg class="ms-logo" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+          <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+          <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+          <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+        </svg>
+        <span>Continue with Microsoft</span>
+      }
+    </button>
+
+    <!-- What happens after sign in, in three steps. -->
+    <ol class="steps" aria-label="How Clarix works">
+      <li><span class="n">01</span> Upload a sheet</li>
+      <li><span class="n">02</span> Agents call</li>
+      <li><span class="n">03</span> Download answers</li>
+    </ol>
+  </section>
+  <p class="foot">Single sign on with your work account.</p>
+</main>

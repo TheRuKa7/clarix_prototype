@@ -1,0 +1,117 @@
+{
+    "root": true,
+    "ignorePatterns": [
+        "dist/*",
+        "node_modules/*",
+        "public/*"
+    ],
+    "overrides": [
+        {
+            "files": [
+                "*.ts"
+            ],
+            "parser": "@typescript-eslint/parser",
+            "parserOptions": {
+                "project": [
+                    "tsconfig.json",
+                    "tsconfig.app.json",
+                    "tsconfig.spec.json"
+                ],
+                "createDefaultProgram": true,
+                "ecmaVersion": 2024,
+                "sourceType": "module"
+            },
+            "extends": [
+                "eslint:recommended",
+                "plugin:@typescript-eslint/recommended",
+                "plugin:@angular-eslint/recommended",
+                "prettier"
+            ],
+            "rules": {
+                "quotes": [
+                    "error",
+                    "single",
+                    {
+                        "avoidEscape": true
+                    }
+                ],
+                "semi": [
+                    "error",
+                    "always"
+                ],
+                "@typescript-eslint/no-unused-vars": [
+                    "error",
+                    {
+                        "argsIgnorePattern": "^_",
+                        "varsIgnorePattern": "^_",
+                        "ignoreRestSiblings": true
+                    }
+                ],
+                "@typescript-eslint/no-explicit-any": "off",
+                "no-console": [
+                    "warn",
+                    {
+                        "allow": [
+                            "error"
+                        ]
+                    }
+                ],
+                "no-debugger": "error",
+                "no-duplicate-imports": "error",
+                "prefer-const": "error",
+                "no-var": "error",
+                "object-shorthand": "error",
+                "prefer-arrow-callback": "error",
+                "no-unused-expressions": "error",
+                "eqeqeq": [
+                    "error",
+                    "always"
+                ],
+                "curly": [
+                    "error",
+                    "all"
+                ],
+                "no-eval": "error",
+                "no-implied-eval": "error",
+                "no-new-func": "error",
+                "no-script-url": "error",
+                "complexity": [
+                    "warn",
+                    10
+                ],
+                "max-depth": [
+                    "warn",
+                    4
+                ],
+                "max-lines-per-function": [
+                    "warn",
+                    50
+                ],
+                "max-params": [
+                    "warn",
+                    4
+                ],
+                "@typescript-eslint/explicit-function-return-type": "off",
+                "@typescript-eslint/no-inferrable-types": "error",
+                "@typescript-eslint/prefer-nullish-coalescing": "error",
+                "@typescript-eslint/prefer-optional-chain": "error",
+                "@typescript-eslint/no-unnecessary-type-assertion": "error",
+                "@typescript-eslint/prefer-as-const": "error",
+                "@typescript-eslint/no-non-null-assertion": "warn"
+            }
+        },
+        {
+            "files": [
+                "*.html"
+            ],
+            "extends": [
+                "plugin:@angular-eslint/template/recommended"
+            ],
+            "rules": {
+                "@angular-eslint/template/no-negated-async": "error",
+                "@angular-eslint/template/prefer-self-closing-tags": "error",
+                "@angular-eslint/template/prefer-control-flow": "error"
+            }
+        }
+    ]
+}

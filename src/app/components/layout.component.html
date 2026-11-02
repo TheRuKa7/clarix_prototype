@@ -1,0 +1,29 @@
+<div class="app-layout" [class.sn-pinned]="pinned()">
+  <app-side-nav [(pinned)]="pinned" [(drawer)]="drawer"></app-side-nav>
+
+  <div class="main-wrapper">
+    <!-- Phones only: the side bar is a drawer, so a slim bar holds the menu button and the page name.
+         On larger screens there is no header: each page shows its own title, the side bar shows where you are. -->
+    <header class="tb">
+      <button type="button" class="tb-menu" (click)="drawer.set(true)" aria-label="Open menu" [attr.aria-expanded]="drawer()"><lucide-icon name="menu" [size]="18"></lucide-icon></button>
+      <img class="tb-mark" src="favicon.svg" alt="" width="26" height="26" />
+      <span class="tb-title">{{ here()?.label ?? 'Clarix' }}</span>
+    </header>
+
+    <main class="main-content">
+      <div class="content-container">
+        @if (tabs().length > 1) {
+          <!-- Sections with several pages keep their page tabs, above the page. -->
+          <nav class="sub-tabs" [attr.aria-label]="(here()?.group ?? 'Section') + ' pages'">
+            @for (t of tabs(); track t.route) {
+              <a class="sub-tab" [routerLink]="t.route" routerLinkActive="active" ariaCurrentWhenActive="page">{{ t.label }}</a>
+            }
+          </nav>
+        }
+        <router-outlet></router-outlet>
+      </div>
+    </main>
+  </div>
+
+  <app-toast-container></app-toast-container>
+</div>

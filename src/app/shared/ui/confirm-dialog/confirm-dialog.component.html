@@ -1,0 +1,38 @@
+@if (request(); as req) {
+  <div class="cd-backdrop" (click)="cancel()">
+    <div
+      class="cd-card"
+      role="alertdialog"
+      aria-modal="true"
+      [attr.aria-label]="req.title || req.message"
+      (click)="$event.stopPropagation()">
+
+      <div class="cd-body">
+        <div class="cd-icon" [class.cd-icon--danger]="req.tone === 'danger'">
+          <lucide-icon [name]="req.icon || (req.tone === 'danger' ? 'alert-triangle' : 'help-circle')" [size]="20"></lucide-icon>
+        </div>
+        <div class="cd-text">
+          @if (req.title) {
+            <h2 class="cd-title">{{ req.title }}</h2>
+          }
+          <p class="cd-message">{{ req.message }}</p>
+        </div>
+      </div>
+
+      <div class="cd-footer">
+        <button type="button" class="cd-btn cd-btn--ghost" (click)="cancel()">
+          {{ req.cancelText }}
+        </button>
+        <button
+          type="button"
+          class="cd-btn"
+          [class.cd-btn--danger]="req.tone === 'danger'"
+          [class.cd-btn--primary]="req.tone !== 'danger'"
+          (click)="confirm()"
+          autofocus>
+          {{ req.confirmText }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

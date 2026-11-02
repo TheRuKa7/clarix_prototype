@@ -1,0 +1,135 @@
+.tp {
+  position: relative;
+  min-width: 0;
+}
+
+.tp__trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  text-align: left;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text, var(--ds-text));
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--ds-accent-border);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &--placeholder .tp__label {
+    color: var(--text-muted, var(--ds-text-placeholder));
+  }
+}
+
+.tp__trigger-icon {
+  color: var(--text-muted, var(--ds-text-placeholder));
+  flex-shrink: 0;
+}
+
+.tp__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp__caret {
+  color: var(--text-muted, var(--ds-text-placeholder));
+  flex-shrink: 0;
+}
+
+.tp__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 260px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.tp__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-color, var(--ds-border));
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.tp__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  background: transparent;
+  color: var(--text, var(--ds-text));
+}
+
+// Caps the drop-down at roughly seven rows before it scrolls, rather than running off screen.
+.tp__options {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.tp__option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+  }
+
+  &--active {
+    background: var(--ds-accent-soft);
+  }
+}
+
+.tp__option-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-strong, var(--ds-text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp__option-key {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-family: var(--ds-mono);
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.tp__state {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--text-muted, var(--ds-text-muted));
+}

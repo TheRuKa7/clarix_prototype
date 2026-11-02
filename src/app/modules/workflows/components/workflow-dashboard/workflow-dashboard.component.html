@@ -1,0 +1,150 @@
+<section class="dashboard" aria-label="Workflow analytics">
+  <header class="dashboard-header">
+    <div class="dashboard-title-group">
+      <h2 class="dashboard-title">Analytics</h2>
+      @if (data() && !loading()) {
+        <span class="dashboard-meta">
+          {{ kpis()?.totalExecutions ?? 0 }} executions · {{ granularityLabel() }} buckets
+        </span>
+      }
+    </div>
+    <div class="dashboard-actions">
+      <button
+        type="button"
+        class="icon-btn"
+        (click)="refresh()"
+        [disabled]="loading()"
+        aria-label="Refresh analytics">
+        <lucide-icon name="refresh-cw" [size]="16" [class.animate-spin]="loading()"></lucide-icon>
+      </button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="dashboard-error" role="alert">
+      <lucide-icon name="triangle-alert" [size]="16"></lucide-icon>
+      <span>{{ error() }}</span>
+    </div>
+  }
+
+  <div class="kpi-row">
+      <app-dashboard-kpi-card
+        label="Total"
+        [value]="kpis()?.totalExecutions ?? 0"
+        icon="zap"></app-dashboard-kpi-card>
+      <app-dashboard-kpi-card
+        label="Completed"
+        [value]="kpis()?.completed ?? 0"
+        [hint]="completionPctDisplay() + ' completion rate'"
+        icon="check-circle"
+        tone="positive"></app-dashboard-kpi-card>
+      <app-dashboard-kpi-card
+        label="In Progress"
+        [value]="kpis()?.inProgress ?? 0"
+        icon="loader"
+        tone="info"></app-dashboard-kpi-card>
+      <app-dashboard-kpi-card
+        label="Failed"
+        [value]="kpis()?.failed ?? 0"
+        icon="x-circle"
+        tone="negative"></app-dashboard-kpi-card>
+      <app-dashboard-kpi-card
+        label="Avg Duration"
+        [value]="avgDurationDisplay()"
+        icon="clock"></app-dashboard-kpi-card>
+      <app-dashboard-kpi-card
+        label="Reachable"
+        [value]="reachablePctDisplay()"
+        hint="Contact resolved"
+        icon="phone"></app-dashboard-kpi-card>
+    </div>
+
+  <button
+    type="button"
+    class="charts-toggle"
+    (click)="toggleCharts()"
+    [attr.aria-expanded]="chartsExpanded()">
+    <lucide-icon [name]="chartsExpanded() ? 'chevron-up' : 'chevron-down'" [size]="16"></lucide-icon>
+    <span>{{ chartsExpanded() ? 'Hide charts' : 'View full dashboard' }}</span>
+  </button>
+
+  @if (chartsExpanded()) {
+    <div class="chart-grid chart-grid-2">
+      <app-dashboard-chart-card
+        title="Status breakdown"
+        subtitle="Distribution by current state"
+        [loading]="loading()"
+        [empty]="!loading() && !hasStatusData()">
+        <apx-chart
+          [series]="statusChart().series"
+          [chart]="statusChart().chart"
+          [labels]="statusChart().labels"
+          [colors]="statusChart().colors"
+          [legend]="statusChart().legend"
+          [dataLabels]="statusChart().dataLabels"
+          [stroke]="statusChart().stroke"
+          [tooltip]="statusChart().tooltip"
+          [plotOptions]="statusChart().plotOptions"
+          [theme]="statusChart().theme"
+        ></apx-chart>
+      </app-dashboard-chart-card>
+
+      <app-dashboard-chart-card
+        title="Call duration"
+        subtitle="How long answered calls lasted"
+        [loading]="loading()"
+        [empty]="!loading() && !hasDurationData()">
+        <apx-chart
+          [series]="durationChart().series"
+          [chart]="durationChart().chart"
+          [xaxis]="durationChart().xaxis"
+          [yaxis]="durationChart().yaxis"
+          [colors]="durationChart().colors"
+          [plotOptions]="durationChart().plotOptions"
+          [dataLabels]="durationChart().dataLabels"
+          [legend]="durationChart().legend"
+          [tooltip]="durationChart().tooltip"
+          [fill]="durationChart().fill"
+          [theme]="durationChart().theme"
+        ></apx-chart>
+      </app-dashboard-chart-card>
+    </div>
+
+    <app-dashboard-chart-card
+      title="Executions over time"
+      [subtitle]="granularityLabel() + ' buckets'"
+      [loading]="loading()"
+      [empty]="!loading() && !hasTimeSeriesData()">
+      <apx-chart
+        [series]="timeSeriesChart().series"
+        [chart]="timeSeriesChart().chart"
+        [xaxis]="timeSeriesChart().xaxis"
+        [yaxis]="timeSeriesChart().yaxis"
+        [colors]="timeSeriesChart().colors"
+        [stroke]="timeSeriesChart().stroke"
+        [dataLabels]="timeSeriesChart().dataLabels"
+        [legend]="timeSeriesChart().legend"
+        [tooltip]="timeSeriesChart().tooltip"
+        [fill]="timeSeriesChart().fill"
+        [theme]="timeSeriesChart().theme"
+      ></apx-chart>
+    </app-dashboard-chart-card>
+
+    @if (fieldBreakdowns().length > 0) {
+      <div class="field-section">
+        <h3 class="field-section-title">Collected responses</h3>
+        <div class="chart-grid chart-grid-3">
+          @for (fb of fieldBreakdowns(); track fb.fieldKey) {
+            <app-dashboard-chart-card
+              [title]="fb.fieldLabel"
+              [subtitle]="fb.totalAnswered + ' answered · ' + fb.totalUnanswered + ' unanswered'"
+              [loading]="loading()">
+              <app-dynamic-field-chart [breakdown]="fb"></app-dynamic-field-chart>
+            </app-dashboard-chart-card>
+          }
+        </div>
+      </div>
+    }
+  }
+</section>
+

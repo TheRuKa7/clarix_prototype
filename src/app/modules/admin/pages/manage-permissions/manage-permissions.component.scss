@@ -1,0 +1,382 @@
+@use '../../../../../styles/ds' as ds;
+.admin-page {
+  @apply w-full max-w-screen-2xl mx-auto space-y-6 px-4 py-6;
+}
+
+.page-header {
+  @apply flex items-start justify-between mb-2;
+}
+
+.page-title {
+  @apply text-2xl font-bold text-gray-900 dark:text-white mb-1;
+}
+
+.page-description {
+  @apply text-gray-600 dark:text-gray-400;
+}
+
+.header-actions {
+  @apply flex items-center gap-3;
+}
+
+.create-btn { @include ds.btn(primary); }
+
+/* Tabs */
+.tabs { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--ds-border); }
+
+.tab {
+  display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 40px; font-size: 13px; font-weight: 550;
+  color: var(--ds-text-muted); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer;
+  transition: color 0.12s ease, border-color 0.15s var(--ds-ease);
+  &:hover { color: var(--ds-text); border-bottom-color: var(--ds-border-strong); }
+  &:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+}
+.tab.active { color: var(--ds-text); border-bottom-color: var(--ds-text); }
+.tab-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 6px; border-radius: var(--ds-r-sm);
+  background: var(--ds-surface-sunken); color: var(--ds-text-2); font-family: var(--ds-mono); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+
+/* Banner */
+.banner {
+  @apply flex items-start gap-2 p-3 rounded-lg border;
+}
+
+.banner-error {
+  @apply bg-red-50 border-red-200 text-red-700
+         dark:bg-red-900/30 dark:border-red-700 dark:text-red-200;
+}
+
+.banner-dismiss {
+  @apply ml-auto p-1 hover:opacity-70;
+}
+
+/* Filters */
+.filters-section {
+  @apply flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3
+         border border-gray-200 dark:border-gray-700;
+}
+
+.search-box {
+  @apply relative flex-1;
+}
+
+.search-icon {
+  @apply absolute left-3 top-1/2 -translate-y-1/2 text-gray-400;
+}
+
+.search-input {
+  @apply w-full pl-9 pr-3 py-2 bg-transparent border border-gray-300 dark:border-gray-600
+         rounded-lg text-sm text-gray-900 dark:text-gray-100
+         focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.filter-select {
+  @apply px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+         bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100
+         focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+/* States */
+.loading-state,
+.empty-state {
+  @apply flex flex-col items-center justify-center gap-3 py-12
+         text-gray-500 dark:text-gray-400;
+}
+
+.loading-spinner {
+  @apply w-8 h-8 border-2 border-gray-300 dark:border-gray-600
+         border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin;
+}
+
+/* Data table */
+.data-table {
+  @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden;
+}
+
+.data-table table {
+  @apply w-full text-sm;
+}
+
+.data-table thead {
+  @apply bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 uppercase text-xs tracking-wide;
+}
+
+.data-table th,
+.data-table td {
+  @apply px-4 py-3 text-left;
+}
+
+.data-table tbody tr {
+  @apply border-t border-gray-100 dark:border-gray-700/60;
+}
+
+.data-table tbody tr:hover {
+  @apply bg-gray-50/70 dark:bg-gray-700/30;
+}
+
+.actions-col {
+  @apply w-px whitespace-nowrap text-right;
+}
+
+.description-cell {
+  @apply max-w-md text-gray-600 dark:text-gray-400 truncate;
+}
+
+.muted {
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+.key-chip {
+  display: inline-block; padding: 1px 6px; border-radius: var(--ds-r-xs); background: var(--ds-surface-sunken); border: 1px solid var(--ds-border);
+  font-family: var(--ds-mono); font-size: 11px; color: var(--ds-text-2);
+}
+.category-chip { @include ds.badge(info, false); }
+
+.permission-list {
+  @apply flex flex-wrap gap-1.5;
+}
+
+.permission-chip {
+  @apply inline-block px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40
+         text-xs font-mono text-indigo-700 dark:text-indigo-200;
+}
+
+.icon-btn {
+  @apply inline-flex items-center justify-center w-8 h-8 rounded-md
+         text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700
+         transition-colors;
+}
+
+.icon-btn:disabled {
+  @apply opacity-40 cursor-not-allowed;
+}
+
+.icon-btn-danger:hover {
+  @apply text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30;
+}
+
+/* Modules card grid */
+.module-grid {
+  @apply grid gap-4;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+}
+
+.module-card {
+  @apply flex flex-col gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700
+         bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow;
+}
+
+.module-card-header {
+  @apply flex items-start justify-between gap-3;
+}
+
+.module-card-title-block {
+  @apply flex flex-col gap-1 min-w-0;
+}
+
+.module-card-title {
+  @apply text-base font-semibold text-gray-900 dark:text-white truncate;
+}
+
+.module-card-actions {
+  @apply flex items-center gap-1 flex-shrink-0;
+}
+
+.module-card-disabled {
+  @apply opacity-60;
+}
+
+.module-card-disabled .module-card-title {
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+/* Toggle switch */
+.toggle-switch {
+  @apply relative inline-flex items-center cursor-pointer mr-1;
+}
+
+.toggle-switch input {
+  @apply sr-only;
+}
+
+.toggle-track {
+  @apply relative inline-block w-9 h-5 rounded-full bg-gray-300 dark:bg-gray-600
+         transition-colors;
+}
+
+.toggle-thumb {
+  @apply absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow
+         transition-transform;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  @apply bg-blue-600 dark:bg-blue-500;
+}
+
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  @apply translate-x-4;
+}
+
+.toggle-switch input:focus-visible + .toggle-track {
+  @apply ring-2 ring-offset-2 ring-blue-500 dark:ring-offset-gray-800;
+}
+
+.module-card-description {
+  @apply text-sm text-gray-600 dark:text-gray-400 line-clamp-3;
+}
+
+.module-card-section {
+  @apply flex flex-col gap-2 pt-2 border-t border-gray-100 dark:border-gray-700;
+}
+
+.module-card-section-header {
+  @apply inline-flex items-center gap-1.5 text-xs uppercase tracking-wide
+         font-medium text-gray-500 dark:text-gray-400;
+}
+
+.module-card-count {
+  @apply ml-auto inline-flex items-center justify-center min-w-[1.25rem] px-1.5 h-4
+         rounded-full bg-indigo-50 dark:bg-indigo-900/40
+         text-indigo-700 dark:text-indigo-200 text-[10px] font-semibold;
+}
+
+.module-card-footer {
+  @apply flex items-center justify-between gap-2 pt-2 mt-auto
+         text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700;
+}
+
+.module-card-meta {
+  @apply inline-flex items-center gap-1;
+}
+
+.pagination {
+  @apply flex flex-wrap items-center justify-between gap-3 mt-3;
+}
+
+.pagination-info {
+  @apply text-sm text-gray-600 dark:text-gray-400;
+}
+
+.pagination-controls {
+  @apply flex items-center gap-2;
+}
+
+.page-size {
+  @apply flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400;
+}
+
+.page-size select {
+  @apply border border-gray-300 dark:border-gray-600 rounded px-2 py-1
+         bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100;
+}
+
+.page-indicator {
+  @apply text-sm text-gray-700 dark:text-gray-200 min-w-[7rem] text-center;
+}
+
+/* Modal */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black/40 z-40;
+}
+
+.modal {
+  @apply fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
+         w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-xl
+         border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-hidden
+         flex flex-col;
+}
+
+.modal-wide {
+  @apply max-w-2xl;
+}
+
+.modal-header {
+  @apply flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700;
+}
+
+.modal-header h2 {
+  @apply text-lg font-semibold text-gray-900 dark:text-white;
+}
+
+.modal-body {
+  @apply px-5 py-4 space-y-4 overflow-y-auto;
+}
+
+.field {
+  @apply flex flex-col gap-1;
+}
+
+.field-row {
+  @apply grid grid-cols-1 md:grid-cols-2 gap-4;
+}
+
+.field label,
+.field legend {
+  @apply text-sm font-medium text-gray-700 dark:text-gray-200;
+}
+
+.field input,
+.field textarea,
+.field select {
+  @apply px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+         bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100
+         focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.field-hint {
+  @apply text-xs text-gray-500 dark:text-gray-400;
+}
+
+.field-error {
+  @apply text-xs text-red-600 dark:text-red-300;
+}
+
+.modal-footer {
+  @apply flex items-center justify-end gap-2 pt-4 border-t border-gray-100 dark:border-gray-700;
+}
+
+.btn-primary {
+  @apply px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+         text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700;
+}
+
+/* Permission picker inside module modal */
+.permission-picker {
+  @apply max-h-72 overflow-y-auto border border-gray-200 dark:border-gray-700
+         rounded-lg p-3 space-y-3;
+}
+
+.permission-group {
+  @apply border-0 p-0 m-0;
+}
+
+.permission-group legend {
+  @apply text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1;
+}
+
+.permission-group-toggle {
+  @apply text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 font-medium;
+}
+
+.permission-select-all {
+  @apply pb-2 mb-1 border-b border-gray-200 dark:border-gray-700 text-sm
+         text-gray-900 dark:text-gray-100;
+}
+
+.permission-option {
+  @apply flex items-center gap-2 py-1 cursor-pointer;
+}
+
+.permission-option input[type="checkbox"] {
+  @apply h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500;
+}
+
+.permission-display {
+  @apply text-xs text-gray-500 dark:text-gray-400;
+}

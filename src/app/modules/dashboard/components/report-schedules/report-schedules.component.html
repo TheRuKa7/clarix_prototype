@@ -1,0 +1,104 @@
+<div class="rx-backdrop" (click)="closed.emit()">
+  <div class="rx-modal" role="dialog" aria-modal="true" aria-label="Reports by email" (click)="$event.stopPropagation()">
+    <div class="rx-modal-head">
+      <h2 class="rx-modal-title">{{ form() ? (form()!.id ? 'Change report' : 'New report by email') : 'Reports by email' }}</h2>
+      <button type="button" class="rx-icon-btn" (click)="form() ? form.set(null) : closed.emit()" [attr.aria-label]="form() ? 'Back to the list' : 'Close'">
+        <lucide-icon [name]="form() ? 'arrow-left' : 'x'" [size]="16"></lucide-icon>
+      </button>
+    </div>
+
+    @if (!form()) {
+      <div class="rx-modal-body">
+        @if (error()) { <p class="rx-note" role="alert">{{ error() }}</p> }
+        @if (!list().length) {
+          <div class="rx-empty"><lucide-icon name="mail" [size]="20"></lucide-icon><b>Nothing is sent yet</b><span>Add a report and it arrives by email on the days you pick.</span></div>
+        }
+        @for (s of list(); track s.id) {
+          <div class="rs-row" [class.off]="!s.on">
+            <label class="rx-switch" [title]="s.on ? 'Sending. Switch off to pause.' : 'Paused'"><input type="checkbox" [checked]="s.on" (change)="toggle(s)" [attr.aria-label]="'Send ' + s.name" /><i></i></label>
+            <div class="rs-main">
+              <b>{{ s.name }}</b>
+              <span class="rx-sub">{{ agentLabel(s) }} · {{ when(s) }} · to {{ s.recipients.length }} {{ s.recipients.length === 1 ? 'person' : 'people' }} · {{ formatsLabel(s) }}</span>
+              <span class="rx-sub">{{ s.last_sent_at ? 'Last sent ' + ago(s.last_sent_at) : 'Not sent yet' }}@if (sent() === s.id) { <span class="rs-ok"> · sent just now</span> }</span>
+            </div>
+            <button type="button" class="rx-icon-btn" (click)="sendNow(s)" title="Send it now" [attr.aria-label]="'Send ' + s.name + ' now'"><lucide-icon name="send" [size]="15"></lucide-icon></button>
+            <button type="button" class="rx-icon-btn" (click)="edit(s)" title="Change" [attr.aria-label]="'Change ' + s.name"><lucide-icon name="pencil" [size]="15"></lucide-icon></button>
+            <button type="button" class="rx-icon-btn" (click)="removing.set(s)" title="Remove" [attr.aria-label]="'Remove ' + s.name"><lucide-icon name="trash-2" [size]="15"></lucide-icon></button>
+          </div>
+        }
+        @if (removing(); as r) {
+          <div class="rs-confirm" role="alertdialog" aria-label="Remove this report?">
+            <span><b>Remove {{ r.name }}?</b> It will stop being sent to {{ r.recipients.length }} {{ r.recipients.length === 1 ? 'person' : 'people' }}.</span>
+            <button type="button" class="rx-btn rx-btn-sm" (click)="removing.set(null)">Keep</button>
+            <button type="button" class="rx-btn rx-btn-sm rx-btn-danger" (click)="remove(r)">Remove</button>
+          </div>
+        }
+      </div>
+      <div class="rx-modal-foot">
+        <button type="button" class="rx-btn" (click)="closed.emit()">Close</button>
+        <button type="button" class="rx-btn rx-btn-primary" (click)="add()"><lucide-icon name="plus" [size]="14"></lucide-icon> New report</button>
+      </div>
+    } @else {
+      @let f = form()!;
+      <div class="rx-modal-body">
+        @if (error()) { <p class="rx-note" role="alert">{{ error() }}</p> }
+        <label class="rx-field"><span class="rx-label">Name</span><input class="rx-input" [value]="f.name" (input)="patch({ name: val($event) })" placeholder="End of day calling report" maxlength="80" /></label>
+        <div class="rs-two">
+          <div class="rx-field"><span class="rx-label" title="Daily reports cover that day. Weekly reports cover the seven days before.">Send <lucide-icon name="info" [size]="12"></lucide-icon></span>
+            <div class="rx-seg" role="group" aria-label="How often"><button type="button" [class.on]="f.every === 'day'" (click)="setEvery('day')">Daily</button><button type="button" [class.on]="f.every === 'week'" (click)="setEvery('week')">Weekly</button></div>
+          </div>
+          <label class="rx-field"><span class="rx-label" title="India time (IST).">At <lucide-icon name="info" [size]="12"></lucide-icon></span><input class="rx-input" type="time" [value]="f.time" (input)="patch({ time: val($event) })" /></label>
+        </div>
+        <div class="rx-field"><span class="rx-label">{{ f.every === 'week' ? 'On' : 'On these days' }}</span>
+          <div class="rs-days" role="group" aria-label="Days">
+            @for (d of DAYS; track d; let i = $index) { <button type="button" [class.on]="f.weekdays.includes(i)" (click)="toggleDay(i)" [attr.aria-pressed]="f.weekdays.includes(i)">{{ d }}</button> }
+          </div>
+        </div>
+        <div class="rx-field"><span class="rx-label" title="Type an email address and press Enter. Up to 25 people.">To <lucide-icon name="info" [size]="12"></lucide-icon></span>
+          <div class="rs-chips">
+            @for (e of f.recipients; track e) { <span class="rs-chip">{{ e }}<button type="button" (click)="dropRecipient(e)" [attr.aria-label]="'Remove ' + e"><lucide-icon name="x" [size]="11"></lucide-icon></button></span> }
+            <input class="rs-chip-input" [value]="typing()" (input)="typing.set(val($event))" (keydown.enter)="addRecipient($event)" (blur)="addRecipient()" placeholder="name@company.com" aria-label="Add an email address" />
+          </div>
+        </div>
+        <div class="rx-field"><span class="rx-label">Attach</span>
+          <div class="rs-formats">
+            @for (x of FORMATS; track x.key) {
+              <label class="rs-format" [class.on]="f.formats.includes(x.key)" [title]="x.help"><input type="checkbox" [checked]="f.formats.includes(x.key)" (change)="toggleFormat(x.key)" /><lucide-icon [name]="x.icon" [size]="15"></lucide-icon> {{ x.label }}</label>
+            }
+          </div>
+        </div>
+        <details class="rx-adv">
+          <summary>Advanced <span>what the report compares and covers</span></summary>
+          <div class="rx-adv-body">
+            <label class="rx-field"><span class="rx-label" title="All agents sends the calling numbers only. One agent adds its answers.">Agent <lucide-icon name="info" [size]="12"></lucide-icon></span>
+              <select class="rx-select" (change)="setAgent($event)">
+                <option value="" [selected]="!f.agent">All agents</option>
+                @for (a of agents(); track a.key) { <option [value]="a.key" [selected]="f.agent === a.key">{{ a.label }}</option> }
+              </select>
+            </label>
+            <div class="rs-two">
+              <label class="rx-field"><span class="rx-label">Compare by</span>
+                <select class="rx-select" (change)="patch({ by: val($event), value: '' })">
+                  <option value="agent" [selected]="f.by === 'agent'">Agent</option><option value="campaign" [selected]="f.by === 'campaign'">Campaign</option><option value="day" [selected]="f.by === 'day'">Day</option>
+                  @for (c of columns(); track c.key) { <option [value]="c.key" [selected]="f.by === c.key">{{ c.label }}</option> }
+                </select>
+              </label>
+              <label class="rx-field"><span class="rx-label" title="Send one team only its own numbers: pick a column to compare by, then the value this report is about.">Only <lucide-icon name="info" [size]="12"></lucide-icon></span>
+                <select class="rx-select" [disabled]="!values().length" (change)="patch({ value: val($event) })">
+                  <option value="" [selected]="!f.value">Everything</option>
+                  @for (v of values(); track v) { <option [value]="v" [selected]="f.value === v">{{ v }}</option> }
+                </select>
+              </label>
+            </div>
+            <label class="rs-check"><input type="checkbox" [checked]="f.include_follow_ups" (change)="patch({ include_follow_ups: checked($event) })" /> Include the list of contacts that need follow up</label>
+          </div>
+        </details>
+      </div>
+      <div class="rx-modal-foot">
+        <span class="rx-sub rs-next">{{ preview() }}</span>
+        <button type="button" class="rx-btn" (click)="form.set(null)">Cancel</button>
+        <button type="button" class="rx-btn rx-btn-primary" [disabled]="busy()" (click)="save()">{{ busy() ? 'Saving…' : f.id ? 'Save' : 'Start sending' }}</button>
+      </div>
+    }
+  </div>
+</div>

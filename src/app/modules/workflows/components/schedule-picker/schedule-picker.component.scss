@@ -1,0 +1,203 @@
+// Consistent with the surrounding modal: indigo primary + neutral grays (not the mockup's purple).
+$primary: var(--primary, var(--ds-accent));
+$active-bg: var(--ds-accent-soft);
+$active-border: var(--ds-accent-border);
+$active-text: var(--ds-accent-hover);
+
+.sp {
+  // No card outline — blends into the modal body like the fields above it.
+  padding: 0;
+}
+
+.sp__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sp__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: $active-bg;
+  color: $primary;
+}
+
+.sp__title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sp__subtitle {
+  font-size: 13px;
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.sp__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, var(--ds-text-placeholder));
+  margin: 16px 0 8px;
+}
+
+.sp__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sp__pill {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--ds-surface-sunken);
+  color: var(--ds-text-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--ds-border);
+  }
+
+  &--active {
+    background: $active-bg;
+    color: $active-text;
+    border-color: $active-border;
+  }
+}
+
+.sp__days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sp__day {
+  min-width: 52px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--ds-surface-sunken);
+  color: var(--ds-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--ds-border);
+  }
+
+  &--active {
+    background: $active-bg;
+    color: $active-text;
+    border-color: $active-border;
+  }
+}
+
+.sp__time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp__colon {
+  color: var(--text-muted, var(--ds-text-placeholder));
+  font-weight: 700;
+}
+
+.sp__select {
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  background: var(--input-bg, #fff);
+  color: inherit;
+  font-size: 14px;
+  min-width: 84px;
+
+  &--wide {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+.sp__ampm {
+  display: inline-flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color, var(--ds-border));
+  margin-left: 4px;
+}
+
+.sp__ampm-btn {
+  padding: 9px 16px;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-2);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &--active {
+    background: $primary;
+    color: var(--ds-on-accent);
+  }
+}
+
+.sp__stepper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sp__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  background: var(--surface, #fff);
+  color: $primary;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.sp__interval {
+  font-size: 15px;
+
+  strong {
+    font-size: 18px;
+  }
+}
+
+.sp__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: $active-bg;
+  color: $active-text;
+  font-size: 14px;
+  font-weight: 500;
+
+  lucide-icon {
+    color: $primary;
+  }
+}

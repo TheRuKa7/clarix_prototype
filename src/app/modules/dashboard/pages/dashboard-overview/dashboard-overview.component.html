@@ -1,0 +1,191 @@
+<div class="rx-page">
+  <div class="rx-head">
+    <h1 class="rx-title">Dashboard</h1>
+    <div class="rx-actions">
+      @if ((data()?.active_calls ?? 0) > 0) { <span class="rx-live"><i></i>{{ data()!.active_calls }} on the line</span> }
+      <select class="rx-select db-agent" [class.on]="!!agent()" (change)="pickAgent($event)" aria-label="Agent" title="Pick one agent to see its own answers">
+        <option value="" [selected]="!agent()">All agents</option>
+        @for (a of agents(); track a.key) { <option [value]="a.key" [selected]="agent() === a.key">{{ a.label }}</option> }
+      </select>
+      <div class="rx-seg" role="group" aria-label="Period">
+        @for (w of WINDOWS; track w.days) { <button type="button" [class.on]="days() === w.days" (click)="days.set(w.days)">{{ w.label }}</button> }
+      </div>
+      <button type="button" class="rx-icon-btn" (click)="refresh()" [disabled]="report.isLoading()" title="Refresh" aria-label="Refresh"><lucide-icon name="refresh-cw" [size]="15"></lucide-icon></button>
+      <app-report-share [summary]="data()" [days]="days()" [by]="by()" [byLabel]="byLabel()" [period]="period()" [agent]="agent()" [agents]="agents()"></app-report-share>
+    </div>
+  </div>
+
+  @if (report.error()) { <p class="rx-note" role="alert">Could not load the dashboard. <button type="button" class="rx-link" (click)="refresh()">Try again</button></p> }
+
+  <!-- The whole operation as one flow: each step says how many made it and what share of the step before. -->
+  <div class="rx-card db-funnel">
+    <div class="db-step" title="Contacts dialled at least once in this period.">
+      <span class="db-k"><lucide-icon name="phone-outgoing" [size]="14"></lucide-icon> Dialled</span><b>{{ total().dialled }}</b><small>{{ total().contacts }} contacts</small>
+    </div>
+    <lucide-icon class="db-arrow" name="chevron-right" [size]="18"></lucide-icon>
+    <div class="db-step" title="Call picked up on at least one dial.">
+      <span class="db-k"><lucide-icon name="phone" [size]="14"></lucide-icon> Reached</span><b>{{ total().reached }}</b><small>{{ pc(total().reached, total().dialled) }}% of {{ total().dialled }}</small>
+    </div>
+    <lucide-icon class="db-arrow" name="chevron-right" [size]="18"></lucide-icon>
+    <div class="db-step" title="Call status Completed: the caller spoke and the agent finished.">
+      <span class="db-k"><lucide-icon name="message-square" [size]="14"></lucide-icon> Completed</span><b>{{ total().completed }}</b><small>{{ pc(total().completed, total().reached) }}% of {{ total().reached }}</small>
+    </div>
+    <a class="db-step db-follow" routerLink="/workflows/follow-ups" [class.none]="!total().follow_up" title="Contacts calling cannot settle: blocked, wrong number, declined, or every try used. Open Follow ups.">
+      <span class="db-k"><lucide-icon name="user-check" [size]="14"></lucide-icon> Needs follow up</span><b>{{ total().follow_up }}</b><small>a person takes these</small>
+    </a>
+    <div class="db-side">
+      <span>Talk time<b>{{ talk(total().talk_seconds) }}</b></span>
+      <span>Still in progress<b>{{ total().in_progress }}</b></span>
+      <span>Campaigns<b>{{ data()?.campaigns ?? 0 }}</b></span>
+    </div>
+  </div>
+
+  @if (data()?.stats) {
+    <app-stat-row [stats]="data()!.stats" [result]="data()!.result" [scope]="rowScope()"></app-stat-row>
+  }
+
+  <div class="rx-card db-mix">
+    <div class="db-mix-head"><span class="rx-card-title">Call status</span><span class="rx-sub">as sent by Echo</span></div>
+    <div class="db-bar" role="img" aria-label="Call status mix">
+      @for (g of groups(); track g.key) { <span [style.width.%]="g.count / groupTotal() * 100" [style.background]="g.color" [title]="g.label + ': ' + g.count"></span> }
+    </div>
+    <div class="db-legend">
+      @for (o of data()?.by_outcome ?? []; track o.key) { <span><i [class]="'g-' + o.group"></i>{{ o.label }} <b>{{ o.count }}</b></span> }
+    </div>
+  </div>
+
+
+      <!-- Input and why calls did not finish: two layers every agent has, built from field types and one fixed reason list. -->
+      <div class="ly-two">
+        @if (input(); as inp) {
+          <div class="rx-card">
+            <div class="rp-head"><span class="rx-card-title">Input</span><lucide-icon name="info" [size]="12" title="Every uploaded row is checked against the agent's own input fields: required, number, date, phone and choice. Rejected rows are never called. Warnings are called, and are worth fixing in the source file."></lucide-icon></div>
+            <div class="ly-nums">
+              <span>Rows uploaded<b>{{ inp.rows }}</b></span><span [class.bad]="inp.rejected">Rejected<b>{{ inp.rejected }}</b></span><span [class.warn]="inp.warned">With warnings<b>{{ inp.warned }}</b></span><span>Clean<b>{{ inp.clean }}</b></span>
+            </div>
+            @if (inp.problems.length) {
+              <div class="ly-list">
+                @for (p of inp.problems; track p.label + p.field) { <div class="ly-row"><span class="ly-kind" [class]="'ly-kind ' + p.kind">{{ p.kind === 'reject' ? 'Rejected' : 'Warning' }}</span><span class="ly-what" [title]="p.label">{{ p.label }}@if (p.field) { <small>{{ p.field }}</small> }</span><b>{{ p.rows }}</b></div> }
+              </div>
+            } @else { <div class="ly-ok">Every row passed the checks.</div> }
+          </div>
+        }
+        @if (why()?.reasons?.length) {
+          <div class="rx-card">
+            <div class="rp-head"><span class="rx-card-title">Picked up, not completed</span><lucide-icon name="info" [size]="12" title="Why a call that was picked up did not finish. The same short list for every agent, recorded on the call."></lucide-icon><span class="rx-grow"></span><span class="rx-sub">{{ why()!.base }} calls</span></div>
+            <div class="ly-why">
+              @for (r of why()!.reasons; track r.key) { <div class="an-row"><span class="an-v">{{ r.label }}</span><span class="an-bar"><i [style.width.%]="pc(r.count, why()!.base)"></i></span><b>{{ r.count }}</b></div> }
+            </div>
+            @if (rowsLine(); as rl) {
+              <div class="ly-nums" style="border-top: 1px solid var(--ds-border); border-bottom: 0" title="For agents that cover several rows on one call.">
+                <span>Rows uploaded<b>{{ rl.uploaded }}</b></span><span>On reached calls<b>{{ rl.on_reached }}</b></span><span>Covered<b>{{ rl.covered }}</b></span><span [class.warn]="rl.not_covered">Not covered<b>{{ rl.not_covered }}</b></span>
+              </div>
+            }
+          </div>
+        } @else if (rowsLine(); as rl) {
+          <div class="rx-card">
+            <div class="rp-head"><span class="rx-card-title">Rows</span><lucide-icon name="info" [size]="12" title="For agents that cover several rows on one call: how many uploaded rows were actually covered."></lucide-icon></div>
+            <div class="ly-nums" style="border-bottom: 0"><span>Rows uploaded<b>{{ rl.uploaded }}</b></span><span>On reached calls<b>{{ rl.on_reached }}</b></span><span>Covered<b>{{ rl.covered }}</b></span><span [class.warn]="rl.not_covered">Not covered<b>{{ rl.not_covered }}</b></span></div>
+          </div>
+        }
+      </div>
+
+  <!-- Answers: only when one agent is chosen, built from that agent's own answer fields. -->
+  @if (agent()) {
+    <div class="rx-card">
+      <div class="rp-head"><span class="rx-card-title" title="What this agent recorded on its calls, taken from its own answer fields. Choices and yes or no answers are counted, numbers are added up, and free text stays in the results file.">Answers <lucide-icon name="info" [size]="12"></lucide-icon></span><span class="rx-grow"></span><span class="rx-sub">{{ agentName() }}</span></div>
+      @if (answers().length) {
+        <div class="an-grid">
+          @for (a of answers(); track a.key) {
+            <div class="an-item">
+              <div class="an-k"><span>{{ a.label }}</span><small>{{ a.answered }} {{ a.unit }}</small></div>
+              @if (a.type === 'number') { <div class="an-num"><b>{{ a.sum }}</b> in total <span>· {{ a.avg }} on average</span></div> }
+              @else { @for (v of a.values ?? []; track v.value) { <div class="an-row"><span class="an-v" [title]="v.value">{{ pretty(v.value) }}</span><span class="an-bar"><i [style.width.%]="pc(v.count, a.answered)"></i></span><b>{{ v.count }}</b></div> } }
+            </div>
+          }
+        </div>
+      } @else { <div class="an-none">No answers to summarise in this period. Choices, yes or no answers and numbers show here once calls complete.</div> }
+    </div>
+  }
+
+  <!-- The same numbers split by agent, campaign, day or any column of the uploaded files. -->
+  <div class="rx-card">
+    <div class="rp-head">
+      <span class="rx-card-title" title="The same numbers split by agent, campaign or day. If your uploaded files have a column whose values repeat, you can split by that too. Pick an agent to see its own answers.">Compare <lucide-icon name="info" [size]="12"></lucide-icon></span>
+      <span class="rx-grow"></span>
+      <div class="rx-seg" role="group" aria-label="Compare by">
+        @for (b of BYS(); track b.key) { <button type="button" [class.on]="by() === b.key" (click)="setBy(b.key)">{{ b.label }}</button> }
+      </div>
+      @if (columns().length) {
+        <select class="rx-select rp-col" [class.on]="isColumn()" (change)="pickColumn($event)" aria-label="Compare by a column of your file">
+          <option value="" [selected]="!isColumn()">A column of your file</option>
+          @for (c of columns(); track c.key) { <option [value]="c.key" [selected]="by() === c.key">{{ c.label }}</option> }
+        </select>
+      }
+    </div>
+    @if (!rows().length) {
+      <div class="rx-empty"><span>Nothing to compare in this period yet.</span></div>
+    } @else {
+      <div class="rp-table" role="table" [attr.aria-label]="'Compared by ' + byLabel()">
+        <div class="rp-tr rp-th" role="row"><span role="columnheader">{{ byLabel() }}</span><span role="columnheader">Dialled</span><span role="columnheader" title="Share of contacts dialled.">Reached</span><span role="columnheader" title="Share of contacts reached.">Completed</span><span role="columnheader">Not reached</span><span role="columnheader">Failed</span><span role="columnheader" title="Contacts calling cannot settle.">Follow up</span></div>
+        @for (r of rows(); track r.key) {
+          <div class="rp-tr" role="row" [class.rp-pick]="by() === 'agent'" [attr.tabindex]="by() === 'agent' ? 0 : null" [attr.title]="by() === 'agent' ? 'See this agent and its answers' : null" (click)="pickRow(r)" (keydown.enter)="pickRow(r)">
+            <span class="rp-name" role="cell" [title]="r.label">{{ rowLabel(r) }}</span>
+            <span class="rx-mono" role="cell">{{ r.dialled }}</span>
+            <span role="cell" class="rp-bar"><i [style.width.%]="pc(r.reached, r.dialled)"></i><b class="rx-mono">{{ r.reached }}</b><small>{{ pc(r.reached, r.dialled) }}%</small></span>
+            <span role="cell" class="rp-bar done"><i [style.width.%]="pc(r.completed, r.reached)"></i><b class="rx-mono">{{ r.completed }}</b><small>{{ pc(r.completed, r.reached) }}%</small></span>
+            <span class="rx-mono" role="cell">{{ r.not_reached }}</span>
+            <span class="rx-mono" role="cell">{{ r.failed }}</span>
+            <span role="cell">@if (r.follow_up) { <a class="rp-follow" routerLink="/workflows/follow-ups" title="Open Follow ups">{{ r.follow_up }}</a> } @else { <span class="rp-zero rx-mono">0</span> }</span>
+          </div>
+        }
+        @if ((data()?.rows?.length ?? 0) > rows().length) { <button type="button" class="rp-more" (click)="showAll.set(true)">Show all {{ data()!.rows.length }}</button> }
+      </div>
+    }
+  </div>
+
+  <div class="rx-card db-trend">
+    <div class="db-mix-head"><span class="rx-card-title">Day by day</span><span class="rx-sub"><i class="db-key grey"></i>Dialled <i class="db-key green"></i>Reached</span></div>
+    @if (!trend().length) { <div class="rx-empty"><span>No calls in this period.</span></div> } @else {
+      <div class="db-bars">
+        @for (d of trend(); track d.day) {
+          <div class="db-col" [title]="dayLabel(d.day) + ': ' + d.dialled + ' dialled, ' + d.reached + ' reached, ' + d.completed + ' completed'">
+            <span class="db-n rx-mono">{{ d.dialled }}</span>
+            <span class="db-stack"><i class="grey" [style.height.%]="d.dialled / trendMax() * 100"></i><i class="green" [style.height.%]="d.reached / trendMax() * 100"></i></span>
+            <span class="db-d">{{ dayLabel(d.day, true) }}</span>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Paper layout: what Share, PDF prints. Hidden on screen. -->
+  <section class="print-report" aria-hidden="true">
+    <header><h1>Calling report</h1><p>Clarix · {{ period() }} · made {{ madeAt() }}</p></header>
+    <div class="pr-tiles">
+      <div><small>Dialled</small><b>{{ total().dialled }}</b><span>{{ total().contacts }} contacts</span></div>
+      <div><small>Reached</small><b>{{ total().reached }}</b><span>{{ pc(total().reached, total().dialled) }}% of dialled</span></div>
+      <div><small>Completed</small><b>{{ total().completed }}</b><span>{{ pc(total().completed, total().reached) }}% of reached</span></div>
+      <div><small>Needs follow up</small><b>{{ total().follow_up }}</b><span>a person takes these</span></div>
+    </div>
+    <h2>Call status</h2>
+    <p class="pr-list">@for (o of data()?.by_outcome ?? []; track o.key) { <span>{{ o.label }} <b>{{ o.count }}</b></span> }</p>
+    @if (agent() && answers().length) {
+      <h2>Answers</h2>
+      @for (a of answers(); track a.key) { <p class="pr-list"><b>{{ a.label }}:</b> @if (a.type === 'number') { <span>total <b>{{ a.sum }}</b>, average <b>{{ a.avg }}</b></span> } @else { @for (v of a.values ?? []; track v.value) { <span>{{ pretty(v.value) }} <b>{{ v.count }}</b></span> } }</p> }
+    }
+    @if (input(); as inp) { <h2>Input</h2><p class="pr-list"><span>Rows uploaded <b>{{ inp.rows }}</b></span><span>Rejected <b>{{ inp.rejected }}</b></span><span>With warnings <b>{{ inp.warned }}</b></span>@for (p of inp.problems; track p.label + p.field) { <span>{{ p.label }} <b>{{ p.rows }}</b></span> }</p> }
+    @if (why()?.reasons?.length) { <h2>Picked up, not completed</h2><p class="pr-list">@for (r of why()!.reasons; track r.key) { <span>{{ r.label }} <b>{{ r.count }}</b></span> }</p> }
+    <h2>By {{ byLabel().toLowerCase() }}</h2>
+    <table>
+      <thead><tr><th>{{ byLabel() }}</th><th>Dialled</th><th>Reached</th><th>Completed</th><th>Not reached</th><th>Failed</th><th>Follow up</th></tr></thead>
+      <tbody>@for (r of data()?.rows ?? []; track r.key) { <tr><td>{{ rowLabel(r) }}</td><td>{{ r.dialled }}</td><td>{{ r.reached }} ({{ pc(r.reached, r.dialled) }}%)</td><td>{{ r.completed }} ({{ pc(r.completed, r.reached) }}%)</td><td>{{ r.not_reached }}</td><td>{{ r.failed }}</td><td>{{ r.follow_up }}</td></tr> }</tbody>
+    </table>
+    <h2>Day by day</h2>
+    <table>
+      <thead><tr><th>Day</th><th>Dialled</th><th>Reached</th><th>Completed</th><th>Not reached</th><th>Failed</th></tr></thead>
+      <tbody>@for (r of data()?.trend ?? []; track r.day) { <tr><td>{{ dayLabel(r.day) }}</td><td>{{ r.dialled }}</td><td>{{ r.reached }}</td><td>{{ r.completed }}</td><td>{{ r.not_reached }}</td><td>{{ r.failed }}</td></tr> }</tbody>
+    </table>
+    <footer>Clarix</footer>
+  </section>
+</div>

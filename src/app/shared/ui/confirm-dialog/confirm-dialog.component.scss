@@ -1,0 +1,131 @@
+.cd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  animation: cd-fade 0.12s ease-out;
+}
+
+.cd-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--card-bg, #fff);
+  color: var(--text-color, var(--ds-text));
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  animation: cd-pop 0.14s ease-out;
+}
+
+.cd-body {
+  display: flex;
+  gap: 0.875rem;
+  padding: 1.375rem 1.375rem 1rem;
+}
+
+.cd-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--hover-bg, var(--ds-accent-soft));
+  color: var(--primary, var(--ds-accent-fg));
+
+  &--danger {
+    background: var(--ds-danger-bg);
+    color: var(--ds-danger-fg);
+  }
+}
+
+.cd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.125rem;
+}
+
+.cd-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cd-message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.cd-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  padding: 0.875rem 1.375rem 1.25rem;
+}
+
+.cd-btn {
+  min-width: 84px;
+  padding: 0.5rem 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+
+  &--ghost {
+    background: transparent;
+    border-color: var(--border-color, var(--ds-border));
+    color: var(--text-color, var(--ds-text));
+
+    &:hover {
+      background: var(--hover-bg, var(--ds-surface-sunken));
+    }
+  }
+
+  &--primary {
+    background: var(--primary, var(--ds-accent));
+    color: var(--ds-on-accent);
+
+    &:hover {
+      background: var(--primary-hover, var(--ds-accent-hover));
+    }
+  }
+
+  &--danger {
+    background: var(--ds-danger);
+    color: var(--ds-on-accent);
+
+    &:hover {
+      background: var(--ds-danger-fg);
+    }
+  }
+}
+
+@keyframes cd-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cd-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Dark mode: the danger icon halo needs a darker tint than the light default. */
+:host-context(.dark) .cd-icon--danger,
+:host-context([data-theme='dark']) .cd-icon--danger {
+  background: rgba(220, 38, 38, 0.18);
+  color: var(--ds-danger-border);
+}

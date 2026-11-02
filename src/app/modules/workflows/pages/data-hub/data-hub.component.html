@@ -1,0 +1,17 @@
+<div class="dh-page">
+  <div class="dh-header">
+    <h1 class="dh-title">Data</h1>
+    <p class="dh-subtitle">Lookups that fill blanks, and transformations that turn one messy upload into clean caller sheets.</p>
+  </div>
+
+  <div class="dh-tabs" role="tablist">
+    <button role="tab" class="dh-tab" [class.active]="activeTab() === 'enrich'" (click)="setTab('enrich')">Enrichments</button>
+    <button role="tab" class="dh-tab" [class.active]="activeTab() === 'transform'" (click)="setTab('transform')">Transformations</button>
+  </div>
+
+  @if (activeTab() === 'enrich') {
+    <app-data-functions></app-data-functions>
+  } @else {
+    <app-transformations></app-transformations>
+  }
+</div>

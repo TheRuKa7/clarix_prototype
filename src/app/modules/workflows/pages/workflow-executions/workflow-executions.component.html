@@ -1,0 +1,332 @@
+<div class="executions-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <button class="back-btn" (click)="back()" aria-label="Back to templates">
+        <lucide-icon name="arrow-left" [size]="16"></lucide-icon>
+        Back to Templates
+      </button>
+      <h1 class="page-title">
+        @if (template()) {
+        {{ template()!.name }}
+        } @else {
+        Workflow Executions
+        }
+      </h1>
+      <p class="page-description">
+        @if (template()) {
+        <span class="template-key">{{ template()!.templateKey }}</span>
+        }
+        Execution history sorted by most recent
+      </p>
+    </div>
+    <div class="header-actions">
+      <button class="download-btn" type="button" (click)="downloadCsv()"
+        [disabled]="downloading() || executions().length === 0"
+        aria-label="Download executions as CSV">
+        <lucide-icon name="download" [size]="16"></lucide-icon>
+        {{ downloading() ? 'Preparing…' : 'Download CSV' }}
+      </button>
+      <button class="refresh-btn" (click)="refresh()" [disabled]="loading()">
+        <lucide-icon name="refresh-cw" [size]="16" [class.animate-spin]="loading()"></lucide-icon>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  @if (batchId()) {
+  <div class="batch-banner">
+    <span>Showing executions from an uploaded sheet.</span>
+    <button type="button" class="batch-banner__clear" (click)="clearBatchFilter()">
+      <lucide-icon name="x" [size]="14"></lucide-icon>
+      Clear
+    </button>
+  </div>
+  }
+
+  <!-- Filters -->
+  <section class="filters-section" aria-label="Filters">
+    <div class="filters-row">
+      <div class="quick-chips" role="group" aria-label="Quick date ranges">
+        <button type="button" class="chip" [class.chip-active]="activeQuickRange() === 1"
+          (click)="applyQuickRange(1)">
+          Last day
+        </button>
+        <button type="button" class="chip" [class.chip-active]="activeQuickRange() === 3"
+          (click)="applyQuickRange(3)">
+          Last 3 days
+        </button>
+        <button type="button" class="chip" [class.chip-active]="activeQuickRange() === 7"
+          (click)="applyQuickRange(7)">
+          Last 7 days
+        </button>
+      </div>
+
+      <div class="filter-controls">
+        <label class="filter-field">
+          <span class="filter-label">Status</span>
+          <select class="filter-input" [ngModel]="statusFilter()"
+            (ngModelChange)="onStatusFilterChange($event)" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            @for (s of statusOptions; track s) {
+            <option [value]="s">{{ s }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Channel</span>
+          <select class="filter-input" [ngModel]="channelFilter()"
+            (ngModelChange)="onChannelFilterChange($event)" aria-label="Filter by channel">
+            <option value="">All channels</option>
+            @for (c of channelOptions; track c) {
+            <option [value]="c">{{ c }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">Mobile</span>
+          <input type="search" class="filter-input" inputmode="tel"
+            placeholder="Search by mobile no." [ngModel]="phoneFilter()"
+            (ngModelChange)="onPhoneFilterChange($event)" aria-label="Search by mobile number" />
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">From</span>
+          <input type="date" class="filter-input" [ngModel]="fromDate()"
+            (ngModelChange)="onFromDateChange($event)" aria-label="From date" />
+        </label>
+
+        <label class="filter-field">
+          <span class="filter-label">To</span>
+          <input type="date" class="filter-input" [ngModel]="toDate()"
+            (ngModelChange)="onToDateChange($event)" aria-label="To date" />
+        </label>
+
+        @if (hasActiveFilters()) {
+        <button type="button" class="clear-btn" (click)="clearFilters()" aria-label="Clear filters">
+          <lucide-icon name="x" [size]="14"></lucide-icon>
+          Clear
+        </button>
+        }
+      </div>
+    </div>
+
+    <!-- Pagination toolbar (lives with filters, above table) -->
+    @if (totalElements() > 0) {
+    <div class="toolbar-pagination" aria-label="Pagination">
+      <span class="pagination-info">
+        Showing {{ pageStart() }}–{{ pageEnd() }} of {{ totalElements() }}
+      </span>
+      <div class="pagination-right">
+        <label class="page-size">
+          <span class="page-size-label">Rows per page</span>
+          <select class="page-size-select" aria-label="Rows per page"
+            (change)="setPageSize(+$any($event.target).value)">
+            @for (opt of pageSizeOptions; track opt) {
+            <option [value]="opt" [selected]="opt === pageSize()">{{ opt }}</option>
+            }
+          </select>
+        </label>
+        <div class="pagination-controls">
+          <button class="page-btn" (click)="prevPage()" [disabled]="page() === 0"
+            aria-label="Previous page">
+            <lucide-icon name="chevron-left" [size]="16"></lucide-icon>
+          </button>
+          <span class="page-indicator">Page {{ page() + 1 }} of {{ totalPages() }}</span>
+          <button class="page-btn" (click)="nextPage()" [disabled]="page() + 1 >= totalPages()"
+            aria-label="Next page">
+            <lucide-icon name="chevron-right" [size]="16"></lucide-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+    }
+  </section>
+
+  <!-- Dashboard -->
+  @if (templateId) {
+  <app-workflow-dashboard [templateId]="templateId" [from]="dashboardFromIso()"
+    [to]="dashboardToIso()" [batchId]="batchId() || undefined"></app-workflow-dashboard>
+  }
+
+  <!-- Loading -->
+  @if (loading() && executions().length === 0) {
+  <div class="loading-state" aria-live="polite">
+    <div class="loading-spinner" role="status" aria-label="Loading executions"></div>
+    <p class="loading-text">Loading executions...</p>
+  </div>
+  }
+
+  <!-- Table -->
+  @if (!loading() && executions().length > 0) {
+  <div class="table-heading-row">
+    <h2 class="table-heading">
+      <lucide-icon name="list" [size]="18"></lucide-icon>
+      Executions
+    </h2>
+    <span class="table-heading-count">{{ totalElements() }} total</span>
+  </div>
+  <div class="executions-table-wrap">
+    <table class="executions-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Contact</th>
+          <th>Triggered By</th>
+          <th>Channel</th>
+          <th>Current Step</th>
+          <th>Provider</th>
+          <th>Started At</th>
+          <th>Completed At</th>
+          <th>Duration</th>
+          <th>Failure</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (execution of executions(); track execution.id) {
+        <tr class="row-clickable" [class.row-upcoming]="execution.status === 'UPCOMING'"
+          [class.row-cancelled]="execution.status === 'CANCELLED'"
+          tabindex="0" role="link" [attr.aria-label]="'Open execution ' + execution.id"
+          (click)="openExecution(execution, $event)" (auxclick)="openExecutionAux(execution, $event)"
+          (keydown.enter)="openExecution(execution)" (keydown.space)="openExecution(execution)">
+          <td>
+            <div class="status-cell">
+              <span class="status-pill" [class]="statusClass(execution.status)">
+                @if (execution.status === 'UPCOMING') {
+                <span class="pulse-dot" aria-hidden="true"></span>
+                }
+                {{ view(execution).label }}
+              </span>
+              @if (execution.status === 'UPCOMING' && execution.scheduledAt) {
+              <button type="button" class="countdown-chip" [class.countdown-chip-started]="hasStarted(execution)"
+                [disabled]="hasStarted(execution)" (click)="openSchedule(execution, $event)"
+                [attr.aria-label]="hasStarted(execution)
+                  ? 'Execution is starting and can no longer be rescheduled'
+                  : 'Executing in ' + countdownFor(execution) + ', click to reschedule'"
+                [title]="hasStarted(execution)
+                  ? 'Execution is starting — rescheduling is no longer available'
+                  : 'Scheduled for ' + formatDateTime(execution.scheduledAt) + ' — click to reschedule'">
+                <lucide-icon name="clock" [size]="13" class="countdown-icon"></lucide-icon>
+                <span class="countdown-time">{{ countdownFor(execution) }}</span>
+                @if (!hasStarted(execution)) {
+                <lucide-icon name="pencil" [size]="12" class="countdown-edit"></lucide-icon>
+                }
+              </button>
+              }
+            </div>
+          </td>
+          <td>
+            <div class="contact-cell">
+              <span class="contact-name">
+                {{ execution.resolvedContact?.name ?? '—' }}
+              </span>
+              @if (execution.resolvedContact?.phone) {
+              <span class="contact-meta">{{ execution.resolvedContact!.phone }}</span>
+              }
+              @if (execution.resolvedContact?.email) {
+              <span class="contact-meta">{{ execution.resolvedContact!.email }}</span>
+              }
+            </div>
+          </td>
+          <td>
+            <div class="contact-cell">
+              <span class="contact-name">{{ execution.triggeredBy ?? '—' }}</span>
+              @if (execution.sourceSystem || execution.triggerMethod) {
+              <span class="contact-meta">
+                {{ execution.sourceSystem ?? '—' }}
+                @if (execution.triggerMethod) {
+                · {{ triggerMethodLabel(execution.triggerMethod) }}
+                }
+              </span>
+              }
+            </div>
+          </td>
+          <td>
+            @if (execution.activeChannelType) {
+            <span class="channel-badge">
+              <lucide-icon [name]="channelIcon(execution.activeChannelType)"
+                [size]="12"></lucide-icon>
+              {{ execution.activeChannelType }}
+            </span>
+            } @else {
+            —
+            }
+          </td>
+          <td class="mono-cell">{{ execution.currentStepId ?? '—' }}</td>
+          <td>
+            @let dispatch = dispatchState(execution);
+            @if (dispatch) {
+            <div class="dispatch-cell" [title]="dispatchTooltip(execution)">
+              <span class="dispatch-badge" [class]="'dispatch-' + dispatch">
+                @switch (dispatch) {
+                  @case ('sent') { Sent }
+                  @case ('queued') { Queued }
+                  @case ('not-sent') { Not sent }
+                }
+              </span>
+              <span class="dispatch-ref">{{ dispatchTraceRef(execution) }}</span>
+            </div>
+            } @else {
+            —
+            }
+          </td>
+          <td>{{ formatDateTime(execution.startedAt ?? execution.createdAt) }}</td>
+          <td>{{ formatDateTime(execution.completedAt) }}</td>
+          <td>{{ callDuration(execution.callDurationSeconds) }}</td>
+          <td class="failure-cell" [title]="execution.failureReason">
+            {{ execution.failureReason ?? '—' }}
+          </td>
+          <td class="actions-cell">
+            @if (execution.status === 'IN_PROGRESS') {
+            <button type="button" class="stop-btn" [disabled]="stoppingId() !== null"
+              (click)="stopCall(execution, $event)"
+              [attr.aria-label]="'Stop the ongoing call for ' + (execution.resolvedContact?.name ?? execution.id)"
+              title="Stop this ongoing call">
+              @if (stoppingId() === execution.id) {
+              <lucide-icon name="loader-circle" [size]="13" class="stop-spin"></lucide-icon>
+              } @else {
+              <lucide-icon name="phone-off" [size]="13"></lucide-icon>
+              }
+              Stop
+            </button>
+            }
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  }
+
+  <!-- Empty State -->
+  @if (!loading() && executions().length === 0) {
+  <div class="empty-state">
+    <lucide-icon name="history" [size]="56" class="empty-icon"></lucide-icon>
+    <h3 class="empty-title">
+      @if (hasActiveFilters()) {
+      No executions match your filters
+      } @else {
+      No executions yet
+      }
+    </h3>
+    <p class="empty-description">
+      @if (hasActiveFilters()) {
+      Try adjusting or clearing your filters to see more results.
+      } @else {
+      This workflow has not been triggered yet. Executions will appear here once events arrive.
+      }
+    </p>
+  </div>
+  }
+
+</div>
+
+<!-- Schedule / reschedule modal -->
+@if (scheduleTarget(); as target) {
+<app-schedule-execution-modal [execution]="target" (changed)="onScheduleChanged()"
+  (closed)="closeSchedule()"></app-schedule-execution-modal>
+}

@@ -1,0 +1,168 @@
+@use '../../../../../styles/ds' as ds;
+.er {
+  padding: 0;
+}
+
+.er__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.er__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.er__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.er__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary, var(--ds-accent));
+  color: var(--ds-on-accent);
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(0.95);
+  }
+}
+
+.er__error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--danger-bg, var(--ds-danger-bg));
+  color: var(--danger, var(--ds-danger-fg));
+  font-size: 13px;
+}
+
+.er__filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--ds-accent-border);
+  background: var(--ds-accent-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ds-accent-fg);
+}
+
+.er__filter-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--ds-accent-border);
+  border-radius: 6px;
+  background: var(--ds-surface);
+  color: var(--primary, var(--ds-accent-fg));
+  cursor: pointer;
+  font-size: 12px;
+
+  &:hover {
+    background: var(--ds-accent-soft);
+  }
+}
+
+.er__state {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted, var(--ds-text-muted));
+  border: 1px dashed var(--border-color, var(--ds-border));
+  border-radius: 10px;
+}
+
+.er__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-color, var(--ds-border));
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, var(--ds-text-muted));
+  }
+}
+
+.er__report-title {
+  font-weight: 600;
+}
+
+.er__report-desc {
+  font-size: 12px;
+  color: var(--text-muted, var(--ds-text-placeholder));
+  margin-top: 2px;
+}
+
+.er__template-link {
+  color: var(--primary, var(--ds-accent-fg));
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.er__actions-col {
+  width: 130px;
+}
+
+.er__actions {
+  display: flex;
+  gap: 6px;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-color, var(--ds-border));
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--text-muted, var(--ds-text-muted));
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-hover, var(--ds-surface-sunken));
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+}
+
+.er__danger:hover {
+  color: var(--danger, var(--ds-danger-fg)) !important;
+}
+
+/* The table sits on a card, never straight on the page background. */
+.er__table-wrap { @include ds.table-card; }

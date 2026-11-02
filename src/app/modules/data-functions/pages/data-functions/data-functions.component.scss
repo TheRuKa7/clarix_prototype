@@ -1,0 +1,33 @@
+:host {
+  display: block;
+}
+
+.toggle-switch {
+  @apply relative inline-flex items-center cursor-pointer mr-1;
+}
+
+.toggle-switch input {
+  @apply sr-only;
+}
+
+.toggle-track {
+  @apply relative inline-block w-9 h-5 rounded-full bg-gray-300 dark:bg-gray-600
+         transition-colors;
+}
+
+.toggle-thumb {
+  @apply absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow
+         transition-transform;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  @apply bg-blue-600 dark:bg-blue-500;
+}
+
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  @apply translate-x-4;
+}
+
+.toggle-switch input:focus-visible + .toggle-track {
+  @apply ring-2 ring-offset-2 ring-blue-500 dark:ring-offset-gray-800;
+}

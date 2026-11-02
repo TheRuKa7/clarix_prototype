@@ -1,0 +1,11 @@
+<div class="toast-stack" role="region" aria-label="Notifications" aria-live="polite">
+  @for (t of toastService.toasts(); track t.id) {
+    <div class="toast" [class]="'toast-' + t.type" role="alert">
+      <lucide-icon [name]="iconFor(t.type)" [size]="18"></lucide-icon>
+      <span class="toast-message">{{ t.message }}</span>
+      <button class="toast-dismiss" type="button" (click)="toastService.dismiss(t.id)" aria-label="Dismiss">
+        <lucide-icon name="x" [size]="14"></lucide-icon>
+      </button>
+    </div>
+  }
+</div>

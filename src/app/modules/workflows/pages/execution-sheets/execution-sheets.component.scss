@@ -1,0 +1,468 @@
+@use '../../../../../styles/ds' as ds;
+.es {
+  padding: 0;
+}
+
+.es__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.es__trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary, var(--ds-accent));
+  color: var(--ds-on-accent);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--ds-accent-hover);
+  }
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.btn(primary);
+}
+
+/* Filters */
+.es__filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.es__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 220px;
+
+  &--date {
+    min-width: 150px;
+  }
+}
+
+.es__filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.es__input {
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text, var(--ds-text));
+
+  &:focus {
+    outline: none;
+    border-color: var(--ds-accent-border);
+  }
+  // Shared look (styles/_ds.scss); layout stays above.
+  @include ds.input;
+}
+
+.es__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text-muted, var(--ds-text-muted));
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+  }
+}
+
+.es__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.es__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.es__error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--danger-bg, var(--ds-danger-bg));
+  color: var(--danger, var(--ds-danger-fg));
+  font-size: 13px;
+}
+
+.es__state {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted, var(--ds-text-muted));
+  border: 1px dashed var(--border-color, var(--ds-border));
+  border-radius: 10px;
+}
+
+.es__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-color, var(--ds-border));
+    vertical-align: middle;
+  }
+
+  th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, var(--ds-text-muted));
+  }
+}
+
+.es__date {
+  white-space: nowrap;
+}
+
+.es__num {
+  text-align: right;
+  width: 80px;
+}
+
+.es__ok {
+  color: var(--ds-success-fg);
+  font-weight: 600;
+}
+
+.es__bad {
+  color: var(--danger, var(--ds-danger-fg));
+  font-weight: 600;
+}
+
+/* Merged Accepted/Rejected column: "triggered/failed" over a muted "of total N". */
+.es__counts {
+  width: 130px;
+  white-space: nowrap;
+}
+
+.es__counts-main {
+  display: block;
+  font-weight: 600;
+}
+
+.es__sep {
+  margin: 0 2px;
+  color: var(--text-muted, var(--ds-text-placeholder));
+  font-weight: 400;
+}
+
+.es__counts-total {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+/* ── Campaign status column ── */
+.es__campaign-h { width: 190px; }
+
+.es__campaign {
+  width: 190px;
+  vertical-align: middle;
+}
+
+.es__bar {
+  display: flex;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--ds-hover);
+}
+
+.es__seg {
+  height: 100%;
+  min-width: 2px;
+  transition: width 0.3s ease;
+
+  &--done { background: var(--ds-success); }
+  &--live { background: var(--ds-accent); }
+  &--stopped { background: var(--ds-warning); }
+  &--fail { background: var(--danger, var(--ds-danger)); }
+}
+
+.es__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color, var(--ds-text));
+}
+
+.es__lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.es__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+
+  &--done { background: var(--ds-success); }
+  &--live { background: var(--ds-accent); }
+  &--stopped { background: var(--ds-warning); }
+  &--fail { background: var(--danger, var(--ds-danger)); }
+}
+
+.es__campaign-empty {
+  font-size: 11px;
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+/* Everything else in a row is short and meaningful, so the filename is the one cell
+   allowed to truncate rather than push "View executions" off the table. */
+.es__table td:first-child {
+  max-width: 220px;
+}
+
+/* Every other cell is nowrap, so on a narrow window the row scrolls rather than clipping
+   the actions off the right edge. */
+.es__table-wrap {
+  overflow-x: auto;
+  @include ds.table-card;
+}
+
+.es__file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.es__file {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary, var(--ds-accent-fg));
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &--muted {
+    color: var(--text-muted, var(--ds-text-placeholder));
+  }
+}
+
+/* The template name and the upload date are short and meaningful; let the filename be the
+   cell that gives up horizontal space instead of wrapping them to four lines. */
+.es__link {
+  white-space: nowrap;
+  color: var(--primary, var(--ds-accent-fg));
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.es__actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.es__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: var(--text-muted, var(--ds-text-muted));
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+    color: var(--primary, var(--ds-accent-fg));
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.es__stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  margin-right: 8px;
+  padding: 0 10px;
+  vertical-align: middle;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--ds-danger-border);
+  border-radius: 6px;
+  background: var(--ds-danger-bg);
+  color: var(--ds-danger-fg);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--ds-danger-bg);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.es__spin {
+  animation: es-spin 0.8s linear infinite;
+}
+
+@keyframes es-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pagination */
+.es__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--text-muted, var(--ds-text-muted));
+
+  strong {
+    color: var(--text, var(--ds-text));
+    font-weight: 600;
+  }
+}
+
+.es__pager-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.es__pager-page {
+  font-size: 12px;
+}
+
+.es__page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text, var(--ds-text));
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .es__spin {
+    animation: none;
+  }
+}
+
+.es__row { cursor: pointer; }
+.es__row:hover td { background: var(--bg-hover, rgba(0, 0, 0, 0.025)); }
+.es__row:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+.es__state-chip {
+  display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+  background: var(--bg-muted, var(--ds-surface-sunken)); color: var(--text-secondary, var(--ds-text-2));
+}
+.es__state-chip[data-state='live'] { background: var(--ds-accent-soft); color: var(--ds-accent-fg); }
+.es__state-chip[data-state='done'] { background: var(--ds-success-bg); color: var(--ds-success-fg); }
+.es__state-chip[data-state='partial'] { background: var(--ds-warning-bg); color: var(--ds-warning-fg); }
+.es__state-chip[data-state='stopped'] { background: var(--ds-surface-sunken); color: var(--ds-text-2); }
+
+// ── Round 2: one filter bar, outcome progress, icon actions ─────────────────
+.es__filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.es__search { position: relative; flex: 1 1 220px; max-width: 320px; display: flex; align-items: center;
+  lucide-icon { position: absolute; left: 10px; color: var(--text-muted); pointer-events: none; }
+  .es__input { width: 100%; padding-left: 32px; }
+}
+.es__picker { min-width: 180px; }
+.es__toggle { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg-tertiary); border-radius: 999px;
+  button { border: 0; background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+  button:not(.on):hover { color: var(--ds-text); background: var(--ds-hover); }
+  button.on { background: var(--bg-primary); color: var(--text-color); box-shadow: var(--shadow-sm); }
+  button:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 1px; }
+}
+.es__dates { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-muted); }
+.es__name { font-weight: 600; color: var(--text-color); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.es__sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.es__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.es__seg--reached { background: var(--ds-success); }
+.es__seg--not_reached { background: var(--ds-danger); }
+.es__seg--failed { background: var(--ds-warning); }
+.es__seg--in_progress { background: var(--ds-info); }
+.es__seg--not_dialled { background: var(--ds-text-placeholder); }
+.es__icon-btn--off { opacity: 0.35; cursor: not-allowed; }
+.es__icon-btn--stop { color: var(--ds-danger-fg); }
+.es__go { color: var(--text-muted); margin-left: 2px; }
+.es__actions { white-space: nowrap; text-align: right; }
+@media (max-width: 640px) {
+  .es__search { max-width: none; }
+  .es__picker { flex: 1 1 100%; }
+}
+.es__campaign { min-width: 190px; }
+.es__table td:nth-child(2) { min-width: 130px; }
+
+.es__state-chip[data-state='paused'] { background: var(--ds-info-bg); color: var(--ds-info-fg); }
+.es__state-chip[data-state='failed'] { background: var(--ds-danger-bg); color: var(--ds-danger-fg); }

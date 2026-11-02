@@ -1,0 +1,48 @@
+<div class="rcs">
+  <div class="rcs__pane">
+    <h4 class="rcs__title">Columns</h4>
+    <p class="rcs__hint">Choose which columns appear in the report. Additional fields are always included.</p>
+
+    @for (group of sections(); track group.section) {
+      <div class="rcs__section">
+        <div class="rcs__section-title">{{ group.section }}</div>
+        <div class="rcs__grid">
+          @for (col of group.cols; track col.id) {
+            <label class="rcs__check" [class.rcs__check--locked]="isLocked(col.id)">
+              <input
+                type="checkbox"
+                [checked]="isSelected(col.id)"
+                [disabled]="isLocked(col.id)"
+                (change)="toggle(col.id, $any($event.target).checked)" />
+              <span>{{ col.label }}</span>
+            </label>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <div class="rcs__pane">
+    <h4 class="rcs__title">Order &amp; headers</h4>
+    <p class="rcs__hint">Drag to reorder. Rename a column to change its CSV header.</p>
+
+    <div class="rcs__order" cdkDropList (cdkDropListDropped)="drop($event)">
+      @for (col of orderedColumns(); track col.id) {
+        <div class="rcs__row" cdkDrag>
+          <span class="rcs__handle" cdkDragHandle>
+            <lucide-icon name="grip-vertical" [size]="16"></lucide-icon>
+          </span>
+          <span class="rcs__row-section">{{ col.section }}</span>
+          <input
+            class="rcs__header-input"
+            type="text"
+            [value]="effectiveHeader(col)"
+            [attr.placeholder]="col.label"
+            (change)="setHeader(col.id, col.label, $any($event.target).value)" />
+        </div>
+      } @empty {
+        <div class="rcs__empty">No columns selected.</div>
+      }
+    </div>
+  </div>
+</div>

@@ -1,0 +1,70 @@
+<div class="modal-backdrop" (click)="close()">
+  <div
+    class="modal-card"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="schedule-modal-title"
+    (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <h2 id="schedule-modal-title" class="modal-title">
+        <lucide-icon name="clock" [size]="18"></lucide-icon>
+        Scheduled execution
+      </h2>
+      <button type="button" class="icon-btn" (click)="close()" [disabled]="busy()" aria-label="Close">
+        <lucide-icon name="x" [size]="18"></lucide-icon>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      @if (!confirmingCancel()) {
+        <label class="field-label" for="scheduledAt">Run at</label>
+        <input
+          id="scheduledAt"
+          type="datetime-local"
+          class="datetime-input"
+          [min]="minDateTime()"
+          [ngModel]="picked()"
+          (ngModelChange)="picked.set($event)"
+          [disabled]="busy()" />
+
+        <button type="button" class="link-btn" (click)="executeNow()" [disabled]="busy()">
+          <lucide-icon name="play" [size]="14"></lucide-icon>
+          Execute now instead
+        </button>
+
+        @if (error()) {
+          <p class="error-text" role="alert">{{ error() }}</p>
+        }
+      } @else {
+        <p class="confirm-text">
+          Cancel this upcoming execution? It will not run and cannot be resumed.
+        </p>
+        @if (error()) {
+          <p class="error-text" role="alert">{{ error() }}</p>
+        }
+      }
+    </div>
+
+    <div class="modal-footer">
+      @if (!confirmingCancel()) {
+        <button type="button" class="btn btn-danger-ghost" (click)="confirmingCancel.set(true)" [disabled]="busy()">
+          Cancel execution
+        </button>
+        <div class="footer-right">
+          <button type="button" class="btn btn-ghost" (click)="close()" [disabled]="busy()">Close</button>
+          <button type="button" class="btn btn-primary" (click)="save()" [disabled]="busy()">
+            {{ busy() ? 'Saving…' : 'Save schedule' }}
+          </button>
+        </div>
+      } @else {
+        <button type="button" class="btn btn-ghost" (click)="confirmingCancel.set(false)" [disabled]="busy()">
+          Keep it
+        </button>
+        <button type="button" class="btn btn-danger" (click)="confirmCancel()" [disabled]="busy()">
+          {{ busy() ? 'Cancelling…' : 'Yes, cancel' }}
+        </button>
+      }
+    </div>
+  </div>
+</div>

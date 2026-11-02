@@ -1,0 +1,78 @@
+<div class="esm__backdrop" (click)="cancel()"></div>
+<div class="esm" role="dialog" aria-modal="true">
+  <div class="esm__header">
+    <h2 class="esm__title">{{ isEdit() ? 'Edit Schedule' : 'New Mail Schedule' }}</h2>
+    <button type="button" class="esm__close" (click)="cancel()" aria-label="Close">
+      <lucide-icon name="x" [size]="18"></lucide-icon>
+    </button>
+  </div>
+
+  <div class="esm__body">
+    @if (error()) {
+      <div class="esm__error">{{ error() }}</div>
+    }
+
+    <div class="esm__grid">
+      <div class="esm__field">
+        <label class="esm__label">To</label>
+        <input class="esm__input" type="text" placeholder="a@example.com, b@example.com"
+          [value]="to()" (input)="to.set($any($event.target).value)" />
+      </div>
+      <div class="esm__field">
+        <label class="esm__label">Cc</label>
+        <input class="esm__input" type="text" placeholder="optional, comma-separated"
+          [value]="cc()" (input)="cc.set($any($event.target).value)" />
+      </div>
+      <div class="esm__field esm__field--full">
+        <p class="esm__hint">
+          <lucide-icon name="lock" [size]="12"></lucide-icon>
+          Reports carry execution data, so every recipient must be an
+          <strong>&#64;example.com</strong> address.
+        </p>
+      </div>
+      <div class="esm__field esm__field--full">
+        <label class="esm__label">Subject</label>
+        <input class="esm__input" type="text" placeholder="e.g. Weekly PO acceptance report"
+          [value]="subject()" (input)="subject.set($any($event.target).value)" />
+      </div>
+      <div class="esm__field esm__field--full">
+        <label class="esm__label">Body</label>
+        <textarea class="esm__input" rows="3"
+          placeholder="Message body (HTML). Tokens: {{ '{{reportLink}}' }}, {{ '{{rowCount}}' }}, {{ '{{from}}' }}, {{ '{{to}}' }}"
+          [value]="body()" (input)="body.set($any($event.target).value)"></textarea>
+      </div>
+      <div class="esm__field esm__field--full">
+        <label class="esm__check">
+          <input type="checkbox" [checked]="singleThread()" (change)="singleThread.set($any($event.target).checked)" />
+          <span>Keep all sends in a single email thread</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="esm__field esm__field--full">
+      <label class="esm__label">Data range</label>
+      <div class="esm__window">
+        <select class="esm__input esm__window-select" [value]="windowType()" (change)="windowType.set($any($event.target).value)">
+          @for (p of DATA_WINDOW_PRESETS; track p.type) {
+            <option [value]="p.type">{{ p.label }}</option>
+          }
+        </select>
+        @if (isRolling(windowType())) {
+          <input class="esm__input esm__window-n" type="number" min="1"
+            [value]="windowValue()" (input)="windowValue.set(+$any($event.target).value)" />
+          <span class="esm__window-unit">{{ rollingUnit(windowType()) }}</span>
+        }
+      </div>
+      <span class="esm__hint">How much data the report includes at each send.</span>
+    </div>
+
+    <app-schedule-picker [initial]="initialSchedule()" (valueChange)="onScheduleChange($event)"></app-schedule-picker>
+  </div>
+
+  <div class="esm__footer">
+    <button type="button" class="esm__btn esm__btn--ghost" (click)="cancel()">Cancel</button>
+    <button type="button" class="esm__btn esm__btn--primary" (click)="save()" [disabled]="saving()">
+      {{ saving() ? 'Saving…' : (isEdit() ? 'Save Changes' : 'Add Schedule') }}
+    </button>
+  </div>
+</div>

@@ -1,0 +1,117 @@
+.rf {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rf__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+
+.rf__select,
+.rf__input {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 6px;
+  background: var(--input-bg, #fff);
+  color: inherit;
+}
+
+.rf__col {
+  min-width: 200px;
+}
+
+.rf__op {
+  min-width: 120px;
+}
+
+.rf__value {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+}
+
+.rf__input {
+  width: 100%;
+}
+
+.rf__novalue {
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.rf__enum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.rf__enum-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rf__between {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.rf__and {
+  font-size: 12px;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.rf__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, var(--ds-text-placeholder));
+  cursor: pointer;
+  border-radius: 6px;
+
+  &:hover {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+    color: var(--danger, var(--ds-danger-fg));
+  }
+}
+
+.rf__add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px dashed var(--border-color, var(--ds-border-strong));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--primary, var(--ds-accent-fg));
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-hover, var(--ds-accent-soft));
+  }
+}
+
+.rf__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted, var(--ds-text-muted));
+}

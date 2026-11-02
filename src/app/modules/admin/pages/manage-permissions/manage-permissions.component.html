@@ -1,0 +1,373 @@
+<div class="admin-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <h1 class="page-title">Manage Permissions</h1>
+      <p class="page-description">Define permission keys and group them into modules. Modules map to
+        central account-service modules.</p>
+    </div>
+    <div class="header-actions">
+      @if (tab() === 'permissions') {
+      <button *hasPermission="'permissions:add'" class="create-btn" type="button"
+        (click)="openCreatePermission()">
+        <lucide-icon name="plus" [size]="16"></lucide-icon>
+        New Permission
+      </button>
+      } @else if (tab() === 'modules') {
+      <button *hasPermission="'modules:add'" class="create-btn" type="button"
+        (click)="openCreateModule()">
+        <lucide-icon name="plus" [size]="16"></lucide-icon>
+        New Module
+      </button>
+      }
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" role="tablist">
+    <button class="tab" type="button" role="tab" [class.active]="tab() === 'permissions'"
+      [attr.aria-selected]="tab() === 'permissions'" (click)="switchTab('permissions')">
+      <lucide-icon name="key" [size]="14"></lucide-icon>
+      Permissions
+      <span class="tab-count">{{ permissionsTotal() }}</span>
+    </button>
+    <button class="tab" type="button" role="tab" [class.active]="tab() === 'modules'"
+      [attr.aria-selected]="tab() === 'modules'" (click)="switchTab('modules')">
+      <lucide-icon name="package" [size]="14"></lucide-icon>
+      Account Service Modules
+      <span class="tab-count">{{ modulesTotal() }}</span>
+    </button>
+  </div>
+
+  @if (errorMessage()) {
+  <div class="banner banner-error" role="alert">
+    <lucide-icon name="triangle-alert" [size]="16"></lucide-icon>
+    <span>{{ errorMessage() }}</span>
+    <button class="banner-dismiss" type="button" (click)="errorMessage.set(null)"
+      aria-label="Dismiss">
+      <lucide-icon name="x" [size]="14"></lucide-icon>
+    </button>
+  </div>
+  }
+
+  <!-- Permissions tab -->
+  @if (tab() === 'permissions') {
+  <div class="filters-section">
+    <div class="search-box">
+      <lucide-icon name="search" [size]="16" class="search-icon"></lucide-icon>
+      <input type="text" placeholder="Search by key, name or description..."
+        [(ngModel)]="permissionSearch" (ngModelChange)="onSearchChange()" class="search-input"
+        aria-label="Search permissions" />
+    </div>
+    <select class="filter-select" [(ngModel)]="permissionCategory"
+      (ngModelChange)="onSearchChange()" aria-label="Filter by category">
+      <option value="">All categories</option>
+      @for (c of categories(); track c) {
+      <option [value]="c">{{ c }}</option>
+      }
+    </select>
+  </div>
+
+  @if (permissionsLoading()) {
+  <div class="loading-state">
+    <div class="loading-spinner" role="status"></div>
+    <p>Loading permissions…</p>
+  </div>
+  } @else if (permissions().length === 0) {
+  <div class="empty-state">
+    <lucide-icon name="key" [size]="32"></lucide-icon>
+    <p>No permissions yet</p>
+    <button *hasPermission="'permissions:add'" class="create-btn" type="button"
+      (click)="openCreatePermission()">Add the first one</button>
+  </div>
+  } @else {
+  <div class="data-table" role="region" aria-label="Permissions">
+    <table>
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Display name</th>
+          <th>Category</th>
+          <th>Description</th>
+          <th>Updated</th>
+          <th class="actions-col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (p of permissions(); track p.id) {
+        <tr>
+          <td><code class="key-chip">{{ p.key }}</code></td>
+          <td>{{ p.displayName }}</td>
+          <td><span class="category-chip">{{ p.category }}</span></td>
+          <td class="description-cell">{{ p.description || '—' }}</td>
+          <td>{{ formatDate(p.updatedAt) }}</td>
+          <td class="actions-col">
+            <button *hasPermission="'permissions:edit'" class="icon-btn" type="button"
+              (click)="openEditPermission(p)" aria-label="Edit">
+              <lucide-icon name="pencil" [size]="14"></lucide-icon>
+            </button>
+            <button *hasPermission="'permissions:delete'" class="icon-btn icon-btn-danger"
+              type="button" (click)="deletePermission(p)" aria-label="Delete">
+              <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+            </button>
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pagination" role="navigation" aria-label="Permissions pagination">
+    <div class="pagination-info">
+      Showing {{ permissionsRangeFrom() }}–{{ permissionsRangeTo() }} of {{ permissionsTotal() }}
+    </div>
+    <div class="pagination-controls">
+      <label class="page-size">
+        <span>Rows per page</span>
+        <select [value]="permissionsPageSize()"
+          (change)="changePermissionsPageSize(+$any($event.target).value)"
+          aria-label="Rows per page">
+          <option [value]="10">10</option>
+          <option [value]="25">25</option>
+          <option [value]="50">50</option>
+          <option [value]="100">100</option>
+        </select>
+      </label>
+      <button class="icon-btn" type="button" [disabled]="permissionsPage() === 0"
+        (click)="goToPermissionsPage(permissionsPage() - 1)" aria-label="Previous page">
+        <lucide-icon name="chevron-left" [size]="14"></lucide-icon>
+      </button>
+      <span class="page-indicator">Page {{ permissionsPage() + 1 }} of {{ permissionsTotalPages()
+        }}</span>
+      <button class="icon-btn" type="button"
+        [disabled]="permissionsPage() + 1 >= permissionsTotalPages()"
+        (click)="goToPermissionsPage(permissionsPage() + 1)" aria-label="Next page">
+        <lucide-icon name="chevron-right" [size]="14"></lucide-icon>
+      </button>
+    </div>
+  </div>
+  }
+  }
+
+  <!-- Modules tab -->
+  @if (tab() === 'modules') {
+  <div class="filters-section">
+    <div class="search-box">
+      <lucide-icon name="search" [size]="16" class="search-icon"></lucide-icon>
+      <input type="text" placeholder="Search modules…" [(ngModel)]="moduleSearch"
+        (ngModelChange)="onSearchChange()" class="search-input" aria-label="Search modules" />
+    </div>
+  </div>
+
+  @if (modulesLoading()) {
+  <div class="loading-state">
+    <div class="loading-spinner" role="status"></div>
+    <p>Loading modules…</p>
+  </div>
+  } @else if (modules().length === 0) {
+  <div class="empty-state">
+    <lucide-icon name="package" [size]="32"></lucide-icon>
+    <p>No modules yet</p>
+    <button *hasPermission="'modules:add'" class="create-btn" type="button"
+      (click)="openCreateModule()">Add the first one</button>
+  </div>
+  } @else {
+  <div class="module-grid" role="list" aria-label="Modules">
+    @for (m of modules(); track m.id) {
+    <article class="module-card" role="listitem" [class.module-card-disabled]="!isModuleEnabled(m)">
+      <header class="module-card-header">
+        <div class="module-card-title-block">
+          <h3 class="module-card-title">{{ m.displayName }}</h3>
+          <code class="key-chip">{{ m.name }}</code>
+        </div>
+        <div class="module-card-actions">
+          <label *hasPermission="'modules:edit'" class="toggle-switch"
+            [attr.aria-label]="(isModuleEnabled(m) ? 'Disable' : 'Enable') + ' module ' + m.displayName"
+            [title]="isModuleEnabled(m) ? 'Enabled' : 'Disabled'">
+            <input type="checkbox" role="switch" [checked]="isModuleEnabled(m)"
+              (change)="toggleModuleEnabled(m, $any($event.target).checked)" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+          <button *hasPermission="'modules:edit'" class="icon-btn" type="button"
+            (click)="openEditModule(m)" aria-label="Edit module">
+            <lucide-icon name="pencil" [size]="14"></lucide-icon>
+          </button>
+          <button *hasPermission="'modules:delete'" class="icon-btn icon-btn-danger" type="button"
+            (click)="deleteModule(m)" aria-label="Delete module">
+            <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+          </button>
+        </div>
+      </header>
+
+      <p class="module-card-description">{{ m.description || 'No description provided.' }}</p>
+
+      <section class="module-card-section">
+        <div class="module-card-section-header">
+          <lucide-icon name="key" [size]="12"></lucide-icon>
+          <span>Permissions</span>
+          <span class="module-card-count">{{ m.permissions.length }}</span>
+        </div>
+        <div class="permission-list">
+          @for (k of m.permissions; track k) {
+          <code class="permission-chip">{{ k }}</code>
+          } @empty {
+          <span class="muted">No permissions mapped</span>
+          }
+        </div>
+      </section>
+
+      <footer class="module-card-footer">
+        <span class="module-card-meta">
+          <lucide-icon name="user" [size]="12"></lucide-icon>
+          {{ m.updatedBy || 'Unknown' }}
+        </span>
+        <span class="module-card-meta">
+          <lucide-icon name="clock" [size]="12"></lucide-icon>
+          {{ formatDate(m.updatedAt) }}
+        </span>
+      </footer>
+    </article>
+    }
+  </div>
+  }
+  }
+
+  <!-- Permission form modal -->
+  @if (showPermissionForm()) {
+  <div class="modal-backdrop" (click)="closePermissionForm()" aria-hidden="true"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="permission-form-title">
+    <header class="modal-header">
+      <h2 id="permission-form-title">{{ editingPermission() ? 'Edit permission' : 'New permission'
+        }}</h2>
+      <button class="icon-btn" type="button" (click)="closePermissionForm()" aria-label="Close">
+        <lucide-icon name="x" [size]="16"></lucide-icon>
+      </button>
+    </header>
+    <form class="modal-body" [formGroup]="permissionForm" (ngSubmit)="savePermission()">
+      <div class="field">
+        <label for="perm-key">Key</label>
+        <input id="perm-key" type="text" formControlName="key" placeholder="order:read" />
+        @if (permissionForm.get('key')?.touched && permissionForm.get('key')?.invalid) {
+        <small class="field-error">Lowercase, ':' separated (e.g. order:read)</small>
+        }
+      </div>
+      <div class="field">
+        <label for="perm-display">Display name</label>
+        <input id="perm-display" type="text" formControlName="displayName" />
+        @if (permissionForm.get('displayName')?.touched &&
+        permissionForm.get('displayName')?.invalid) {
+        <small class="field-error">Required (max 120 chars)</small>
+        }
+      </div>
+      <div class="field">
+        <label for="perm-category">Category</label>
+        <input id="perm-category" type="text" formControlName="category" placeholder="Orders"
+          list="category-suggestions" />
+        <datalist id="category-suggestions">
+          @for (c of categories(); track c) {
+          <option [value]="c"></option>
+          }
+        </datalist>
+        @if (permissionForm.get('category')?.touched && permissionForm.get('category')?.invalid) {
+        <small class="field-error">Required</small>
+        }
+      </div>
+      <div class="field">
+        <label for="perm-description">Description</label>
+        <textarea id="perm-description" formControlName="description" rows="3"></textarea>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn-secondary" type="button" (click)="closePermissionForm()">Cancel</button>
+        <button class="btn-primary" type="submit" [disabled]="saving()">
+          {{ saving() ? 'Saving…' : (editingPermission() ? 'Save' : 'Create') }}
+        </button>
+      </footer>
+    </form>
+  </div>
+  }
+
+  <!-- Module form modal -->
+  @if (showModuleForm()) {
+  <div class="modal-backdrop" (click)="closeModuleForm()" aria-hidden="true"></div>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="module-form-title">
+    <header class="modal-header">
+      <h2 id="module-form-title">{{ editingModule() ? 'Edit module' : 'New module' }}</h2>
+      <button class="icon-btn" type="button" (click)="closeModuleForm()" aria-label="Close">
+        <lucide-icon name="x" [size]="16"></lucide-icon>
+      </button>
+    </header>
+    <form class="modal-body" [formGroup]="moduleForm" (ngSubmit)="saveModule()">
+      <div class="field-row">
+        <div class="field">
+          <label for="mod-name">Account Service Module Name</label>
+          <input id="mod-name" type="text" formControlName="name" placeholder="Workflows" />
+          <small class="field-hint">Must match the key in central account-service.</small>
+          @if (moduleForm.get('name')?.touched && moduleForm.get('name')?.invalid) {
+          <small class="field-error">Alphanumeric, '-' or '_' only</small>
+          }
+        </div>
+        <div class="field">
+          <label for="mod-display">Display name</label>
+          <input id="mod-display" type="text" formControlName="displayName" />
+          @if (moduleForm.get('displayName')?.touched && moduleForm.get('displayName')?.invalid) {
+          <small class="field-error">Required</small>
+          }
+        </div>
+      </div>
+      <div class="field">
+        <label for="mod-description">Description</label>
+        <textarea id="mod-description" formControlName="description" rows="2"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Permissions</label>
+        @if (allPermissions().length === 0) {
+        <small class="field-hint">No permissions defined yet. Create permissions first.</small>
+        } @else {
+        <div class="permission-picker">
+          @let allState = selectionState(allPermissions());
+          <label class="permission-option permission-select-all">
+            <input type="checkbox" [checked]="allState === 'all'"
+              [indeterminate]="allState === 'some'"
+              (change)="toggleAllPermissions($any($event.target).checked)" />
+            <strong>Select all permissions</strong>
+            <span class="permission-display">{{ selectedPermissionCount() }} / {{
+              allPermissions().length }} selected</span>
+          </label>
+
+          @for (group of permissionsByCategory(allPermissions()); track group.category) {
+          @let groupState = selectionState(group.items);
+          <fieldset class="permission-group">
+            <legend>
+              <label class="permission-option permission-group-toggle">
+                <input type="checkbox" [checked]="groupState === 'all'"
+                  [indeterminate]="groupState === 'some'"
+                  (change)="toggleCategoryPermissions(group.category, $any($event.target).checked)" />
+                <span>{{ group.category }}</span>
+              </label>
+            </legend>
+            @for (p of group.items; track p.id) {
+            <label class="permission-option">
+              <input type="checkbox" [checked]="isPermissionOnModule(p.key)"
+                (change)="togglePermissionOnModule(p.key, $any($event.target).checked)" />
+              <code>{{ p.key }}</code>
+              <span class="permission-display">{{ p.displayName }}</span>
+            </label>
+            }
+          </fieldset>
+          }
+        </div>
+        }
+      </div>
+
+      <footer class="modal-footer">
+        <button class="btn-secondary" type="button" (click)="closeModuleForm()">Cancel</button>
+        <button class="btn-primary" type="submit" [disabled]="saving()">
+          {{ saving() ? 'Saving…' : (editingModule() ? 'Save' : 'Create') }}
+        </button>
+      </footer>
+    </form>
+  </div>
+  }
+</div>

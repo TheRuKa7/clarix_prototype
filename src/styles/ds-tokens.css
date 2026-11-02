@@ -1,0 +1,143 @@
+/* ============================================================================
+   Cognilix design tokens: shared by Echo and Clarix
+   ----------------------------------------------------------------------------
+   Neo-minimal base, micro-maximal details. Light is pure white, dark is pure
+   black. PANTONE 11-4201 Cloud Dancer (#F0EEE9, Colour of the Year 2026) is the
+   quiet second white: side bar, wells, table heads, empty states, and the text
+   colour of the dark theme. Warm stone greys carry structure through hairline
+   borders, not shadows.
+   Colour is spent only where it means something: the product accent (Echo red,
+   Clarix violet), status, focus, and small bold details (status dots, active
+   markers, mono labels, big tabular numbers).
+   Components use these names only; each product sets its accent on top.
+   Contrast (checked): text 18:1+, secondary 10:1+, muted 6:1+, placeholder
+   4.8:1+ on every surface, input borders 3:1+, status text 4.8:1+, both themes.
+   Keep this file identical in both repos.
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  /* Surfaces, back to front. Cards sit on the page by a hairline, not a tint. */
+  --ds-bg: #ffffff;               /* app background */
+  --ds-surface-sunken: #f0eee9;   /* Cloud Dancer: table heads, wells, empty states */
+  --ds-surface: #ffffff;          /* cards, panels */
+  --ds-surface-raised: #ffffff;   /* modals, popovers, menus (lifted by shadow) */
+  --ds-sidebar: #f7f6f3;          /* half way between white and Cloud Dancer */
+  --ds-input-bg: #ffffff;
+  --ds-input-bg-disabled: #f0eee9;
+  --ds-hover: rgba(12, 10, 9, 0.04);
+  --ds-active: rgba(12, 10, 9, 0.075);
+  --ds-selected: rgba(12, 10, 9, 0.055);
+  --ds-overlay: rgba(12, 10, 9, 0.42);
+  --ds-dot: rgba(12, 10, 9, 0.06);
+
+  /* Text */
+  --ds-text: #0c0a09;
+  --ds-text-2: #44403c;           /* secondary */
+  --ds-text-muted: #5c5752;       /* labels, help */
+  --ds-text-placeholder: #69635d; /* empty fields: lighter than values, 4.8:1+ even on wells */
+  --ds-text-disabled: #a8a29e;
+  --ds-text-inverse: #ffffff;     /* on dark chips, tooltips */
+
+  /* Lines */
+  --ds-border-subtle: #f0eee9;
+  --ds-border: #e7e5e2;
+  --ds-border-strong: #d6d3cf;
+  --ds-border-input: #8c857e;     /* 3:1 so a field's edge is visible */
+
+  /* Status: foreground text, soft background, border, solid (dots, bars) */
+  --ds-success-fg: #146c34; --ds-success-bg: #f0fdf4; --ds-success-border: #bbf7d0; --ds-success: #16a34a;
+  --ds-warning-fg: #a14d07; --ds-warning-bg: #fff8eb; --ds-warning-border: #fcd9a4; --ds-warning: #e28a0b;
+  --ds-danger-fg: #b91c1c;  --ds-danger-bg: #fef2f2;  --ds-danger-border: #fecaca;  --ds-danger: #dc2626;
+  --ds-info-fg: #3d33a0;    --ds-info-bg: #f2f1fd;    --ds-info-border: #d4d1f6;    --ds-info: #6b62d6;
+  --ds-neutral-fg: #44403c; --ds-neutral-bg: #f0eee9; --ds-neutral-border: #e2dfd9;
+
+  /* Who is speaking, in transcripts and the waveform; same in both products */
+  --ds-speaker-agent: #3d33a0; --ds-speaker-agent-soft: #d4d1f6;
+  --ds-speaker-caller: #a14d07; --ds-speaker-caller-soft: #fcd9a4;
+
+  /* Tooltip: black chip in light mode, white chip in dark mode */
+  --ds-tooltip-bg: #0c0a09;
+  --ds-tooltip-text: #f0eee9;
+
+  /* Shape, depth, type, size */
+  --ds-r-xs: 4px; --ds-r-sm: 6px; --ds-r-md: 8px; --ds-r-lg: 10px; --ds-r-xl: 14px; --ds-r-pill: 999px;
+  --ds-shadow-sm: 0 1px 2px rgba(12, 10, 9, 0.05);
+  --ds-shadow-md: 0 1px 2px rgba(12, 10, 9, 0.04), 0 8px 24px -12px rgba(12, 10, 9, 0.16);
+  --ds-shadow-lg: 0 0 0 1px rgba(12, 10, 9, 0.04), 0 2px 4px rgba(12, 10, 9, 0.04), 0 24px 56px -20px rgba(12, 10, 9, 0.28);
+  --ds-font: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ds-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --ds-fs-xs: 11px; --ds-fs-sm: 12px; --ds-fs-base: 13px; --ds-fs-md: 14px; --ds-fs-lg: 16px; --ds-fs-xl: 20px; --ds-fs-2xl: 24px;
+  --ds-control: 36px; --ds-control-sm: 30px;
+  --ds-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --ds-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+:root[data-theme="dark"], :root.dark {
+  color-scheme: dark;
+  --ds-bg: #000000;
+  --ds-surface-sunken: #0c0b0a;
+  --ds-surface: #0c0b0a;
+  --ds-surface-raised: #171614;
+  --ds-sidebar: #0a0908;
+  --ds-input-bg: #0c0b0a;
+  --ds-input-bg-disabled: #1c1a18;
+  --ds-hover: rgba(255, 255, 255, 0.055);
+  --ds-active: rgba(255, 255, 255, 0.1);
+  --ds-selected: rgba(255, 255, 255, 0.075);
+  --ds-overlay: rgba(0, 0, 0, 0.72);
+  --ds-dot: rgba(255, 255, 255, 0.05);
+
+  --ds-text: #f0eee9;             /* Cloud Dancer on black */
+  --ds-text-2: #d6d3cf;
+  --ds-text-muted: #a8a29e;
+  --ds-text-placeholder: #8f8983;
+  --ds-text-disabled: #5f5953;
+  --ds-text-inverse: #0c0a09;
+
+  --ds-border-subtle: #1a1917;
+  --ds-border: #282624;
+  --ds-border-strong: #3c3936;
+  --ds-border-input: #6b655f;
+
+  --ds-success-fg: #4ade80; --ds-success-bg: rgba(34, 197, 94, 0.12);  --ds-success-border: rgba(34, 197, 94, 0.32);  --ds-success: #22c55e;
+  --ds-warning-fg: #fbbf24; --ds-warning-bg: rgba(245, 158, 11, 0.12); --ds-warning-border: rgba(245, 158, 11, 0.32); --ds-warning: #f59e0b;
+  --ds-danger-fg: #f87171;  --ds-danger-bg: rgba(239, 68, 68, 0.13);   --ds-danger-border: rgba(239, 68, 68, 0.34);   --ds-danger: #ef4444;
+  --ds-info-fg: #b3adff;    --ds-info-bg: rgba(162, 156, 255, 0.13);  --ds-info-border: rgba(162, 156, 255, 0.32);  --ds-info: #8e87ff;
+  --ds-neutral-fg: #d6d3cf; --ds-neutral-bg: rgba(255, 255, 255, 0.07); --ds-neutral-border: rgba(255, 255, 255, 0.13);
+
+  --ds-speaker-agent: #b3adff; --ds-speaker-agent-soft: rgba(162, 156, 255, 0.32);
+  --ds-speaker-caller: #fbbf24; --ds-speaker-caller-soft: rgba(245, 158, 11, 0.32);
+
+  --ds-tooltip-bg: #f0eee9;
+  --ds-tooltip-text: #0c0a09;
+
+  --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --ds-shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 12px 32px -14px rgba(0, 0, 0, 0.9);
+  --ds-shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 30px 70px -24px rgba(0, 0, 0, 1);
+}
+
+/* ── Shared base: the same feel in both products ─────────────────────────── */
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+body { font-feature-settings: 'ss01', 'cv11'; }
+::selection { background: var(--ds-accent-soft, var(--ds-selected)); color: var(--ds-text); }
+
+/* Numbers line up in tables, counters and durations. */
+table, td, th, time, .ds-num { font-variant-numeric: tabular-nums; }
+
+/* Placeholders everywhere use the empty-field colour. */
+::placeholder { color: var(--ds-text-placeholder); opacity: 1; }
+
+/* One focus ring for every interactive element, keyboard only. */
+:focus-visible { outline: 2px solid var(--ds-focus, var(--ds-accent)); outline-offset: 2px; }
+
+/* Press feedback: buttons give a little under the finger. */
+button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active { transform: translateY(0.5px) scale(0.985); }
+
+/* Thin, quiet scroll bars that follow the theme. */
+* { scrollbar-width: thin; scrollbar-color: var(--ds-border-strong) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  button:active, [role="button"]:active { transform: none !important; }
+}

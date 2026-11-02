@@ -1,0 +1,14 @@
+<span class="rp-share">
+  <button type="button" class="rx-btn rx-btn-sm" (click)="open.set(!open())" aria-haspopup="menu" [attr.aria-expanded]="open()"><lucide-icon name="share" [size]="14"></lucide-icon> Share</button>
+  @if (open()) {
+    <div class="rp-menu" role="menu">
+      <button type="button" role="menuitem" (click)="picture()"><lucide-icon name="image" [size]="15"></lucide-icon><span><b>Picture</b><small>For chat groups</small></span></button>
+      <button type="button" role="menuitem" (click)="pdf()"><lucide-icon name="file-text" [size]="15"></lucide-icon><span><b>PDF</b><small>For reviews</small></span></button>
+      <button type="button" role="menuitem" (click)="sheet()"><lucide-icon name="table" [size]="15"></lucide-icon><span><b>Spreadsheet</b><small>Every number and contact</small></span></button>
+      <hr />
+      <button type="button" role="menuitem" (click)="schedule(true)"><lucide-icon name="mail" [size]="15"></lucide-icon><span><b>Send by email on a schedule</b><small>Daily or weekly</small></span></button>
+      <button type="button" role="menuitem" (click)="schedule(false)"><lucide-icon name="calendar" [size]="15"></lucide-icon><span><b>Reports being sent</b></span></button>
+    </div>
+  }
+</span>
+@if (schedules()) { <app-report-schedules [by]="by()" [columns]="summary()?.columns ?? []" [startNew]="startNew()" [agent]="agent()" [agents]="agents()" (closed)="schedules.set(false)"></app-report-schedules> }

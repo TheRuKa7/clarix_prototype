@@ -1,0 +1,87 @@
+.ex-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ex-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 640px;
+  margin: 0;
+}
+
+.ex-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ex-card {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+
+  &.is-clarix {
+    background: var(--primary-bg);
+    border-color: var(--primary-color);
+  }
+
+  h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-color);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+}
+
+.ex-when {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-light);
+  font-weight: 700;
+}
+
+.ex-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--text-light);
+  font-size: 1.2rem;
+}
+
+.ex-note {
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+
+  strong {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text-color);
+    margin-bottom: 4px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+}

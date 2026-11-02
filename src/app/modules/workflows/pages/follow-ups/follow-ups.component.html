@@ -1,0 +1,95 @@
+<div class="rx-page">
+  <div class="rx-head">
+    <h1 class="rx-title" title="Contacts the agent could not settle by calling. Each one needs a person: note what they said, fix the number, then call again or close it.">Follow ups <lucide-icon name="info" [size]="14"></lucide-icon></h1>
+    <div class="rx-actions">
+      <div class="rx-seg" role="group" aria-label="Show">
+        <button type="button" [class.on]="state() === 'open'" (click)="setState('open')">Open <span class="rx-n">{{ counts().open }}</span></button>
+        <button type="button" [class.on]="state() === 'done'" (click)="setState('done')">Closed <span class="rx-n">{{ counts().done }}</span></button>
+      </div>
+    </div>
+  </div>
+  @if (error() || list.error()) { <p class="rx-note" role="alert">{{ error() || 'Could not load follow ups. Try again.' }}</p> }
+
+  <div class="rx-card">
+    <div class="fu-filters">
+      <label class="fu-search"><lucide-icon name="search" [size]="14"></lucide-icon><input class="rx-input" type="search" placeholder="Search name or number" [value]="search()" (input)="search.set(val($event))" aria-label="Search follow ups" /></label>
+      <div class="fu-chips" role="group" aria-label="Why">
+        <button type="button" class="fu-chip" [class.on]="!reason()" (click)="reason.set('')">All</button>
+        @for (r of reasons(); track r.key) { <button type="button" class="fu-chip" [class.on]="reason() === r.key" (click)="reason.set(reason() === r.key ? '' : r.key)" [title]="r.help">{{ r.label }} <b>{{ r.count }}</b></button> }
+      </div>
+      <span class="rx-grow"></span>
+      <select class="rx-select" (change)="owner.set(val($event))" aria-label="Owner">
+        <option value="">Any owner</option><option value="-">No owner yet</option>
+        @for (o of owners(); track o.email) { <option [value]="o.email">{{ o.email }}</option> }
+      </select>
+    </div>
+
+    @if (!shown().length) {
+      <div class="rx-empty">
+        <lucide-icon name="check" [size]="20"></lucide-icon>
+        <b>{{ state() === 'open' ? (filtered() ? 'Nothing matches' : 'Nothing needs a person') : 'Nothing closed yet' }}</b>
+        @if (state() === 'open' && !filtered()) { <span>Contacts show up here when a number is blocked or wrong, a call is declined, or every try is used.</span> }
+      </div>
+    } @else {
+      <div class="fu-head"><span>Contact</span><span title="Blocked, Wrong number and Rejected are never retried. No more tries means every allowed try was used.">Why</span><span>Campaign</span><span>Owner</span><span>Last note</span><span></span></div>
+      @for (r of shown(); track r.id) {
+        <div class="fu-row" [class.open]="expanded() === r.id">
+          <button type="button" class="fu-main" (click)="toggle(r)" [attr.aria-expanded]="expanded() === r.id">
+            <span class="fu-who"><b>{{ r.name || r.phone }}</b><span class="rx-sub rx-mono">{{ r.phone }}</span></span>
+            <span><span class="rx-tag" [class.bad]="r.reason !== 'no_more_tries'" [class.warn]="r.reason === 'no_more_tries'" [title]="telephony(r)">{{ r.reason_label }}</span><span class="rx-sub fu-since">{{ r.dials }} dial{{ r.dials === 1 ? '' : 's' }} · {{ ago(r.since) }}</span></span>
+            <span class="rx-sub fu-camp" [title]="r.campaign_name">{{ r.campaign_name }}</span>
+            <span class="fu-owner">{{ r.owner || 'No owner yet' }}</span>
+            <span class="rx-sub fu-note" [title]="lastNote(r)">{{ state() === 'done' ? r.closed_as : lastNote(r) || 'No notes yet' }}</span>
+            <span class="fu-chev"><lucide-icon [name]="expanded() === r.id ? 'chevron-down' : 'chevron-right'" [size]="15"></lucide-icon></span>
+          </button>
+          @if (expanded() === r.id) {
+            <div class="fu-detail">
+              <div class="fu-col">
+                <label class="rx-field"><span class="rx-label">Owner</span>
+                  <select class="rx-select" (change)="setOwner(r, $event)" [disabled]="state() === 'done'">
+                    <option value="" [selected]="!r.owner">No owner yet</option>
+                    @for (o of owners(); track o.email) { <option [value]="o.email" [selected]="r.owner === o.email">{{ o.email }}</option> }
+                  </select>
+                </label>
+                <label class="rx-field"><span class="rx-label" title="Correct the number here. The old number is kept in the notes.">Number <lucide-icon name="info" [size]="12"></lucide-icon></span>
+                  <span class="fu-inline"><input class="rx-input rx-mono" [value]="phone()" (input)="phone.set(val($event))" [placeholder]="r.phone" inputmode="numeric" maxlength="13" [disabled]="state() === 'done'" /><button type="button" class="rx-btn rx-btn-sm" [disabled]="!validPhone(r)" (click)="savePhone(r)">Save</button></span>
+                </label>
+                <div class="fu-facts">
+                  <span><span class="rx-sub">Call status</span><b>{{ r.status }}</b></span>
+                  <span><span class="rx-sub">Telephony status</span><b class="rx-mono">{{ telephony(r) || 'Not recorded' }}</b></span>
+                  <span><span class="rx-sub">Agent</span><b>{{ r.agent }}</b></span>
+                </div>
+              </div>
+              <div class="fu-col">
+                <span class="rx-label">Notes</span>
+                <div class="fu-notes">
+                  @for (n of r.notes; track n.at) { <div class="fu-n" [class.sys]="n.system"><span>{{ n.text }}</span><small>{{ n.by }} · {{ ago(n.at) }}</small></div> }
+                  @if (!r.notes.length) { <div class="rx-sub">Write what the contact said, so the next person does not ask again.</div> }
+                </div>
+                @if (state() === 'open') {
+                  <span class="fu-inline"><input class="rx-input" [value]="note()" (input)="note.set(val($event))" placeholder="What did they say?" maxlength="500" (keydown.enter)="saveNote(r)" /><button type="button" class="rx-btn rx-btn-sm" [disabled]="!note().trim()" (click)="saveNote(r)">Add note</button></span>
+                }
+              </div>
+              <div class="fu-acts">
+                <button type="button" class="rx-btn rx-btn-sm" (click)="openCall(r)"><lucide-icon name="external-link" [size]="13"></lucide-icon> Open the call</button>
+                <span class="rx-grow"></span>
+                @if (state() === 'open') {
+                  @if (closing()?.id === r.id) {
+                    <span class="rx-sub">Close without calling again?</span>
+                    <button type="button" class="rx-btn rx-btn-sm" (click)="closing.set(null)">Keep open</button>
+                    <button type="button" class="rx-btn rx-btn-sm rx-btn-primary" (click)="closeRow(r)">Close it</button>
+                  } @else {
+                    <button type="button" class="rx-btn rx-btn-sm" (click)="closing.set(r)">Close, no call needed</button>
+                    <button type="button" class="rx-btn rx-btn-sm rx-btn-primary" (click)="callAgain(r)" [disabled]="busy() === r.id" title="Send this contact back to the agent"><lucide-icon name="phone-outgoing" [size]="13"></lucide-icon> {{ busy() === r.id ? 'Sending…' : 'Call again' }}</button>
+                  }
+                } @else {
+                  <button type="button" class="rx-btn rx-btn-sm" (click)="patch(r, { state: 'open' })">Reopen</button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    }
+  </div>
+</div>

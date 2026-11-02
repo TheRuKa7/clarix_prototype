@@ -1,0 +1,98 @@
+<div class="rf">
+  @if (filterable().length === 0) {
+    <p class="rf__hint">No filterable columns for this template.</p>
+  } @else {
+    @for (row of rows(); track $index) {
+      <div class="rf__row">
+        <select
+          class="rf__select rf__col"
+          [value]="row.columnId"
+          (change)="setColumn($index, $any($event.target).value)">
+          @for (col of filterable(); track col.id) {
+            <option [value]="col.id">{{ col.section }} — {{ col.label }}</option>
+          }
+        </select>
+
+        <select
+          class="rf__select rf__op"
+          [value]="row.operator"
+          (change)="setOperator($index, $any($event.target).value)">
+          @for (op of operatorsForRow(row); track op) {
+            <option [value]="op">{{ OPERATOR_LABELS[op] }}</option>
+          }
+        </select>
+
+        <div class="rf__value">
+          @if (arity(row.operator) === 0) {
+            <span class="rf__novalue">—</span>
+          } @else if (isEnum(row)) {
+            @if (isMulti(row.operator)) {
+              <div class="rf__enum">
+                @for (val of enumValues(row); track val) {
+                  <label class="rf__enum-item">
+                    <input
+                      type="checkbox"
+                      [checked]="hasEnumValue(row, val)"
+                      (change)="toggleEnumValue($index, val, $any($event.target).checked)" />
+                    <span>{{ val }}</span>
+                  </label>
+                }
+              </div>
+            } @else {
+              <select
+                class="rf__select"
+                [value]="row.values[0] || ''"
+                (change)="setValue($index, 0, $any($event.target).value)">
+                <option value="">Select…</option>
+                @for (val of enumValues(row); track val) {
+                  <option [value]="val">{{ val }}</option>
+                }
+              </select>
+            }
+          } @else if (isMulti(row.operator)) {
+            <input
+              class="rf__input"
+              type="text"
+              placeholder="comma-separated values"
+              [value]="row.values.join(', ')"
+              (change)="setCsvValues($index, $any($event.target).value)" />
+          } @else if (arity(row.operator) === 2) {
+            <div class="rf__between">
+              <input
+                class="rf__input"
+                [type]="inputType(row)"
+                placeholder="from"
+                [value]="row.values[0] || ''"
+                (change)="setValue($index, 0, $any($event.target).value)" />
+              <span class="rf__and">and</span>
+              <input
+                class="rf__input"
+                [type]="inputType(row)"
+                placeholder="to"
+                [value]="row.values[1] || ''"
+                (change)="setValue($index, 1, $any($event.target).value)" />
+            </div>
+          } @else {
+            <input
+              class="rf__input"
+              [type]="inputType(row)"
+              placeholder="value"
+              [value]="row.values[0] || ''"
+              (change)="setValue($index, 0, $any($event.target).value)" />
+          }
+        </div>
+
+        <button type="button" class="rf__remove" (click)="removeRow($index)" aria-label="Remove filter">
+          <lucide-icon name="x" [size]="16"></lucide-icon>
+        </button>
+      </div>
+    } @empty {
+      <p class="rf__hint">No filters — the report includes all executions of the template.</p>
+    }
+
+    <button type="button" class="rf__add" (click)="addRow()">
+      <lucide-icon name="plus" [size]="16"></lucide-icon>
+      Add filter
+    </button>
+  }
+</div>

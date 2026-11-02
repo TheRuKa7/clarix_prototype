@@ -1,0 +1,515 @@
+.erf {
+  padding: 0 0 96px; // bottom padding leaves room above the sticky footer
+  width: 100%;
+}
+
+.erf__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.erf__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-hover, var(--ds-surface-sunken));
+  }
+}
+
+.erf__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.erf__error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--danger-bg, var(--ds-danger-bg));
+  color: var(--danger, var(--ds-danger-fg));
+  font-size: 13px;
+}
+
+.erf__tabs {
+  @apply flex border-b border-gray-200 dark:border-gray-700 mb-5;
+}
+
+.erf__tab {
+  @apply px-4 py-3 text-sm font-medium text-gray-500 dark:text-gray-400
+         border-b-2 border-transparent hover:text-gray-700 dark:hover:text-gray-200
+         transition-colors -mb-px whitespace-nowrap bg-transparent cursor-pointer;
+
+  &--active {
+    @apply text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400;
+  }
+}
+
+.erf__state {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.erf__card {
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  background: var(--surface, #fff);
+}
+
+.erf__section-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+// Compact details bar: template + title on one row, description spanning full width.
+.erf__details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.erf__field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  &--full {
+    grid-column: 1 / -1;
+  }
+}
+
+.erf__label {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.erf__hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted, var(--ds-text-muted));
+}
+
+.erf__select,
+.erf__input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  border-radius: 8px;
+  background: var(--input-bg, #fff);
+  color: inherit;
+  box-sizing: border-box;
+}
+
+// Columns + Filters side by side to use the full width and cut vertical scrolling.
+.erf__main {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
+  align-items: start;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.erf__card--columns,
+.erf__card--filters {
+  margin-bottom: 16px;
+  min-width: 0; // allow inner grids/inputs to shrink instead of overflowing
+}
+
+// Sticky action bar so save/cancel are always reachable without scrolling.
+.erf__footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 0;
+  margin-top: 4px;
+  background: linear-gradient(to top, var(--bg, var(--ds-surface-sunken)) 70%, transparent);
+}
+
+.erf__btn {
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+
+  &--ghost {
+    background: var(--surface, #fff);
+    border-color: var(--border-color, var(--ds-border));
+    color: inherit;
+  }
+
+  &--primary {
+    background: var(--primary, var(--ds-accent));
+    color: var(--ds-on-accent);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+// ─── Mail schedules ───
+.erf__sched-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  // Bleed to the card's edges so the rule under the header lines up with the row dividers.
+  margin: 0 -20px 0;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border-color, var(--ds-border));
+}
+
+.erf__add-sched {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--ds-info-border);
+  border-radius: 8px;
+  background: var(--ds-accent-soft);
+  color: var(--primary, var(--ds-accent-fg));
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--ds-accent-soft);
+    border-color: var(--ds-accent-border);
+  }
+}
+
+// Rows in one card, separated by rules — a stack of bordered cards inside a bordered
+// card gives every schedule a frame it doesn't need.
+.erf__sched-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -20px -20px;
+}
+
+.erf__sched {
+  display: flex;
+  align-items: flex-end; // actions sit level with the last line, not the middle of the row
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--surface, #fff);
+
+  & + & {
+    border-top: 1px solid var(--border-color, var(--ds-border));
+  }
+
+  &--paused {
+    opacity: 0.7;
+  }
+}
+
+.erf__sched-main {
+  min-width: 0;
+}
+
+.erf__sched-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.erf__sched-summary {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.erf__badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ds-success-border);
+  color: var(--ds-success-fg);
+
+  &--paused {
+    background: var(--ds-surface-sunken);
+    color: var(--ds-text-muted);
+  }
+
+  &--muted {
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent-fg);
+  }
+}
+
+.erf__sched-meta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-muted, var(--ds-text-muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.erf__sched-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-color, var(--ds-border));
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--text-muted, var(--ds-text-muted));
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-hover, var(--ds-surface-sunken));
+    }
+  }
+}
+
+// Destructive at rest, not just on hover — you should see it before you reach it.
+// Needs the parent selector to outrank `.erf__sched-actions button`.
+.erf__sched-actions button.erf__danger {
+  color: var(--danger, var(--ds-danger-fg));
+  border-color: var(--ds-danger-border);
+
+  &:hover {
+    background: var(--ds-danger-bg);
+    border-color: var(--ds-danger-border);
+    color: var(--danger, var(--ds-danger-fg));
+  }
+}
+
+// ── Next send: the single fact this tab exists to answer ────────────────────
+// Orange, left-accented with the same #fb923c the executions table gives an UPCOMING
+// row — "something is about to happen" should read the same everywhere in the product.
+.erf__next {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--ds-warning-border);
+  border-radius: 12px;
+  background: var(--ds-warning-bg);
+  box-shadow: inset 3px 0 0 0 var(--ds-warning);
+}
+
+.erf__next-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--ds-warning-bg);
+  color: var(--ds-warning-fg);
+}
+
+.erf__next-body {
+  min-width: 0;
+}
+
+.erf__next-line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ds-warning-fg);
+}
+
+.erf__next-countdown {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums; // digits don't jitter as the seconds tick
+  color: var(--ds-warning-fg);
+}
+
+.erf__next-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ds-warning-fg);
+}
+
+// ── Schedule row ───────────────────────────────────────────────────────────
+// Subject reads as the thing that lands in an inbox, so it gets ink weight.
+.erf__sched-subject {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--text-strong, var(--ds-text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  lucide-icon {
+    color: var(--text-muted, var(--ds-text-placeholder));
+    flex-shrink: 0;
+  }
+}
+
+.erf__recip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+// Fixed gutter so the To and Cc pills start on the same x.
+.erf__recip-label {
+  flex-shrink: 0;
+  width: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, var(--ds-text-placeholder));
+}
+
+.erf__pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+// To and Cc differ by hue, not just position — a glance separates them.
+.erf__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color, var(--ds-border));
+  background: var(--surface, #fff);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &--to {
+    color: var(--ds-info-fg);
+  }
+
+  &--cc {
+    color: var(--ds-text-2);
+  }
+}
+
+// An initial reads faster than an address; identity by hue, To against Cc.
+.erf__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+
+  &--to {
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent-fg);
+  }
+
+  &--cc {
+    background: var(--ds-surface-sunken);
+    color: var(--ds-text-muted);
+  }
+}
+
+// How much data a send carries, sat beside when it runs.
+.erf__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+
+  &--window {
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent-fg);
+  }
+}
+
+.erf__sched-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+
+  strong {
+    color: var(--text, var(--ds-text));
+    font-weight: 600;
+  }
+}
+
+.erf__run {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted, var(--ds-text-muted));
+
+  strong {
+    color: inherit;
+  }
+
+  .erf__run-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  &--ok {
+    color: var(--ds-success-fg);
+  }
+
+  &--fail {
+    color: var(--ds-danger-fg);
+  }
+
+  &--none {
+    color: var(--ds-warning-fg);
+  }
+}
