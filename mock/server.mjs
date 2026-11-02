@@ -20,7 +20,7 @@ import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
-  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel } from './calling-report.mjs';
+  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns } from './calling-report.mjs';
 /** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
 const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
 
@@ -757,7 +757,9 @@ function callingRow(e) {
     call_status: d.call_status, status_reason: d.status_reason, goal_reached: d.goal_reached, test_status: e.report.test_status, test_goal: e.report.test_goal,
     outcome_source: d.outcome_source, changed_by: d.changed_by, changed_at: d.changed_at, change_note: d.change_note, review_status_reason: d.review_status_reason,
     callback_at: out.callback_date || out.callback_time ? [out.callback_date, out.callback_time].filter(Boolean).join(' ') : null,
-    duration_seconds: e.callDurationSeconds ?? null, retries: Math.max(0, (e.attemptLog?.length || 1) - 1), units: numbersOf(e.context) };
+    duration_seconds: e.callDurationSeconds ?? null, retries: Math.max(0, (e.attemptLog?.length || 1) - 1), units: numbersOf(e.context),
+    // The row as uploaded, and what the agent saved: the campaign page shows both as columns.
+    inputs: flatValues(e.context), answers: flatValues(out) };
 }
 function callingRows() {
   const rows = executions.map(callingRow);
@@ -776,7 +778,8 @@ function callingScope(q) {
 }
 const clarixAgentsMeta = () => templates.map((t) => ({ key: t.id, label: t.name, numberFields: (t.contextMappings || []).filter((m) => m.dataType === 'NUMBER').map((m) => m.fieldName) }));
 on('GET', '/api/v1/reports/calling', ({ q }) => {
-  const all = callingRows(); const sc = callingScope(q);
+  // The call log's search and column filters scope the whole report, so a multi-select pick changes the funnel too.
+  const all = filterRows(callingRows(), logFilters(q)); const sc = callingScope(q);
   const agentsAll = agentChoices(all, sc);
   ok(callingReport(all, sc, { workspace: 'Moglix', agentsAll, unitsAvailable: unitsFor(scopeRows(all, { ...sc, agents: [] }), clarixAgentsMeta()) }));
 });
@@ -804,7 +807,10 @@ on('GET', '/api/v1/reports/calling/campaigns', ({ q }) => {
   const skip = Number(q.get('skip') || 0), limit = Number(q.get('limit') || 20);
   ok({ rows: list.slice(skip, skip + limit), total: list.length, running: list.filter((c) => c.status === 'Running').length });
 });
-on('GET', '/api/v1/reports/calling/campaigns/:id', ({ p }) => { const c = campaignSummaries(callingRows()).find((x) => x.campaign_id === p.id); c ? ok(c) : fail(404, 'Campaign not found'); });
+on('GET', '/api/v1/reports/calling/campaigns/:id', ({ p }) => {
+  const rows = callingRows(); const c = campaignSummaries(rows).find((x) => x.campaign_id === p.id);
+  c ? ok({ ...c, columns: campaignColumns(rows.filter((r) => r.campaign_id === p.id)) }) : fail(404, 'Campaign not found');
+});
 on('POST', '/api/v1/reports/calling/campaigns/:id/stop', ({ p }) => {
   const live = executions.filter((e) => e.batchId === p.id && e.status === 'IN_PROGRESS'); live.forEach((e) => finishExecution(e, 'STOPPED', { by: USER })); ok({ stopped: live.length });
 });
@@ -882,8 +888,10 @@ on('GET', '/api/v1/reports/calling/calls', ({ q }) => {
   ok({ rows: rows.slice(skip, skip + limit), total: rows.length });
 });
 on('GET', '/api/v1/reports/calling/export.xlsx', ({ q }) => {
-  const rows = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded'), logFilters(q));
-  file(writeXlsx(exportTable(rows), 'Calls'), XLSX, `calling-report-${nowIso().slice(0, 10)}.xlsx`);
+  const sc = callingScope(q); const rows = filterRows(rowsInBox(scopeRows(callingRows(), sc), q.get('box') || 'uploaded'), logFilters(q));
+  // A campaign's export adds its sheet's columns and the agent's answers.
+  const cols = sc.campaign ? campaignColumns(rows) : { inputs: [], answers: [] }; const extra = [...cols.inputs, ...cols.answers].map((c) => [c.key, c.label]);
+  file(writeXlsx(exportTable(rows, 'Asia/Kolkata', extra), 'Calls'), XLSX, `calling-report-${nowIso().slice(0, 10)}.xlsx`);
 });
 on('GET', '/api/v1/dashboard/voice', ({ q }) => ok(voiceMetrics(q)));
 on('GET', '/api/v1/dashboard/voice/calls', ({ q }) => {

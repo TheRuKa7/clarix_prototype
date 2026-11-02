@@ -8,7 +8,7 @@ import { CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowU
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
   return {
-    report: (sc) => firstValueFrom(r.callingReport(sc)),
+    report: (sc, f) => firstValueFrom(r.callingReport(sc, f)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(r.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(r.callingReportExport(sc, box, f)),
     values: (sc, box, f, col) => firstValueFrom(r.reportColumnValues(sc, box, f, col)),

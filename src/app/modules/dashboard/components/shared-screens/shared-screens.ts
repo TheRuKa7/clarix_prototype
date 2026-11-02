@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { CallingReportComponent, CallingReportSource, ReportCallRow } from '../calling-report/calling-report.component';
+import { CallingReportComponent, CallingReportSource, CampaignColumns, ReportCallRow } from '../calling-report/calling-report.component';
 
 /**
  * The screens Echo and Clarix share (plan phase 3): Campaigns, Campaign, New campaign and Follow ups. The Call logs page is
@@ -12,6 +12,8 @@ export interface CampaignLine {
   answered: number; success: number; success_rate: number | null; not_finished: number; bad_data: number; status: 'Running' | 'Completed' | 'Stopped' | 'Failed';
   /** The agent's custom stats for this campaign: total in the sheet, covered on answered calls, accepted. */
   stats?: { field: string; label: string; total: number; covered: number; accepted: number }[];
+  /** One campaign only: its sheet's columns and the agent's answers, for its table. */
+  columns?: CampaignColumns;
 }
 export interface CampaignsSource {
   list(p: { from: string | null; to: string | null; state: string; q: string; skip: number; limit: number }): Promise<{ rows: CampaignLine[]; total: number; running: number }>;
@@ -186,7 +188,16 @@ export class CampaignsListComponent {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CallingReportComponent],
-  styles: [CSS],
+  styles: [CSS + `
+    .cp-progress { gap: 8px; }
+    .cp-line { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+    .cp-line b { font-size: 15px; }
+    .cp-good { color: var(--s-good, #146c34); font-weight: 600; }
+    .cp-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--s-soft); }
+    .cp-done { background: #16a34a; } .cp-open { background: #a8a29e; } .cp-bad { background: #d6d3d1; }
+    .cp-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--s-muted); }
+    .cp-stats b { color: var(--s-text); }
+  `],
   template: `
     <div class="s">
       <div class="s-head"><button type="button" class="s-btn" (click)="back()">← Campaigns</button></div>
@@ -201,13 +212,28 @@ export class CampaignsListComponent {
           @if (camp.status === 'Running') { <button type="button" class="s-btn s-danger" (click)="stop(camp)">Stop calls</button> }
         </div>
         @if (note()) { <p class="s-note">{{ note() }}</p> }
-        <app-calling-report [source]="source().report" [campaign]="camp.campaign_id"></app-calling-report>
+        <!-- Where the campaign stands, before any detail: rows done, still dialling, not dialled, and the result so far. -->
+        <div class="s-card s-pad cp-progress">
+          <div class="cp-line">
+            <b>{{ camp.planned - camp.not_finished }} of {{ camp.planned }} rows called</b>
+            <span class="s-muted">@if (camp.not_finished) { {{ camp.not_finished }} still being dialled · }{{ camp.bad_data }} not dialled (bad data) · {{ camp.answered }} answered · <span class="cp-good">{{ camp.success }} success{{ camp.success_rate == null ? '' : ' (' + pct(camp.success_rate) + ')' }}</span></span>
+          </div>
+          <div class="cp-bar" role="img" [attr.aria-label]="(camp.planned - camp.not_finished) + ' of ' + camp.planned + ' rows called'">
+            <span class="cp-done" [style.width.%]="share(camp.planned - camp.not_finished, camp.uploaded)"></span><span class="cp-open" [style.width.%]="share(camp.not_finished, camp.uploaded)"></span><span class="cp-bad" [style.width.%]="share(camp.bad_data, camp.uploaded)"></span>
+          </div>
+          @if (camp.stats?.length) {
+            <div class="cp-stats">@for (st of camp.stats; track st.field) { <span>{{ st.label }}: <b>{{ st.covered }}</b> of {{ st.total }} covered · {{ st.accepted }} accepted</span> }</div>
+          }
+        </div>
+        <app-calling-report [source]="source().report" [campaign]="camp.campaign_id" [columns]="camp.columns ?? null"></app-calling-report>
       } @else { <p class="s-empty">{{ error() || 'Loading the campaign…' }}</p> }
     </div>
   `,
 })
 export class CampaignPageComponent {
   readonly source = input.required<CampaignsSource>();
+  protected readonly pct = pctText;
+  protected share(n: number, of: number): number { return of ? (100 * n) / of : 0; }
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   protected readonly c = signal<CampaignLine | null>(null);

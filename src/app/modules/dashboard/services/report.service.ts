@@ -46,7 +46,7 @@ export class ReportService {
   private reportParams(sc: { from: string; to: string; agents: string[]; includeTests: boolean }): HttpParams {
     return new HttpParams().set('from', sc.from).set('to', sc.to).set('agents', sc.agents.join(',')).set('include_tests', sc.includeTests ? '1' : '').set('campaign', (sc as any).campaign || '').set('unit', (sc as any).unit || '');
   }
-  callingReport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }): Observable<any> { return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.report, { params: this.reportParams(sc) })); }
+  callingReport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, f?: { q: string; cols: Record<string, string | string[]> }): Observable<any> { return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.report, { params: this.logParams(this.reportParams(sc), f) })); }
   // ── Calling report extras: column values, tasks, custom stats, follow-up checklist ──
   reportColumnValues(sc: any, box: string, f: any, column: string): Observable<any[]> { return this.data(this.http.get<{ data: any }>(`${ENDPOINTS.callingReport.report}/calls/values`, { params: this.logParams(this.reportParams(sc).set('box', box).set('column', column), f) })).pipe(map((d: any) => d.values ?? [])); }
   reportTasks(sc: any): Observable<any> { return this.data(this.http.get<{ data: any }>(`${ENDPOINTS.callingReport.report}/tasks`, { params: this.reportParams(sc) })); }

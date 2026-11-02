@@ -26,7 +26,7 @@ export class DashboardOverviewComponent {
   private readonly router = inject(Router);
   /** Where the calling report reads from. Every row opens its call (execution) page. */
   protected readonly reportSource: CallingReportSource = {
-    report: (sc) => firstValueFrom(this.reports.callingReport(sc)),
+    report: (sc, f) => firstValueFrom(this.reports.callingReport(sc, f)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(this.reports.callingReportExport(sc, box, f)),
     testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),

@@ -207,10 +207,11 @@ export function rowsInBox(rows, key) {
 }
 
 /** The export: the 14 columns, Duration as m:ss, dates in the workspace time zone. */
-export function exportTable(rows, timeZone = 'Asia/Kolkata') {
+export function exportTable(rows, timeZone = 'Asia/Kolkata', extra = []) {
   const when = (v) => (v ? new Date(v).toLocaleString('en-GB', { timeZone, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '');
   const mmss = (s) => (s == null || s === '' ? '' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
-  return [COLUMNS.map(([, l]) => l), ...rows.map((r) => COLUMNS.map(([k]) => (k === 'call_date' ? when(r.call_date) : k === 'duration_seconds' ? mmss(r.duration_seconds) : r[k] ?? '')))];
+  return [[...COLUMNS.map(([, l]) => l), ...extra.map(([, l]) => l)],
+    ...rows.map((r) => [...COLUMNS.map(([k]) => (k === 'call_date' ? when(r.call_date) : k === 'duration_seconds' ? mmss(r.duration_seconds) : r[k] ?? '')), ...extra.map(([k]) => cellText(r, k, timeZone))])];
 }
 
 /** Mock stand-in for the review step: what the caller's answers say about the goal. Decided from the saved answers. */
@@ -270,6 +271,8 @@ export function neighbours(rows, row) {
 // ── Call log search and column filters ───────────────────────────────────────
 /** What a cell reads as on screen and in the export, so "2 Nov" or "1:05" finds what people see. */
 function cellText(r, k, timeZone = 'Asia/Kolkata') {
+  if (k.startsWith('in:')) return String(r.inputs?.[k.slice(3)] ?? '');
+  if (k.startsWith('out:')) return String(r.answers?.[k.slice(4)] ?? '');
   const v = r[k];
   if (k === 'call_date') return v ? new Date(v).toLocaleString('en-GB', { timeZone, day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
   if (k === 'duration_seconds') return v == null ? '' : `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, '0')}`;
@@ -279,7 +282,9 @@ function cellText(r, k, timeZone = 'Asia/Kolkata') {
 export function filterRows(rows, { q = '', cols = {} } = {}) {
   const term = String(q || '').trim().toLowerCase(); const want = Object.entries(cols || {}).filter(([, v]) => (Array.isArray(v) ? v.length : String(v ?? '').trim()));
   if (!term && !want.length) return rows;
-  return rows.filter((r) => (!term || COLUMNS.some(([k]) => cellText(r, k).toLowerCase().includes(term)))
+  const hit = (r) => COLUMNS.some(([k]) => cellText(r, k).toLowerCase().includes(term))
+    || [...Object.values(r.inputs || {}), ...Object.values(r.answers || {})].some((v) => String(v ?? '').toLowerCase().includes(term));
+  return rows.filter((r) => (!term || hit(r))
     && want.every(([k, v]) => (Array.isArray(v) ? v.includes(cellText(r, k)) : cellText(r, k).toLowerCase().includes(String(v).trim().toLowerCase()))));
 }
 /** Reads ?q= and ?filters= (JSON of column: text) from a request. */
@@ -298,6 +303,24 @@ export function campaignSummaries(rows) {
       uploaded: mine.length, planned: n('planned'), picked_up: n('picked_up'), answered: an, success: su, success_rate: pct(su, an), not_finished: open, bad_data: n('bad_data'), status };
   }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
+/** "po_numbers" -> "PO numbers": a sheet or answer key as a column header. */
+export function columnLabel(key) {
+  const s = String(key).replace(/[_-]+/g, ' ').trim().replace(/\b(po|id|sku|gst|eta|rfx|rfq|uom|qty)\b/gi, (w) => w.toUpperCase());
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+/** The columns one campaign carries: its sheet's (in:) and the agent's answers (out:), in first-seen order. */
+export function campaignColumns(rows) {
+  const ins = new Set(), outs = new Set();
+  // The sheet's own contact columns repeat Caller and Phone, so they are left out.
+  const contact = /^(contact[ _]?)?(name|phone|mobile|email|number)$/i;
+  for (const r of rows) { Object.keys(r.inputs || {}).filter((k) => !contact.test(k)).forEach((k) => ins.add(k)); Object.keys(r.answers || {}).forEach((k) => outs.add(k)); }
+  return { inputs: [...ins].map((k) => ({ key: `in:${k}`, label: columnLabel(k) })), answers: [...outs].map((k) => ({ key: `out:${k}`, label: columnLabel(k) })) };
+}
+/** Flat text values of an object (the upload's context or the agent's answers), for the inputs/answers of a row. */
+export function flatValues(o) {
+  return Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object').map(([k, v]) => [k, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)]));
+}
+
 /** Campaigns created in the period, by state (all, running, finished) and search (file, agent or uploader). */
 export function filterCampaigns(list, { from = null, to = null, state = 'all', q = '' } = {}) {
   const lo = from ? Date.parse(from) : -Infinity, hi = to ? Date.parse(to) : Infinity; const term = String(q).trim().toLowerCase();

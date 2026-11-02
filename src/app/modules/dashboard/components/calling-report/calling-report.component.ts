@@ -36,11 +36,16 @@ export interface CallingReport {
 export interface ReportCallRow {
   id: string; call_id: string | null; campaign_id: string; primary_id?: string; call_date: string | null; agent: string; campaign: string; caller_name: string; phone: string;
   call_status: string; status_reason: string; goal_reached: string; duration_seconds: number | null; callback_at: string | null; uploaded_by: string; summary?: string; retries?: number;
+  /** The row as uploaded (the sheet's columns) and what the agent saved: shown as columns on a campaign page. */
+  inputs?: Record<string, string>; answers?: Record<string, string>;
 }
+/** A campaign's own columns: its sheet's (in:key) and the agent's answers (out:key). */
+export interface CampaignColumns { inputs: { key: string; label: string }[]; answers: { key: string; label: string }[] }
 /** The call log's search box and per-column "contains" filters; the export uses the same. */
 export interface LogFilters { q: string; cols: Record<string, string | string[]> }
 export interface CallingReportSource {
-  report(scope: ReportScope): Promise<CallingReport>;
+  /** The report; the call log's search and column filters, when given, scope it too. */
+  report(scope: ReportScope, filters?: LogFilters): Promise<CallingReport>;
   calls(scope: ReportScope, box: string, skip: number, limit: number, filters?: LogFilters): Promise<{ rows: ReportCallRow[]; total: number }>;
   exportXlsx(scope: ReportScope, box: string, filters?: LogFilters): Promise<Blob>;
   /** Opens the call page for a row (phase 2 makes this the one call page everywhere). */
@@ -82,24 +87,26 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
   template: `
     <section class="cr" [class.cr-busy]="loading()">
       <div class="cr-top">
+        @if (!campaign()) {
         <div class="cr-seg" role="group" aria-label="Period">
           @for (p of PERIODS; track p.key) { <button type="button" [class.on]="period() === p.key" (click)="setPeriod(p.key)">{{ p.label }}</button> }
         </div>
-        @if (period() === 'custom') {
+        }
+        @if (period() === 'custom' && !campaign()) {
           <span class="cr-range">
             <input type="date" aria-label="From" [value]="customFrom()" [max]="customTo()" (change)="setCustom($any($event.target).value, customTo())">
             <span>to</span>
             <input type="date" aria-label="To" [value]="customTo()" [min]="customFrom()" [max]="today()" (change)="setCustom(customFrom(), $any($event.target).value)">
           </span>
         }
-        @if (agents().length || period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Reset period</button> }
+        @if (!campaign() && (agents().length || period() !== '30d')) { <button type="button" class="cr-link" (click)="clearAll()">Reset period</button> }
         @if (mode() === 'dashboard' && (r()?.units_available?.length || 0) > 0) {
           <div class="cr-seg" role="group" aria-label="Count by">
             <button type="button" [class.on]="!unit()" (click)="setUnit('')">Calls</button>
             @for (u of r()?.units_available ?? []; track u.field) { <button type="button" [class.on]="unit() === u.field" (click)="setUnit(u.field)">{{ u.label }}</button> }
           </div>
         }
-        @if (mode() === 'dashboard' && source().agentStats) {
+        @if (mode() === 'dashboard' && !campaign() && source().agentStats) {
           <div class="cr-drop">
             <button type="button" class="cr-link" (click)="openStats()">Custom stats</button>
             @if (statsOpen()) {
@@ -118,7 +125,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           </div>
         }
         <span class="cr-grow"></span>
-        <span class="cr-meta">{{ periodLabel() }} · {{ tzLabel() }}</span>
+        <span class="cr-meta">{{ campaign() ? 'Whole campaign' : periodLabel() }} · {{ tzLabel() }}</span>
         <div class="cr-drop">
           <button type="button" class="cr-btn" (click)="shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
           @if (shareOpen()) {
@@ -134,7 +141,10 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
       @if (r(); as rep) {
-        @if (mode() === 'dashboard' && tasks(); as t) {
+        @if (mode() === 'dashboard' && logFiltered()) {
+          <p class="cr-note cr-filtered">Filtered by {{ filterSummary() }}. The funnel, call status and calls below all follow these filters. <button type="button" class="cr-link" (click)="clearLogFilters()">Clear filters</button></p>
+        }
+        @if (mode() === 'dashboard' && !campaign() && tasks(); as t) {
           <div class="cr-tasks" role="list" aria-label="Follow ups and active tasks">
             <button type="button" role="listitem" (click)="source().openFollowUps?.()"><b>{{ num(t.follow_ups) }}</b> follow ups open <small>{{ t.callbacks }} callbacks · {{ t.follow_up_required }} follow-up required</small></button>
             <button type="button" role="listitem" (click)="source().openCampaigns?.()"><b>{{ num(t.running_campaigns) }}</b> campaign{{ t.running_campaigns === 1 ? '' : 's' }} running</button>
@@ -177,21 +187,25 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         <!-- The call log: every row, newest first, or only the step or status picked above. A row opens its call. -->
         <div class="cr-card cr-log">
           <div class="cr-log-head">
-            <b>Calls</b>
+            <b>{{ campaign() ? 'Uploaded rows' : 'Calls' }}</b>
             @if (box(); as bx) { <span class="cr-fchip">{{ bx.label }}<button type="button" (click)="close()" aria-label="Show every call">✕</button></span> }
-            <span class="cr-muted">{{ num(drillTotal()) }} call{{ drillTotal() === 1 ? '' : 's' }}</span>
-            <input class="cr-search" type="search" placeholder="Search every column" [value]="search()" (input)="setSearch($any($event.target).value)" aria-label="Search calls">
+            <span class="cr-muted">{{ num(drillTotal()) }} {{ campaign() ? 'row' : 'call' }}{{ drillTotal() === 1 ? '' : 's' }}</span>
+            <input class="cr-search" type="search" [placeholder]="campaign() ? 'Search names, POs, items…' : 'Search every column'" [value]="search()" (input)="setSearch($any($event.target).value)" aria-label="Search calls">
             @if (logFiltered()) { <button type="button" class="cr-link" (click)="clearLogFilters()">Clear column filters</button> }
             <span class="cr-grow"></span>
             @if (source().openCallLogs && mode() === 'dashboard') { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
             <button type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
           </div>
+          @if (campaign()) { <p class="cr-hint">One line per row of the uploaded sheet: what was uploaded, how its call ended and what the agent captured. Open a line for the call and its recording.</p> }
           <div class="cr-scroll">
             <table class="cr-table">
               <thead>
-                <tr>@for (col of LOG_COLUMNS; track col[0]) { <th>{{ col[1] }}</th> }</tr>
-                <tr class="cr-frow">@for (col of LOG_COLUMNS; track col[0]) {
-                  <th>@if (PICK_COLUMNS.has(col[0])) {
+                @if (campaign() && (colsIn().length || colsOut().length)) {
+                  <tr class="cr-groups-row"><th [attr.colspan]="2">Contact</th><th [attr.colspan]="2">Call</th>@if (colsIn().length) { <th class="cr-gin" [attr.colspan]="colsIn().length">From the sheet</th> }@if (colsOut().length) { <th class="cr-gout" [attr.colspan]="colsOut().length">Agent captured</th> }<th [attr.colspan]="5"></th></tr>
+                }
+                <tr>@for (col of cols(); track col[0]) { <th [class.cr-gin]="col[0].startsWith('in:')" [class.cr-gout]="col[0].startsWith('out:')">{{ col[1] }}</th> }</tr>
+                <tr class="cr-frow">@for (col of cols(); track col[0]) {
+                  <th>@if (isPick(col[0])) {
                     <div class="cr-drop">
                       <button type="button" class="cr-pick" [class.on]="picked(col[0]).length" (click)="openPick(col[0])">{{ picked(col[0]).length ? picked(col[0]).length + ' selected' : 'All' }} ▾</button>
                       @if (pickOpen() === col[0]) {
@@ -208,9 +222,10 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
                 <tbody>
                   @for (c of drillRows(); track c.id) {
                     <tr tabindex="0" (click)="source().openCall(c)" (keydown.enter)="source().openCall(c)" [title]="'Open the call with ' + (c.caller_name || c.phone)">
-                      <td class="nw">{{ c.call_date ? when(c.call_date) : '—' }}</td><td class="cut" [title]="c.agent">{{ c.agent }}</td><td class="cut" [title]="c.campaign">{{ c.campaign }}</td><td>{{ c.caller_name || '—' }}</td><td class="nw">{{ c.phone || '—' }}</td>
-                      <td class="cut wide" [title]="c.summary || ''">{{ c.summary || '—' }}</td><td><span class="cr-st" [style.--c]="colorOf(c)">{{ c.call_status }}</span></td><td class="cut" [title]="c.status_reason">{{ c.status_reason }}</td>
-                      <td class="nw">{{ c.callback_at || '—' }}</td><td class="nw">{{ mmss(c.duration_seconds) }}</td><td>{{ c.retries ?? 0 }}</td><td>{{ c.goal_reached }}</td>
+                      @for (col of cols(); track col[0]) {
+                        @if (col[0] === 'call_status') { <td><span class="cr-st" [style.--c]="colorOf(c)">{{ c.call_status }}</span></td> }
+                        @else { <td [class.cut]="!col[0].startsWith('in:') || cell(c, col[0]).length > 24" [class.wide]="col[0] === 'summary'" [class.cr-gin]="col[0].startsWith('in:')" [class.cr-gout]="col[0].startsWith('out:')" [title]="cell(c, col[0])">{{ cell(c, col[0]) || '—' }}</td> }
+                      }
                     </tr>
                   }
                 </tbody>
@@ -223,7 +238,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
               <span>{{ drillPage() * PAGE + 1 }}–{{ drillPage() * PAGE + drillRows().length }} of {{ num(drillTotal()) }}</span>
               <button type="button" class="cr-btn" [disabled]="(drillPage() + 1) * PAGE >= drillTotal()" (click)="page(1)">Older</button>
             </div>
-          } @else { <p class="cr-empty cr-pad">{{ logFiltered() ? 'No calls match these filters.' : 'No calls here in this period.' }}</p> }
+          } @else { <p class="cr-empty cr-pad">{{ logFiltered() ? 'Nothing matches these filters.' : campaign() ? 'No rows here.' : 'No calls here in this period.' }}</p> }
         </div>
       } @else if (!error()) { <p class="cr-empty">Loading…</p> }
     </section>
@@ -315,6 +330,12 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--cr-soft); font-size: 13px; }
     .cr-note.bad { color: var(--cr-bad); }
     .cr-empty { margin: 0; color: var(--cr-muted); font-size: 13px; }
+    .cr-filtered { color: var(--cr-text); }
+    .cr-hint { margin: 0; padding: 0 16px; color: var(--cr-muted); font-size: 12.5px; }
+    .cr-groups-row th { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 5px 10px 0; background: var(--cr-bg); }
+    .cr-table th.cr-gin, .cr-table td.cr-gin { background: color-mix(in srgb, var(--cr-accent) 5%, var(--cr-bg)); }
+    .cr-table th.cr-gout, .cr-table td.cr-gout { background: color-mix(in srgb, var(--cr-good) 6%, var(--cr-bg)); }
+    .cr-groups-row th.cr-gin { color: var(--cr-accent); } .cr-groups-row th.cr-gout { color: var(--cr-good); }
     @media (max-width: 900px) { .cr-funnel { flex-wrap: wrap; } .cr-step { flex: 1 0 40%; } .cr-arrow { display: none; } .cr-meta { width: 100%; } }
   `],
 })
@@ -324,8 +345,10 @@ export class CallingReportComponent {
   readonly workspace = input('');
   /** dashboard: funnel, call status and the call log. log: the call log alone (the Call logs page). */
   readonly mode = input<'dashboard' | 'log'>('dashboard');
-  /** Only this campaign's rows (the campaign page); the period starts at All time. */
+  /** Only this campaign's rows (the campaign page): no period, and the log shows the sheet's columns. */
   readonly campaign = input('');
+  /** The campaign's own columns (its sheet's and the agent's answers), for the campaign page's table. */
+  readonly columns = input<CampaignColumns | null>(null);
   /** Tells the page around the report when the period or agents change. */
   readonly scopeChange = output<ReportScope>();
 
@@ -356,6 +379,32 @@ export class CallingReportComponent {
   protected readonly search = signal('');
   protected readonly colFilters = signal<Record<string, string | string[]>>({});
   protected readonly PICK_COLUMNS = PICK_COLUMNS;
+  protected readonly colsIn = computed(() => (this.campaign() ? this.columns()?.inputs ?? [] : []));
+  protected readonly colsOut = computed(() => (this.campaign() ? this.columns()?.answers ?? [] : []));
+  /** The log's columns. A campaign: who, how the call ended, what the sheet said, what the agent captured, then the call details. */
+  protected readonly cols = computed<[string, string][]>(() => (this.campaign()
+    ? [['caller_name', 'Caller'], ['phone', 'Phone'], ['call_status', 'Call status'], ['status_reason', 'Status reason'], ...this.colsIn().map((c): [string, string] => [c.key, c.label]),
+       ...this.colsOut().map((c): [string, string] => [c.key, c.label]), ['callback_at', 'Call back'], ['call_date', 'Last call'], ['retries', 'Retries'], ['goal_reached', 'Goal'], ['summary', 'Call summary']]
+    : LOG_COLUMNS));
+  /** Columns filtered by picking values: the fixed ones, and the agent's answers (few values each). */
+  protected isPick(k: string): boolean { return (PICK_COLUMNS.has(k) && !(this.campaign() && k === 'campaign')) || k.startsWith('out:'); }
+  /** A cell's text, as the filters see it. */
+  protected cell(c: ReportCallRow, k: string): string {
+    if (k.startsWith('in:')) return c.inputs?.[k.slice(3)] ?? '';
+    if (k.startsWith('out:')) return c.answers?.[k.slice(4)] ?? '';
+    if (k === 'call_date') return c.call_date ? this.when(c.call_date) : '';
+    if (k === 'duration_seconds') return c.duration_seconds == null ? '' : this.mmss(c.duration_seconds);
+    if (k === 'retries') return String(c.retries ?? 0);
+    const v = (c as unknown as Record<string, unknown>)[k]; return v == null ? '' : String(v);
+  }
+  /** The filters in force, in words, for the note above the funnel. */
+  protected readonly filterSummary = computed(() => {
+    const name = (k: string) => this.cols().find((c) => c[0] === k)?.[1] ?? LOG_COLUMNS.find((c) => c[0] === k)?.[1] ?? k;
+    const parts = Object.entries(this.colFilters()).filter(([, v]) => (Array.isArray(v) ? v.length : v.trim()))
+      .map(([k, v]) => `${name(k)}: ${Array.isArray(v) ? (v.length > 2 ? `${v.length} values` : v.map((x) => x || '(blank)').join(', ')) : `"${v}"`}`);
+    if (this.search().trim()) parts.unshift(`search "${this.search().trim()}"`);
+    return parts.join(' · ');
+  });
   protected readonly pickOpen = signal('');
   protected readonly pickValues = signal<{ value: string; count: number }[]>([]);
   protected readonly unit = signal('');
@@ -492,7 +541,7 @@ export class CallingReportComponent {
     const my = ++this.seq; const sc = this.scope();
     this.loading.set(true); this.error.set('');
     try {
-      const rep = await this.source().report(sc);
+      const rep = await this.source().report(sc, this.logFilters());
       if (my !== this.seq) return;
       this.r.set(rep);
       // A list restored from the address gets its proper name once the report is in.
@@ -577,9 +626,9 @@ export class CallingReportComponent {
   }
   protected setSearch(v: string): void { this.search.set(v); this.refilter(); }
   protected setCol(k: string, v: string): void { this.colFilters.set({ ...this.colFilters(), [k]: v }); this.refilter(); }
-  protected clearLogFilters(): void { this.search.set(''); this.colFilters.set({}); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }
-  /** Typing waits a moment before the log reloads. */
-  private refilter(): void { if (this.typing) clearTimeout(this.typing); this.typing = setTimeout(() => { this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }, 300); }
+  protected clearLogFilters(): void { this.search.set(''); this.colFilters.set({}); this.drillPage.set(0); this.writeUrl(); this.load(); }
+  /** Typing waits a moment before the page reloads: the filters scope the funnel and statuses as well as the log. */
+  private refilter(): void { if (this.typing) clearTimeout(this.typing); this.typing = setTimeout(() => { this.drillPage.set(0); this.writeUrl(); this.load(); }, 300); }
   protected async shareSheet(): Promise<void> { this.shareOpen.set(false); this.save(await this.source().exportXlsx(this.scope(), 'uploaded'), `${this.fileName()}.xlsx`); }
   protected async sharePicture(): Promise<void> { this.shareOpen.set(false); const c = this.draw(); if (c) c.toBlob((b) => b && this.save(b, `${this.fileName()}.png`), 'image/png'); }
   protected sharePdf(): void {
