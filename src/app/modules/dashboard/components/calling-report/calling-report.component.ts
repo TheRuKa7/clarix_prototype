@@ -102,7 +102,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           </span>
         }
         @if (!campaign() && (agents().length || period() !== '30d')) { <button type="button" class="cr-link" (click)="clearAll()">Reset period</button> }
-        @if (mode() === 'dashboard' && (r()?.units_available?.length || 0) > 0) {
+        <!-- Counting in POs, items or quantities only makes sense inside one agent's campaign, where the sheet's columns are known. -->
+        @if (mode() === 'dashboard' && campaign() && (r()?.units_available?.length || 0) > 0) {
           <div class="cr-seg" role="group" aria-label="Count by">
             <button type="button" [class.on]="!unit()" (click)="setUnit('')">Calls</button>
             @for (u of r()?.units_available ?? []; track u.field) { <button type="button" [class.on]="unit() === u.field" (click)="setUnit(u.field)">{{ u.label }}</button> }
@@ -114,7 +115,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             @if (statsOpen()) {
               <div class="cr-menu cr-stats-menu" role="dialog" aria-label="Custom stats per agent" [style]="menuStyle()">
                 <b>Custom stats per agent</b>
-                <p class="cr-muted">Count the funnel and campaigns in what each agent's upload carries, as well as calls.</p>
+                <p class="cr-muted">The numbers each agent's campaigns can be counted in (POs, items…), shown on the campaign pages and the Campaigns list.</p>
                 @for (a of statsDraft(); track a.agent) {
                   <div class="cr-stat-agent"><span>{{ a.label }}</span>
                     @for (f of a.fields; track f.field) { <label class="cr-opt"><input type="checkbox" [checked]="isStat(a, f.field)" (change)="toggleStat(a, f)"> {{ f.label }} <small>{{ f.field }}</small></label> }
@@ -434,7 +435,7 @@ export class CallingReportComponent {
   protected readonly days = computed(() => { const [a, b] = this.range(); return Math.max(1, Math.round((b - a) / 86400000)); });
   protected readonly scope = computed<ReportScope>(() => {
     const [a, b] = this.range();
-    return { period: this.period(), from: new Date(a).toISOString(), to: new Date(b).toISOString(), days: this.days(), agents: this.agents(), includeTests: this.includeTests(), campaign: this.campaign() || undefined, unit: this.unit() || undefined };
+    return { period: this.period(), from: new Date(a).toISOString(), to: new Date(b).toISOString(), days: this.days(), agents: this.agents(), includeTests: this.includeTests(), campaign: this.campaign() || undefined, unit: (this.campaign() && this.unit()) || undefined };
   });
   protected readonly periodLabel = computed(() => {
     const [a, b] = this.range(); const from = this.ymd(a), to = this.ymd(b);
