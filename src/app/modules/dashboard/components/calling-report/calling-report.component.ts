@@ -21,7 +21,9 @@ export interface CallingReport {
   headline: { uploaded: number; campaigns: number; planned: number; picked_up: number; answered: number; success: number; planned_share: number; picked_up_share: number; answered_share: number; success_rate: number; finished: number; not_finished: number };
   stats: { dials: number; avg_talk_seconds: number; total_talk_seconds: number; in_progress: number };
   funnel: ReportBox[]; by_agent: ByAgentRow[]; success_field: { yes: number; no: number; na: number };
-  sum_check: { ok: boolean; gaps: { box: string; expected: number; got: number }[] }; agents: { key: string; label: string }[];
+  sum_check: { ok: boolean; gaps: { box: string; expected: number; got: number }[] };
+  /** Agents with planned calls in the period (any agent filter ignored), with that count. */
+  agents: { key: string; label: string; count: number }[];
 }
 export interface ReportCallRow {
   id: string; call_id: string | null; campaign_id: string; primary_id?: string; call_date: string | null; agent: string; campaign: string; caller_name: string; phone: string;
@@ -35,6 +37,9 @@ export interface CallingReportSource {
   openCall(row: ReportCallRow): void;
   /** Opens the full Call logs page, where the product has one. */
   openCallLogs?(scope: ReportScope, box: string): void;
+  /** The workspace's internal test numbers: calls to them count only as Internal test calls. */
+  testNumbers?(): Promise<string[]>;
+  saveTestNumbers?(numbers: string[]): Promise<string[]>;
 }
 
 const PERIODS: { key: PeriodKey; label: string }[] = [{ key: 'today', label: 'Today' }, { key: 'yesterday', label: 'Yesterday' }, { key: '7d', label: 'Last 7 days' }, { key: '30d', label: 'Last 30 days' }, { key: 'custom', label: 'Custom' }];
@@ -77,12 +82,25 @@ const PAGE = 10;
             <div class="cr-menu" role="listbox" aria-label="Agents">
               <label class="cr-opt"><input type="checkbox" [checked]="!agents().length" (change)="setAgents([])"> All agents</label>
               @for (a of r()?.agents ?? []; track a.key) {
-                <label class="cr-opt"><input type="checkbox" [checked]="agents().includes(a.key)" (change)="toggleAgent(a.key)"> {{ a.label }}</label>
-              }
+                <label class="cr-opt"><input type="checkbox" [checked]="agents().includes(a.key)" (change)="toggleAgent(a.key)"> <span class="cr-opt-l">{{ a.label }}</span><small>{{ num(a.count) }}</small></label>
+              } @empty { <p class="cr-empty cr-pad">No agent had calls planned in this period.</p> }
             </div>
           }
         </div>
         <label class="cr-check" title="Internal test calls are left out of every number unless this is on."><input type="checkbox" [checked]="includeTests()" (change)="setTests(!includeTests())"> Include test calls</label>
+        @if (source().testNumbers) {
+          <div class="cr-drop">
+            <button type="button" class="cr-btn cr-small" (click)="openTests()" [attr.aria-expanded]="testsOpen()" title="Phone numbers your team uses for testing">Test numbers ({{ testNumbers().length }})</button>
+            @if (testsOpen()) {
+              <div class="cr-menu cr-tests" role="dialog" aria-label="Test numbers">
+                <b>Internal test numbers</b>
+                <p>Calls to these numbers count only on the "Internal test calls" line. One per line; the last 10 digits are kept.</p>
+                <textarea rows="5" [value]="testDraft()" (input)="testDraft.set($any($event.target).value)" aria-label="Test numbers, one per line"></textarea>
+                <div class="cr-tests-foot"><span class="cr-grow"></span><button type="button" class="cr-btn" (click)="testsOpen.set(false)">Cancel</button><button type="button" class="cr-btn cr-primary" (click)="saveTests()">Save</button></div>
+              </div>
+            }
+          </div>
+        }
         <span class="cr-grow"></span>
         <div class="cr-drop">
           <button type="button" class="cr-btn" (click)="shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
@@ -95,6 +113,13 @@ const PAGE = 10;
           }
         </div>
       </div>
+
+      @if (chips().length) {
+        <div class="cr-active" aria-label="Active filters">
+          @for (c of chips(); track c.key) { <span class="cr-fchip">{{ c.label }}<button type="button" (click)="removeChip(c.key)" [attr.aria-label]="'Remove ' + c.label">✕</button></span> }
+          <button type="button" class="cr-link" (click)="clearAll()">Clear all</button>
+        </div>
+      }
 
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
@@ -249,6 +274,21 @@ const PAGE = 10;
     .cr-chips { display: flex; gap: 10px; flex-wrap: wrap; }
     .cr-chips button { border: 1px solid var(--cr-line); border-radius: 999px; background: var(--cr-bg); padding: 6px 16px; font: inherit; font-size: 14px; color: var(--cr-muted); cursor: pointer; }
     .cr-chips b { color: var(--cr-text); margin-left: 4px; }
+    .cr-opt-l { flex: 1; }
+    .cr-opt small { color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+    .cr-pad { padding: 6px 8px; }
+    .cr-small { padding: 4px 10px; font-size: 12.5px; color: var(--cr-muted); }
+    .cr-primary { background: var(--cr-text); color: var(--cr-bg); border-color: var(--cr-text); }
+    .cr-tests { width: 300px; gap: 8px; padding: 12px; }
+    .cr-tests b { font-size: 13.5px; }
+    .cr-tests p { margin: 0; font-size: 12px; color: var(--cr-muted); }
+    .cr-tests textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 8px; padding: 8px; font: 13px var(--ds-mono, ui-monospace, monospace); background: var(--cr-bg); color: var(--cr-text); resize: vertical; }
+    .cr-tests-foot { display: flex; gap: 8px; }
+    .cr-tests-foot .cr-btn { padding: 5px 12px; }
+    .cr-active { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: -4px; }
+    .cr-fchip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--cr-soft); border: 1px solid var(--cr-line); font-size: 12.5px; }
+    .cr-fchip button { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
+    .cr-fchip button:hover { background: var(--cr-line); color: var(--cr-text); }
     .cr-range { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cr-muted); }
     .cr-range input { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-scrim { position: fixed; inset: 0; background: rgba(12, 10, 9, .32); z-index: 1000; }
@@ -290,6 +330,9 @@ export class CallingReportComponent {
   protected readonly error = signal('');
   protected readonly agentsOpen = signal(false);
   protected readonly shareOpen = signal(false);
+  protected readonly testsOpen = signal(false);
+  protected readonly testNumbers = signal<string[]>([]);
+  protected readonly testDraft = signal('');
   protected readonly box = signal<{ key: string; label: string } | null>(null);
   protected readonly drillRows = signal<ReportCallRow[]>([]);
   protected readonly drillTotal = signal(0);
@@ -330,9 +373,19 @@ export class CallingReportComponent {
     return `${tz === 'Asia/Kolkata' ? 'IST' : tz} (UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')})`;
   });
 
+  /** The filters in force, each with its own remove button (the default, Last 30 days for all agents without tests, shows none). */
+  protected readonly chips = computed(() => {
+    const out: { key: string; label: string }[] = [];
+    if (this.period() !== '30d') out.push({ key: 'period', label: this.period() === 'custom' ? `Dates: ${this.periodLabel().replace(/ \(custom range\)$/, '')}` : `Period: ${PERIODS.find((x) => x.key === this.period())?.label}` });
+    for (const k of this.agents()) out.push({ key: `agent:${k}`, label: `Agent: ${this.r()?.agents.find((a) => a.key === k)?.label ?? k}` });
+    if (this.includeTests()) out.push({ key: 'tests', label: 'Test calls included' });
+    return out;
+  });
+
   constructor() {
     this.readUrl();
     effect(() => { this.scope(); untracked(() => this.load()); });
+    effect(() => { const src = this.source(); untracked(() => src.testNumbers?.().then((n) => this.testNumbers.set(n)).catch(() => {})); });
   }
 
   // ── Address: period, from, to, agents, tests, box, page ────────────────────
@@ -374,6 +427,19 @@ export class CallingReportComponent {
   protected setAgents(a: string[]): void { this.agents.set(a); this.agentsOpen.set(false); this.emit(); }
   protected toggleAgent(k: string): void { const a = this.agents(); this.agents.set(a.includes(k) ? a.filter((x) => x !== k) : [...a, k]); this.emit(); }
   protected setTests(on: boolean): void { this.includeTests.set(on); this.emit(); }
+  protected removeChip(key: string): void {
+    if (key === 'period') { this.period.set('30d'); this.emit(); }
+    else if (key === 'tests') this.setTests(false);
+    else if (key.startsWith('agent:')) this.setAgents(this.agents().filter((a) => a !== key.slice(6)));
+  }
+  protected clearAll(): void { this.period.set('30d'); this.agents.set([]); this.includeTests.set(false); this.emit(); }
+
+  protected openTests(): void { this.testDraft.set(this.testNumbers().join('\n')); this.testsOpen.set(!this.testsOpen()); this.agentsOpen.set(false); this.shareOpen.set(false); }
+  protected async saveTests(): Promise<void> {
+    const save = this.source().saveTestNumbers; if (!save) return;
+    try { this.testNumbers.set(await save(this.testDraft().split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean))); this.testsOpen.set(false); await this.load(); }
+    catch { this.error.set('Could not save the test numbers.'); }
+  }
   private emit(): void { this.drillPage.set(0); this.writeUrl(); this.scopeChange.emit(this.scope()); }
 
   protected open(key: string, label: string): void {
@@ -391,9 +457,11 @@ export class CallingReportComponent {
   /** Menus close on a click anywhere else; Escape closes a menu, then the list. */
   protected onDocClick(ev: Event): void {
     const t = ev.target as HTMLElement | null; if (t?.closest('.cr-drop')) return;
-    this.agentsOpen.set(false); this.shareOpen.set(false);
+    this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false);
   }
-  protected onEscape(): void { if (this.agentsOpen() || this.shareOpen()) { this.agentsOpen.set(false); this.shareOpen.set(false); } else if (this.box()) this.close(); }
+  protected onEscape(): void {
+    if (this.agentsOpen() || this.shareOpen() || this.testsOpen()) { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); } else if (this.box()) this.close();
+  }
 
   protected async exportBox(): Promise<void> { const b = this.box(); if (b) this.save(await this.source().exportXlsx(this.scope(), b.key), `${this.fileName()}-${b.key}.xlsx`); }
   protected async shareSheet(): Promise<void> { this.shareOpen.set(false); this.save(await this.source().exportXlsx(this.scope(), 'uploaded'), `${this.fileName()}.xlsx`); }

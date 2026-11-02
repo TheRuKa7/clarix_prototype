@@ -43,6 +43,7 @@ export const ENDPOINTS = {
         report: `${clarix.baseURL}/api/v1/reports/calling`,
         calls: `${clarix.baseURL}/api/v1/reports/calling/calls`,
         exportXlsx: `${clarix.baseURL}/api/v1/reports/calling/export.xlsx`,
+        testNumbers: `${clarix.baseURL}/api/v1/reports/calling/test-numbers`,
     },
     /** Follow ups: rows that calling alone cannot settle. */
     followUps: {

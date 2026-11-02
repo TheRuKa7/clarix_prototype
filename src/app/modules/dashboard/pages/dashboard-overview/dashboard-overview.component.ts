@@ -29,6 +29,8 @@ export class DashboardOverviewComponent {
     report: (sc) => firstValueFrom(this.reports.callingReport(sc)),
     calls: (sc, box, skip, limit) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit)),
     exportXlsx: (sc, box) => firstValueFrom(this.reports.callingReportExport(sc, box)),
+    testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),
+    saveTestNumbers: (n) => firstValueFrom(this.reports.saveReportTestNumbers(n)),
     openCallLogs: () => this.router.navigate(['/workflows/calls']),
     openCall: (row) => { if (row.call_id && !row.id.includes(':bad:')) this.router.navigate(['/workflows/templates', (row as any).agent_key, 'executions', row.call_id], { queryParams: { returnUrl: this.router.url } }); },
   };

@@ -171,3 +171,19 @@ export function resultFromAnswers(outputs, seed = '') {
   if (yes) return fault ? 'partial' : 'accepted';
   return 'follow_up';
 }
+
+/**
+ * The agent filter's choices: agents with planned calls in the period (ignoring the agent filter itself), each with
+ * that count, by display name. Agents already picked stay listed, so they can be taken off.
+ */
+export function agentChoices(allRows, scope = {}) {
+  const rows = scopeRows(allRows, { ...scope, agents: [] }).filter(BOX.planned);
+  const human = (s) => (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(s) ? s.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : s);
+  const m = new Map();
+  for (const r of rows) { const k = r.agent_key || r.agent; const x = m.get(k) || { key: k, label: human(r.agent || k), count: 0 }; x.count += 1; m.set(k, x); }
+  for (const k of scope.agents || []) if (!m.has(k)) { const r = allRows.find((x) => (x.agent_key || x.agent) === k); m.set(k, { key: k, label: human(r?.agent || k), count: 0 }); }
+  return [...m.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Phone numbers as stored for test matching: the last 10 digits. */
+export const normalisePhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);

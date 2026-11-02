@@ -19,7 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
-import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable } from './calling-report.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone } from './calling-report.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -724,13 +724,14 @@ function voiceMetrics(q) {
 const CALL_LOG_COLUMNS = [['call_time', 'Call Date'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['uploaded_by', 'Uploaded by'], ['caller_name', 'Caller Name'], ['phone', 'Phone'], ['email', 'Email'],
   ['summary', 'Call Summary'], ['status', 'Call Status'], ['status_reason', 'Status Reason'], ['callback_at', 'Call back'], ['duration_seconds', 'Duration'], ['retries', 'Retries'], ['goal_reached', 'Goal Reached']];
 // ── Calling report (Calling-Report-Logic.md v1). Echo decides each row's status; the mock mirrors the same rules. ──
-const TEST_NUMBERS = new Set();
+// Phones the workspace treats as internal tests. Demo seed: the admin's one-row trial upload (logic doc section 2, row 1).
+const TEST_NUMBERS = new Set((S.batches || []).filter((b) => b.uploadedBy === 'demo.admin@example.com' && b.rows.length === 1).slice(0, 1).map((b) => normalisePhone(b.rows[0].phone)));
 const DND_LINE = new Set(['unreachable', 'blocked', 'rejected', 'network_error']);
 function executionFacts(e) {
   const o = e.outcome || (e.status === 'COMPLETED' ? 'completed' : e.status === 'IN_PROGRESS' ? 'waiting' : ['STOPPED', 'CANCELLED'].includes(e.status) ? 'stopped' : 'network_error');
   const said = String(conversations.get(e.activeConversationId)?.transcriptText || '');
   return {
-    isTest: TEST_NUMBERS.has(e.resolvedContact?.phone),
+    isTest: TEST_NUMBERS.has(normalisePhone(e.resolvedContact?.phone)),
     badData: o === 'bad_data' ? 'Failed the upload check' : o === 'repeated_number' ? 'Same phone number as an earlier row' : null,
     stopped: o === 'stopped' || o === 'expired', inProgress: ['waiting', 'calling', 'on_call', 'will_retry'].includes(o) || e.status === 'IN_PROGRESS',
     // Open question Q1: a busy tone counts as not picked (No answer) until PM decides otherwise.
@@ -770,8 +771,14 @@ function callingScope(q) {
 }
 on('GET', '/api/v1/reports/calling', ({ q }) => {
   const all = callingRows(); const sc = callingScope(q);
-  const agentsAll = templates.filter((t) => all.some((r) => r.agent_key === t.id)).map((t) => ({ key: t.id, label: t.name })).sort((a, b) => a.label.localeCompare(b.label));
+  const agentsAll = agentChoices(all, sc);
   ok(buildReport(scopeRows(all, sc), { workspace: 'Moglix', from: sc.from, to: sc.to || nowIso(), includeTests: sc.includeTests, agentsAll }));
+});
+// Workspace test numbers: calls to these count only on the "Internal test calls" line.
+on('GET', '/api/v1/reports/calling/test-numbers', () => ok({ numbers: [...TEST_NUMBERS] }));
+on('PUT', '/api/v1/reports/calling/test-numbers', ({ body }) => {
+  const list = [...new Set((Array.isArray(body?.numbers) ? body.numbers : []).map(normalisePhone).filter((p) => p.length === 10))];
+  TEST_NUMBERS.clear(); list.forEach((p) => TEST_NUMBERS.add(p)); ok({ numbers: list });
 });
 on('GET', '/api/v1/reports/calling/calls', ({ q }) => {
   const rows = rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded');

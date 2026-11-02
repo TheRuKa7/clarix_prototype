@@ -50,6 +50,8 @@ export class ReportService {
   callingReportCalls(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string, skip: number, limit: number): Observable<any> {
     return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.calls, { params: this.reportParams(sc).set('box', box).set('skip', skip).set('limit', limit) }));
   }
+  reportTestNumbers(): Observable<string[]> { return this.data(this.http.get<{ data: { numbers: string[] } }>(ENDPOINTS.callingReport.testNumbers)).pipe(map((d) => d.numbers ?? [])); }
+  saveReportTestNumbers(numbers: string[]): Observable<string[]> { return this.data(this.http.put<{ data: { numbers: string[] } }>(ENDPOINTS.callingReport.testNumbers, { numbers })).pipe(map((d) => d.numbers ?? [])); }
   callingReportExport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string): Observable<Blob> {
     return this.http.get(ENDPOINTS.callingReport.exportXlsx, { params: this.reportParams(sc).set('box', box), responseType: 'blob' });
   }
