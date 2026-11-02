@@ -153,6 +153,11 @@ export const routes: Routes = [
         ]
       },
       {
+        path: 'admin/calling-rules',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixCallingRulesPage),
+        title: 'Calling rules | Clarix'
+      },
+      {
         path: 'admin/permissions',
         component: ManagePermissionsComponent,
         canActivate: [permissionGuard('manage-permissions:menuvisibility')],

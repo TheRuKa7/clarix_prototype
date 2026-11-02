@@ -66,6 +66,10 @@ export class ReportService {
   newCampaignAgents(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/new-campaign/agents`)); }
   newCampaignTips(agent: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/new-campaign/tips`, { params: new HttpParams().set('agent', agent) })); }
   retryRules(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/retry-rules`)); }
+  callingRules(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/calling-rules`)); }
+  saveCallingRule(code: string, rule: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/calling-rules/${encodeURIComponent(code)}`, rule)); }
+  resetCallingRule(code: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/calling-rules/${encodeURIComponent(code)}/reset`, {})); }
+  retryPreview(rule: any, country: string, startHour?: number): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/retry-rules/preview`, { rule, country, start_hour: startHour })); }
   saveRetryRule(agent: string, rule: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/retry-rules/${encodeURIComponent(agent)}`, rule)); }
   newCampaignTemplate(agent: string): Observable<Blob> { return this.http.get(`${this.callingBase}/new-campaign/template.xlsx`, { params: new HttpParams().set('agent', agent), responseType: 'blob' }); }
   newCampaignPost(step: 'check' | 'start', agent: string, file: File): Observable<any> {

@@ -25,6 +25,8 @@ export interface CallSteps {
   messages: StepMessage[];
   sent: { channel: 'whatsapp' | 'email'; key: string; text: string; at: string; by: string; to: string }[];
   caller_id: string;
+  /** The number's country and its calling rules (Settings › Calling rules). */
+  country?: { code: string; name: string; tz_label: string; hours_today: string; register: string; on_register: boolean; register_action: 'block' | 'warn' };
 }
 export interface CallPageSource {
   detail(id: string): Promise<CallDetail>;
@@ -122,6 +124,10 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
             @if (steps(); as st) {
               <section class="cp-card cp-steps">
                 <h2>Next steps</h2>
+                @if (st.country; as co) {
+                  <p class="cp-muted cp-country">{{ co.name }} rules: calls today {{ co.hours_today }} ({{ co.tz_label }}). Retries skip rest days and holidays.</p>
+                  @if (co.on_register) { <p class="cp-note bad">This number is on the {{ co.register }}. {{ co.register_action === 'block' ? 'It is not called again.' : 'Calls are allowed only about their orders, never a sales pitch.' }}</p> }
+                }
                 @if (st.retry; as rt) {
                   <div class="cp-retry">
                     <b>{{ rt.label }}</b>
@@ -217,6 +223,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
     .cp-turn b { font-size: 11.5px; color: var(--cp-muted); font-weight: 600; }
     .cp-steps { border-color: color-mix(in srgb, var(--cp-accent, #4c4184) 35%, var(--cp-line)); }
     .cp-retry { display: grid; gap: 6px; font-size: 13px; }
+    .cp-country { margin: 0; font-size: 12.5px; }
     .cp-times { display: flex; flex-wrap: wrap; gap: 6px; }
     .cp-times span { background: var(--cp-soft); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
     .cp-times span.first { background: var(--cp-text); color: var(--cp-bg); }

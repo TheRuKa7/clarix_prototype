@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ReportService } from '../../../dashboard/services/report.service';
 import { CallingReportComponent, CallingReportSource } from '../../../dashboard/components/calling-report/calling-report.component';
-import { CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { CallingRulesComponent, CallingRulesSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
 
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
@@ -41,7 +41,7 @@ export class ClarixNewCampaignPage {
   readonly source: NewCampaignSource = {
     agents: () => firstValueFrom(this.r.newCampaignAgents()), template: (a) => firstValueFrom(this.r.newCampaignTemplate(a)),
     check: (a, f) => firstValueFrom(this.r.newCampaignPost('check', a, f)), start: (a, f) => firstValueFrom(this.r.newCampaignPost('start', a, f)),
-    tips: (a) => firstValueFrom(this.r.newCampaignTips(a)), retryRules: () => firstValueFrom(this.r.retryRules()), saveRetryRule: (a, r) => firstValueFrom(this.r.saveRetryRule(a, r)),
+    tips: (a) => firstValueFrom(this.r.newCampaignTips(a)), retryRules: () => firstValueFrom(this.r.retryRules()), saveRetryRule: (a, r) => firstValueFrom(this.r.saveRetryRule(a, r)), retryPreview: (r, c) => firstValueFrom(this.r.retryPreview(r, c)),
     opened: (id) => this.router.navigate(['/workflows/campaigns', id]), cancel: () => this.router.navigate(['/workflows/campaigns']),
   };
 }
@@ -52,5 +52,15 @@ export class ClarixFollowUpsPage {
   readonly source: FollowUpsSource = {
     list: (show, kind) => firstValueFrom(this.r.followChecklist(show, kind)), act: (id, a) => firstValueFrom(this.r.reportFollowUpAct(id, a)), exportXlsx: (show, kind) => firstValueFrom(this.r.followChecklistExport(show, kind)),
     openCall: (row) => this.router.navigate(['/workflows/calls', row.id]),
+  };
+}
+
+@Component({ selector: 'app-clarix-calling-rules', standalone: true, imports: [CallingRulesComponent], template: `<div class="rx-page"><app-calling-rules [source]="source"></app-calling-rules></div>` })
+export class ClarixCallingRulesPage {
+  private r = inject(ReportService);
+  /** Calling rules per country: hours, rest days, holidays, do-not-call registers. */
+  readonly source: CallingRulesSource = {
+    list: () => firstValueFrom(this.r.callingRules()), save: (c, x) => firstValueFrom(this.r.saveCallingRule(c, x)), reset: (c) => firstValueFrom(this.r.resetCallingRule(c)),
+    preview: (x, c, h) => firstValueFrom(this.r.retryPreview(x, c, h)),
   };
 }

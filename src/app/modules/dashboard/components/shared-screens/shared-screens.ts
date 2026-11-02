@@ -52,16 +52,19 @@ export function retryTimes(r: RetryRule, start: number): number[] {
   };
   let t = start; return retryGaps(r).map((g) => (t = fit(t + g * 60000)));
 }
+export interface RetryPreview { country: string; name: string; tz_label: string; start: string; times: { at: string; local: string; moved: string[] }[] }
 export interface NewCampaignSource {
   agents(): Promise<{ key: string; label: string; inputs: string[] }[]>;
   template(agent: string): Promise<Blob>;
   check(agent: string, file: File): Promise<{ file: string; rows: number; will_dial: number; calls: number; bad: { row: number; reason: string }[]; tests: number; matched: string[]; missing: string[];
-    fixed?: { row: number; notes: string[] }[]; warnings?: { row: number; notes: string[] }[]; note?: UploadNote }>;
+    fixed?: { row: number; notes: string[] }[]; warnings?: { row: number; notes: string[] }[]; note?: UploadNote; countries?: { code: string; name: string; rows: number }[] }>;
   /** Tips for the agent's template, shown when it is picked. */
   tips?(agent: string): Promise<UploadNote>;
   /** Each agent's retry rule, and saving one. */
   retryRules?(): Promise<{ agents: { agent: string; label: string; rule: RetryRule }[] }>;
   saveRetryRule?(agent: string, rule: RetryRule): Promise<unknown>;
+  /** Retry times for a rule in a country, each with why it was moved (rest day, holiday, hours). */
+  retryPreview?(rule: RetryRule, country: string): Promise<RetryPreview>;
   start(agent: string, file: File): Promise<{ campaign_id: string; dialled: number }>;
   opened(campaignId: string): void;
   cancel(): void;
@@ -332,6 +335,7 @@ export class CampaignPageComponent {
     .nc-retry label { display: inline-flex; gap: 6px; align-items: center; }
     .nc-times { display: flex; flex-wrap: wrap; gap: 6px; }
     .nc-times span { background: var(--s-soft); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
+    .nc-times small { color: var(--s-muted); }
   `],
   template: `
     <div class="s">
@@ -361,6 +365,7 @@ export class CampaignPageComponent {
               <div><span>Rows</span><b>{{ k.rows }}</b></div><div><span>Will be dialled</span><b>{{ k.will_dial }}</b></div>
               <div><span>Bad data</span><b>{{ k.bad.length }}</b></div><div><span>Internal tests</span><b>{{ k.tests }}</b></div>
             </div>
+            @if (k.countries?.length) { <span class="s-muted">Numbers by country: @for (c of k.countries!; track c.code; let last = $last) { {{ c.name }} {{ c.rows }}{{ last ? '' : ' · ' }} }. Each is called under its country's rules (Settings › Calling rules).</span> }
             @if (k.missing.includes('contact_phone')) { <p class="s-note nc-stop" role="alert"><b>contact_phone is missing.</b> Every row needs the supplier's 10-digit mobile: it is the number called and it ties each call to the row's POs and items. Add the column and upload again.</p> }
             @if (missingOther(k).length) { <p class="s-note">Columns not found in the file: {{ missingOther(k).join(', ') }}. Rows that need them will fail the check.</p> }
             @if (k.fixed?.length) { <b class="s-muted">Fixed for you ({{ k.fixed!.length }} row{{ k.fixed!.length === 1 ? '' : 's' }}): these will be called</b><div class="nc-fixed">@for (f of k.fixed!; track f.row) { <span>Row {{ f.row }}: {{ f.notes.join('; ') }}</span> }</div> }
@@ -395,8 +400,13 @@ export class CampaignPageComponent {
                 <label><input type="checkbox" [checked]="ru.skip_sunday" (change)="setRule({ skip_sunday: $any($event.target).checked })"> No Sundays</label>
                 <label><input type="checkbox" [checked]="ru.avoid_lunch" (change)="setRule({ avoid_lunch: $any($event.target).checked })"> Not 1–2 pm</label>
               </div>
-              <span class="s-muted">Gaps: {{ gapsText() }} minutes. Missed at 10:00 today, it is called again at:</span>
-              <div class="nc-times">@for (t of example(); track $index) { <span>{{ t }}</span> } @empty { <span>No retries</span> }</div>
+              @if (preview(); as pv) {
+                <span class="s-muted">Gaps: {{ gapsText() }} minutes, inside {{ pv.name }}'s calling rules ({{ pv.tz_label }}). The agent's hours can only narrow the country's. Missed at {{ pv.start.slice(11) }} on {{ dayName(pv.start) }}, it is called again at:</span>
+                <div class="nc-times">@for (t of pv.times; track $index) { <span [title]="t.moved.length ? 'Moved: ' + t.moved.join('; ') : ''">{{ dayName(t.local) }} {{ t.local.slice(11) }}@if (t.moved.length) { <small> · {{ t.moved[0] }}</small> }</span> } @empty { <span>No retries</span> }</div>
+              } @else {
+                <span class="s-muted">Gaps: {{ gapsText() }} minutes. Missed at 10:00 today, it is called again at:</span>
+                <div class="nc-times">@for (t of example(); track $index) { <span>{{ t }}</span> } @empty { <span>No retries</span> }</div>
+              }
             </div>
           }
           <div class="nc-foot">
@@ -444,6 +454,14 @@ export class NewCampaignComponent {
   private pickRule(): void { const a = this.agent(); const r = this.rules.find((x) => x.agent === a)?.rule; this.rule.set(a && r ? { ...r } : null); }
   protected missingOther(k: { missing: string[] }): string[] { return k.missing.filter((m) => m !== 'contact_phone'); }
   protected setRule(part: Partial<RetryRule>): void { const r = this.rule(); if (r) this.rule.set({ ...r, ...part }); }
+  /** The retry preview, from the server: the sheet's main country, else the workspace's home country. */
+  protected readonly preview = signal<RetryPreview | null>(null);
+  private previewSeq = 0;
+  private readonly previewEffect = effect(() => {
+    const r = this.rule(); const country = this.check()?.countries?.[0]?.code || 'IN'; if (!r || !this.source().retryPreview) return;
+    const my = ++this.previewSeq; untracked(() => this.source().retryPreview!(r, country).then((p) => { if (my === this.previewSeq) this.preview.set(p); }).catch(() => this.preview.set(null)));
+  });
+  protected dayName(local: string): string { const d = new Date(local.slice(0, 10) + 'T12:00:00Z'); return d.toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }); }
   protected async template(): Promise<void> { save(await this.source().template(this.agent()), `${this.agentLabel().replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`); }
   protected async pick(f: File | undefined): Promise<void> {
     this.file.set(f ?? null); this.check.set(null); this.error.set(''); this.noteSent.set(false); if (!f) return;
@@ -597,4 +615,149 @@ export class AgentMetricsComponent {
     const a = this.row(); if (!a) return; this.busy.set(true); this.error.set('');
     try { await this.source().save(a.agent, this.draft()); await this.load(this.source(), a.agent); this.saved.set(true); } catch { this.error.set('Could not save the metrics.'); } finally { this.busy.set(false); }
   }
+}
+
+// ── Calling rules per country: when numbers may be called at all ──────────────
+export interface CountryRule {
+  code: string; name: string; tz_label: string; offset_min: number; law: string; edited?: boolean;
+  days: { day: number; on: boolean; from: string; to: string }[];
+  holidays: { date: string; name: string }[];
+  register: { name: string; check: boolean; action: 'block' | 'warn' };
+}
+export interface CallingRulesSource {
+  list(): Promise<{ countries: CountryRule[] }>;
+  save(code: string, rule: CountryRule): Promise<CountryRule>;
+  reset(code: string): Promise<CountryRule>;
+  preview?(rule: RetryRule, country: string, startHour?: number): Promise<RetryPreview>;
+}
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+@Component({
+  selector: 'app-calling-rules',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .cr2 { display: grid; gap: 14px; }
+    .cr2-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cr2-tab { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+    .cr2-tab.on { background: var(--s-text); color: var(--s-bg); border-color: var(--s-text); }
+    .cr2-tab i { width: 7px; height: 7px; border-radius: 50%; background: var(--s-accent); }
+    .cr2-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .cr2-days { display: grid; gap: 6px; }
+    .cr2-day { display: grid; grid-template-columns: 130px 1fr; gap: 10px; align-items: center; font-size: 13px; }
+    .cr2-day label { display: inline-flex; gap: 8px; align-items: center; }
+    .cr2-day input[type=time], .cr2-add input, .cr2 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
+    .cr2-day input:disabled { opacity: .45; }
+    .cr2-hols { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cr2-hol { display: inline-flex; gap: 6px; align-items: center; background: var(--s-soft); border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12.5px; }
+    .cr2-hol button { border: 0; background: none; cursor: pointer; color: var(--s-muted); min-width: 22px; min-height: 22px; border-radius: 50%; }
+    .cr2-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .cr2-law { font-size: 13px; }
+    .cr2-times { display: grid; gap: 4px; font-size: 13px; }
+    .cr2-times small { color: var(--s-muted); }
+    .cr2-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    h3 { margin: 0; font-size: 14px; }
+    @media (max-width: 900px) { .cr2-grid { grid-template-columns: minmax(0, 1fr); } .cr2-day { grid-template-columns: 1fr; } }
+  `],
+  template: `
+    <div class="cr2">
+      <div><h2 class="s-title">Calling rules</h2>
+        <p class="s-sub">When numbers in each country may be called. Every first call, retry and callback is moved into these hours, skipping rest days and holidays. Numbers on a country's do-not-call register are stopped or flagged when a sheet is uploaded. An agent's own retry hours can only narrow these.</p></div>
+      <div class="cr2-tabs" role="tablist" aria-label="Country">
+        @for (c of list(); track c.code) { <button type="button" role="tab" class="cr2-tab" [class.on]="code() === c.code" [attr.aria-selected]="code() === c.code" (click)="pick(c.code)">{{ c.name }}@if (c.edited) { <i title="Changed from the country's defaults"></i> }</button> }
+      </div>
+      @if (draft(); as d) {
+        <p class="s-note cr2-law"><b>{{ d.name }}:</b> {{ d.law }} Times are in {{ d.tz_label }}.</p>
+        <div class="cr2-grid">
+          <div class="s-card s-pad">
+            <h3>Calling days and hours</h3>
+            <div class="cr2-days">
+              @for (day of ordered(d); track day.day) {
+                <div class="cr2-day">
+                  <label><input type="checkbox" [checked]="day.on" (change)="setDay(day.day, { on: $any($event.target).checked })"> {{ DAY_NAMES[day.day] }}</label>
+                  <span>@if (day.on) { <input type="time" [value]="day.from" (change)="setDay(day.day, { from: $any($event.target).value })" [attr.aria-label]="DAY_NAMES[day.day] + ' from'"> to <input type="time" [value]="day.to" (change)="setDay(day.day, { to: $any($event.target).value })" [attr.aria-label]="DAY_NAMES[day.day] + ' to'"> } @else { <span class="s-muted">No calls (rest day)</span> }</span>
+                </div>
+              }
+            </div>
+          </div>
+          <div class="s-card s-pad">
+            <h3>Holidays: no calls</h3>
+            <div class="cr2-hols">@for (h of d.holidays; track h.date) { <span class="cr2-hol">{{ dateText(h.date) }} · {{ h.name }}<button type="button" (click)="removeHoliday(h.date)" [attr.aria-label]="'Remove ' + h.name">✕</button></span> } @empty { <span class="s-muted">None set.</span> }</div>
+            <div class="cr2-add"><input type="date" [value]="newDate()" (change)="newDate.set($any($event.target).value)" aria-label="Holiday date"><input type="text" placeholder="Name, e.g. Diwali" [value]="newName()" (input)="newName.set($any($event.target).value)" aria-label="Holiday name">
+              <button type="button" class="s-btn" [disabled]="!newDate()" (click)="addHoliday()">Add holiday</button></div>
+            <span class="s-muted">Examples for the coming months. The product loads each country's official list every year.</span>
+            <h3>Do-not-call register</h3>
+            <span>{{ d.register.name }}</span>
+            <label class="cr2-add"><input type="checkbox" [checked]="d.register.check" (change)="setRegister({ check: $any($event.target).checked })"> Check every number when a sheet is uploaded</label>
+            <label class="cr2-add">Numbers on it <select [value]="d.register.action" [disabled]="!d.register.check" (change)="setRegister({ action: $any($event.target).value })" aria-label="What happens to numbers on the register">
+              <option value="block">are not called</option><option value="warn">are called, with a warning to check it is a service call</option></select></label>
+          </div>
+        </div>
+        @if (preview(); as pv) {
+          <div class="s-card s-pad">
+            <h3>Try it: a call missed at {{ pv.start.slice(11) }} on {{ dayText(pv.start) }}, retried after 1, 2, 4, 8 and 16 hours</h3>
+            <div class="cr2-times">@for (t of pv.times; track $index) { <span>{{ dayText(t.local) }}, {{ t.local.slice(11) }} @if (t.moved.length) { <small>· moved: {{ t.moved.join('; ') }}</small> }</span> }</div>
+          </div>
+        }
+        <div class="cr2-foot">@if (saved()) { <span class="s-muted">Saved. New retries and uploads use these rules.</span> }@if (error()) { <span class="s-muted">{{ error() }}</span> }
+          <button type="button" class="s-btn" (click)="resetCountry()" [disabled]="!d.edited && !dirty()">Back to {{ d.name }}'s defaults</button>
+          <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button>
+          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save rules' }}</button></div>
+      } @else { <p class="s-empty">{{ error() || 'Loading the calling rules…' }}</p> }
+    </div>
+  `,
+})
+export class CallingRulesComponent {
+  readonly source = input.required<CallingRulesSource>();
+  protected readonly DAY_NAMES = DAY_NAMES;
+  protected readonly list = signal<CountryRule[]>([]);
+  protected readonly code = signal('IN');
+  protected readonly draft = signal<CountryRule | null>(null);
+  protected readonly preview = signal<RetryPreview | null>(null);
+  protected readonly saved = signal(false);
+  protected readonly busy = signal(false);
+  protected readonly error = signal('');
+  protected readonly newDate = signal('');
+  protected readonly newName = signal('');
+  protected readonly dirty = computed(() => { const d = this.draft(); const o = this.list().find((c) => c.code === d?.code); return !!d && !!o && JSON.stringify(this.core(d)) !== JSON.stringify(this.core(o)); });
+  private seq = 0;
+  constructor() {
+    effect(() => { const s = this.source(); untracked(() => this.load(s)); });
+    // The preview follows the draft: what the default retry rule does under these rules.
+    effect(() => {
+      const d = this.draft(); if (!d || !this.source().preview) return; const my = ++this.seq;
+      // Missed late in the day with doubling gaps, so the retries run into the next days and show rest days and holidays.
+      const rule: RetryRule = { schedule: 'doubling', base_minutes: 60, retries: 5, from: '00:00', to: '23:59', skip_sunday: false, avoid_lunch: false };
+      untracked(() => this.previewFor(d, rule, my));
+    });
+  }
+  private core(c: CountryRule) { return { days: c.days, holidays: c.holidays, register: { check: c.register.check, action: c.register.action } }; }
+  private async load(s: CallingRulesSource): Promise<void> {
+    try { const r = await s.list(); this.list.set(r.countries); this.pick(this.code()); } catch { this.error.set('Could not load the calling rules.'); }
+  }
+  /** Previews against the saved rules on the server, so the draft is saved quietly first only when asked; here: the saved country. */
+  private async previewFor(d: CountryRule, rule: RetryRule, my: number): Promise<void> {
+    try { const p = await this.source().preview!(rule, d.code, 16); if (my === this.seq) this.preview.set(p); } catch { this.preview.set(null); }
+  }
+  protected pick(code: string): void { const c = this.list().find((x) => x.code === code); this.code.set(code); this.draft.set(c ? JSON.parse(JSON.stringify(c)) : null); this.saved.set(false); }
+  /** Monday first, as people read a week. */
+  protected ordered(d: CountryRule) { return [...d.days.slice(1), d.days[0]]; }
+  protected setDay(day: number, part: Partial<CountryRule['days'][number]>): void { const d = this.draft(); if (!d) return; this.saved.set(false); this.draft.set({ ...d, days: d.days.map((x) => (x.day === day ? { ...x, ...part } : x)) }); }
+  protected setRegister(part: Partial<CountryRule['register']>): void { const d = this.draft(); if (!d) return; this.saved.set(false); this.draft.set({ ...d, register: { ...d.register, ...part } }); }
+  protected addHoliday(): void {
+    const d = this.draft(); const date = this.newDate(); if (!d || !date || d.holidays.some((h) => h.date === date)) return; this.saved.set(false);
+    this.draft.set({ ...d, holidays: [...d.holidays, { date, name: this.newName().trim() || 'Holiday' }].sort((a, b) => a.date.localeCompare(b.date)) }); this.newDate.set(''); this.newName.set('');
+  }
+  protected removeHoliday(date: string): void { const d = this.draft(); if (!d) return; this.saved.set(false); this.draft.set({ ...d, holidays: d.holidays.filter((h) => h.date !== date) }); }
+  protected undo(): void { this.pick(this.code()); }
+  protected async save(): Promise<void> {
+    const d = this.draft(); if (!d) return; this.busy.set(true); this.error.set('');
+    try { const r = await this.source().save(d.code, d); this.list.set(this.list().map((c) => (c.code === d.code ? { ...r, edited: true } : c))); this.pick(d.code); this.saved.set(true); }
+    catch { this.error.set('Could not save the rules.'); } finally { this.busy.set(false); }
+  }
+  protected async resetCountry(): Promise<void> {
+    const d = this.draft(); if (!d) return;
+    try { const r = await this.source().reset(d.code); this.list.set(this.list().map((c) => (c.code === d.code ? { ...r, edited: false } : c))); this.pick(d.code); this.saved.set(true); } catch { this.error.set('Could not reset the rules.'); }
+  }
+  protected dateText(ymd: string): string { return new Date(ymd + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }); }
+  protected dayText(local: string): string { return new Date(local.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }); }
 }

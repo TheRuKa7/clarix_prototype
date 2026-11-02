@@ -492,6 +492,9 @@ export function uploadNote(agentLabel, checks, total) {
   const ent = count('fixes', 'entities'); if (ent) lines.push(`${plural(ent, 'row')} had stray quote marks (quot;) copied from the ERP export. Fixed for you; paste values only (Ctrl+Shift+V) to avoid them.`);
   const twice = count('warnings', 'po_twice'); if (twice) lines.push(`${plural(twice, 'row')} ${twice === 1 ? 'lists' : 'list'} the same PO twice. Each PO is asked once; check the export for duplicate lines.`);
   const dates = count('error', 'bad_date'); if (dates) lines.push(`${plural(dates, 'row')} ${dates === 1 ? 'has' : 'have'} a date that is not a real date, and will not be called. Use DD/MM/YYYY, and check the year.`);
+  const regBlocked = checks.filter((c) => c.error?.kind === 'register').length; const regWarned = count('warnings', 'register');
+  if (regBlocked) lines.push(`${plural(regBlocked, 'row')} ${regBlocked === 1 ? 'is' : 'are'} on the country's do-not-call register and will not be called (Settings › Calling rules).`);
+  if (regWarned) lines.push(`${plural(regWarned, 'row')} ${regWarned === 1 ? 'is' : 'are'} on a do-not-call register where service calls are allowed: make sure this campaign is about their orders, not a sales pitch.`);
   const phone = checks.filter((c) => c.error?.kind === 'phone').length; if (phone) lines.push(`${plural(phone, 'row')} ${phone === 1 ? 'has' : 'have'} no valid 10-digit phone number. Use the supplier contact's mobile, digits only.`);
   if (!lines.length) lines.push('This sheet is clean. Keep dates as DD/MM/YYYY and lists comma-separated with no comma at the end.');
   const fixed = checks.filter((c) => c.fixes.length && !c.error).length; const stopped = checks.filter((c) => c.error).length;
@@ -518,24 +521,113 @@ export function retryGaps(rule) {
   const b = Math.max(1, Number(rule.base_minutes) || 30); const n = Math.min(10, Math.max(0, Number(rule.retries) || 0));
   return Array.from({ length: n }, (_, i) => (rule.schedule === 'linear' ? b : rule.schedule === 'doubling' ? b * 2 ** i : b * (i + 1)));
 }
-/** Retry times after a call at startIso (`done` retries already made), each moved into calling hours (IST): not before from, not after to, not 13–14 h, not Sunday. */
-export function retryPlan(rule, startIso, done = 0) {
-  const IST = 330 * 60000; const hm = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
-  const open = hm(rule.from || '10:00'), close = hm(rule.to || '18:00');
-  const fit = (ms) => {
-    for (let guard = 0; guard < 14; guard += 1) {
-      const local = new Date(ms + IST); const mins = local.getUTCHours() * 60 + local.getUTCMinutes(); const dayStart = ms - mins * 60000 - local.getUTCSeconds() * 1000 - local.getUTCMilliseconds();
-      if (rule.skip_sunday && local.getUTCDay() === 0) { ms = dayStart + 86400000 + open * 60000; continue; }
-      if (mins < open) { ms = dayStart + open * 60000; continue; }
-      if (mins >= close) { ms = dayStart + 86400000 + open * 60000; continue; }
-      if (rule.avoid_lunch && mins >= 780 && mins < 840) { ms = dayStart + 840 * 60000; continue; }
-      return ms;
-    }
-    return ms;
-  };
+// ── Calling rules per country: when a number may be called at all ────────────
+// Presets are a starting point drawn from each country's telemarketing rules; the workspace edits them in Settings.
+// Holidays are examples for the next months; the product would load each country's official list.
+const wk = (from, to, on = [1, 2, 3, 4, 5, 6, 0], sat = null) => [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day: d, on: on.includes(d), from: d === 6 && sat ? sat[0] : from, to: d === 6 && sat ? sat[1] : to }));
+export const COUNTRY_PRESETS = [
+  { code: 'IN', name: 'India', prefix: '91', offset_min: 330, tz_label: 'IST (UTC+05:30)', days: wk('09:00', '21:00'),
+    holidays: [{ date: '2026-11-24', name: 'Guru Nanak Jayanti' }, { date: '2026-12-25', name: 'Christmas' }, { date: '2027-01-26', name: 'Republic Day' }, { date: '2027-03-22', name: 'Holi' }],
+    register: { name: 'NCPR (TRAI National Customer Preference Register)', check: true, action: 'warn' },
+    law: 'TRAI allows commercial calls 9 am to 9 pm. PO follow-ups to a supplier are service calls; promotional calls to an NCPR number are not allowed.' },
+  { code: 'US', name: 'United States', prefix: '1', offset_min: -300, tz_label: 'US Eastern (UTC−05:00); each number\'s own time zone in production', days: wk('08:00', '21:00'),
+    holidays: [{ date: '2026-11-26', name: 'Thanksgiving' }, { date: '2026-12-25', name: 'Christmas' }, { date: '2027-01-01', name: 'New Year\'s Day' }, { date: '2027-01-18', name: 'Martin Luther King Jr. Day' }],
+    register: { name: 'National Do Not Call Registry', check: true, action: 'warn' },
+    law: 'TCPA: calls only 8 am to 9 pm in the called person\'s time zone. Business-to-business calls are mostly exempt from the registry; consumer numbers on it must not be called for sales.' },
+  { code: 'AE', name: 'United Arab Emirates', prefix: '971', offset_min: 240, tz_label: 'GST (UTC+04:00)', days: wk('09:00', '18:00', [1, 2, 3, 4, 5]),
+    holidays: [{ date: '2026-12-02', name: 'National Day' }, { date: '2026-12-03', name: 'National Day holiday' }, { date: '2027-01-01', name: 'New Year\'s Day' }, { date: '2027-03-10', name: 'Eid al-Fitr (expected)' }],
+    register: { name: 'DNCR (TDRA Do Not Call Register)', check: true, action: 'block' },
+    law: 'TDRA rules: marketing calls 9 am to 6 pm only, never to numbers on the DNCR. The weekend is Saturday and Sunday.' },
+  { code: 'GB', name: 'United Kingdom', prefix: '44', offset_min: 0, tz_label: 'GMT (UTC+00:00)', days: wk('08:00', '21:00', [1, 2, 3, 4, 5, 6]),
+    holidays: [{ date: '2026-12-25', name: 'Christmas Day' }, { date: '2026-12-28', name: 'Boxing Day (substitute)' }, { date: '2027-01-01', name: 'New Year\'s Day' }, { date: '2027-03-26', name: 'Good Friday' }],
+    register: { name: 'TPS and CTPS (Telephone Preference Service, Corporate TPS for businesses)', check: true, action: 'block' },
+    law: 'PECR: no unsolicited sales calls to numbers on the TPS or CTPS. Calls to existing suppliers about their orders are service calls.' },
+  { code: 'DE', name: 'Germany (EU)', prefix: '49', offset_min: 60, tz_label: 'CET (UTC+01:00)', days: wk('09:00', '20:00', [1, 2, 3, 4, 5]),
+    holidays: [{ date: '2026-12-25', name: 'Christmas Day' }, { date: '2026-12-26', name: 'Second Day of Christmas' }, { date: '2027-01-01', name: 'New Year\'s Day' }, { date: '2027-03-26', name: 'Good Friday' }],
+    register: { name: 'Robinson list (voluntary)', check: true, action: 'warn' },
+    law: 'UWG and GDPR: business calls need at least presumed consent; record the lawful basis and honour objections at once. Sundays and public holidays are quiet days.' },
+  { code: 'AU', name: 'Australia', prefix: '61', offset_min: 660, tz_label: 'AEDT, Sydney (UTC+11:00)', days: wk('09:00', '20:00', [1, 2, 3, 4, 5, 6], ['09:00', '17:00']),
+    holidays: [{ date: '2026-12-25', name: 'Christmas Day' }, { date: '2026-12-28', name: 'Boxing Day (substitute)' }, { date: '2027-01-01', name: 'New Year\'s Day' }, { date: '2027-01-26', name: 'Australia Day' }],
+    register: { name: 'Do Not Call Register (ACMA)', check: true, action: 'block' },
+    law: 'Telemarketing Standard: weekdays 9 am to 8 pm, Saturday 9 am to 5 pm, never on Sunday or a national public holiday.' },
+];
+/** The workspace's edited rules: country code -> rule. Absent means the preset. */
+export const countryRules = new Map();
+const copy = (x) => JSON.parse(JSON.stringify(x));
+export const countryRule = (code) => copy(countryRules.get(code) || COUNTRY_PRESETS.find((c) => c.code === code) || COUNTRY_PRESETS[0]);
+export const allCountryRules = () => COUNTRY_PRESETS.map((c) => ({ ...countryRule(c.code), edited: countryRules.has(c.code) }));
+/** Saves a country's rules: well-formed days, dates and register settings only. */
+export function setCountryRule(code, body) {
+  const base = COUNTRY_PRESETS.find((c) => c.code === code); if (!base) return null;
+  const hhmm = (v, d) => (/^\d{2}:\d{2}$/.test(String(v)) ? String(v) : d);
+  const days = base.days.map((d) => { const b = (body?.days || []).find((x) => Number(x.day) === d.day) || d; return { day: d.day, on: !!b.on, from: hhmm(b.from, d.from), to: hhmm(b.to, d.to) }; });
+  const holidays = (Array.isArray(body?.holidays) ? body.holidays : base.holidays).filter((h) => /^\d{4}-\d{2}-\d{2}$/.test(h.date)).map((h) => ({ date: h.date, name: String(h.name || 'Holiday').slice(0, 60) }))
+    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 60);
+  const register = { ...base.register, check: body?.register ? !!body.register.check : base.register.check, action: body?.register?.action === 'block' ? 'block' : body?.register?.action === 'warn' ? 'warn' : base.register.action };
+  countryRules.set(code, { ...base, days, holidays, register }); return countryRule(code);
+}
+export const resetCountryRule = (code) => { countryRules.delete(code); return countryRule(code); };
+/** A number's country, from its dialling code; a plain 10-digit number is Indian (the workspace's home country). */
+export function countryOf(phone) {
+  const raw = String(phone || '').trim(); const d = raw.replace(/\D/g, '');
+  if (raw.startsWith('+') || d.length > 10) { const c = [...COUNTRY_PRESETS].sort((a, b) => b.prefix.length - a.prefix.length).find((x) => d.startsWith(x.prefix)); if (c) return c.code; }
+  return 'IN';
+}
+/** Demo stand-in for a register lookup: about one number in twenty-five is on the country's register. */
+export function onRegister(phone) { const d = String(phone || '').replace(/\D/g, ''); return d.length >= 8 && ['13', '47', '88', '29'].includes(d.slice(-2)); }
+const hm = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
+/**
+ * The first moment at or after ms when a number in `country` may be called under the agent's rule: a calling day that is not a
+ * holiday, inside both the country's hours for that weekday and the agent's own hours, and outside 1-2 pm if the agent avoids lunch.
+ * Returns { at, moved: [reasons it was moved] }.
+ */
+export function fitSlot(ms, rule, country) {
+  const c = typeof country === 'string' ? countryRule(country) : country; const off = c.offset_min * 60000; const moved = new Set();
+  const hol = new Set(c.holidays.map((h) => h.date));
+  for (let guard = 0; guard < 40; guard += 1) {
+    const local = new Date(ms + off); const mins = local.getUTCHours() * 60 + local.getUTCMinutes();
+    const dayStart = ms - mins * 60000 - local.getUTCSeconds() * 1000 - local.getUTCMilliseconds(); const next = dayStart + 86400000;
+    const ymd = local.toISOString().slice(0, 10); const d = c.days[local.getUTCDay()];
+    const restDay = !d.on || (rule.skip_sunday && local.getUTCDay() === 0);
+    if (restDay) { moved.add(!d.on ? `not a calling day in ${c.name}` : 'no calls on Sunday (agent rule)'); ms = next; continue; }
+    if (hol.has(ymd)) { moved.add(`holiday: ${c.holidays.find((h) => h.date === ymd).name}`); ms = next; continue; }
+    const open = Math.max(hm(d.from), hm(rule.from || '00:00')), close = Math.min(hm(d.to), hm(rule.to || '23:59'));
+    if (open >= close) { moved.add('no overlap between the country\'s and the agent\'s hours'); ms = next; continue; }
+    if (mins < open) { if (mins > 0 || guard > 0) moved.add('before calling hours'); ms = dayStart + open * 60000; continue; }
+    if (mins >= close) { moved.add('after calling hours'); ms = next; continue; }
+    if (rule.avoid_lunch && mins >= 780 && mins < 840 && close > 840) { moved.add('lunch hour (agent rule)'); ms = dayStart + 840 * 60000; continue; }
+    if (moved.has('after calling hours')) moved.delete('before calling hours');
+    return { at: ms, moved: [...moved] };
+  }
+  return { at: ms, moved: [...moved] };
+}
+/** Retry times after a call at startIso (`done` retries already made), each moved into the country's and the agent's calling hours. */
+export function retryPlan(rule, startIso, done = 0, country = 'IN') {
   let t = Date.parse(startIso) || Date.now(); const out = [];
-  for (const g of retryGaps(rule).slice(done)) { t = fit(t + g * 60000); out.push(new Date(t).toISOString()); }
+  for (const g of retryGaps(rule).slice(done)) { t = fitSlot(t + g * 60000, rule, country).at; out.push(new Date(t).toISOString()); }
   return out;
+}
+/** The upload check's register lookup for one row: { country, hit: null | { action, note } }. */
+export function registerCheck(phone) {
+  const code = countryOf(phone); const c = countryRule(code);
+  if (!c.register.check || !onRegister(phone)) return { country: code, hit: null };
+  return { country: code, hit: { action: c.register.action, note: c.register.action === 'block' ? `On the ${c.register.name}: not called` : `On the ${c.register.name}: check this is a service call, not a sales call` } };
+}
+/** How many rows of a sheet fall in each country. */
+export function countriesOf(phones) {
+  const n = new Map(); for (const p of phones) { const k = countryOf(p); n.set(k, (n.get(k) || 0) + 1); }
+  return [...n.entries()].map(([code, rows]) => ({ code, name: countryRule(code).name, rows })).sort((a, b) => b.rows - a.rows);
+}
+/** Example retry times, with why each was moved, for the New campaign preview. */
+export function retryPreview(rule, country = 'IN', startIso = null, startHour = 10) {
+  const c = countryRule(country); const off = c.offset_min * 60000;
+  // Missed at startHour local time on the next calling day.
+  const h = Math.min(22, Math.max(0, Number(startHour) || 10)); const hh = `${String(h).padStart(2, '0')}:00`;
+  const now = Date.now(); const local = new Date(now + off); const atLocal = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), h, 0) - off;
+  const start = startIso ? Date.parse(startIso) : fitSlot(atLocal, { ...rule, from: hh }, c).at;
+  let t = start; const times = [];
+  for (const g of retryGaps(rule)) { const f = fitSlot(t + g * 60000, rule, c); t = f.at; times.push({ at: new Date(t).toISOString(), local: new Date(t + off).toISOString().slice(0, 16).replace('T', ' '), moved: f.moved }); }
+  return { country: c.code, name: c.name, tz_label: c.tz_label, start: new Date(start + off).toISOString().slice(0, 16).replace('T', ' '), times };
 }
 
 // ── Next steps on the call page: retries and WhatsApp / email (ideas doc section 2) ──
@@ -572,16 +664,20 @@ export function messageSuggestions(r, nextAt) {
 }
 /** The call page's next steps: the retry plan from the agent's rule, the suggested messages and what was already sent. */
 export function callSteps(r) {
-  const rule = retryRuleOf(r.agent_key || r.agent); const rt = retryFor(r);
+  const rule = retryRuleOf(r.agent_key || r.agent); const rt = retryFor(r); const country = countryOf(r.phone); const c = countryRule(country);
   let plan = [];
   if (rt) {
     const from = rt.callback ? (Date.parse(r.callback_at || '') ? new Date(Date.parse(r.callback_at)).toISOString() : new Date(Date.parse(r.call_date || '') + 2 * 3600000 || Date.now()).toISOString()) : r.call_date || new Date().toISOString();
     const done = Math.min(Number(r.retries) || 0, rule.retries);
     if (rt.callback) plan = [from];
-    else if (rt.next_day) plan = retryPlan({ ...rule, schedule: 'linear', base_minutes: 24 * 60, retries: 1 }, from);
-    else plan = retryPlan(rule, from, done).slice(0, rt.cap || undefined);
+    else if (rt.next_day) plan = retryPlan({ ...rule, schedule: 'linear', base_minutes: 24 * 60, retries: 1 }, from, 0, country);
+    else plan = retryPlan(rule, from, done, country).slice(0, rt.cap || undefined);
+    if (rt.callback) plan = [new Date(fitSlot(Date.parse(from), rule, country).at).toISOString()];
   }
+  const today = c.days[new Date(Date.now() + c.offset_min * 60000).getUTCDay()];
   return { rule, schedules: RETRY_SCHEDULES, retry: rt ? { label: rt.label, plan, left: plan.length } : null,
+    country: { code: c.code, name: c.name, tz_label: c.tz_label, hours_today: today.on ? `${today.from}–${today.to}` : 'no calls today', register: c.register.name,
+      on_register: c.register.check && onRegister(r.phone), register_action: c.register.action },
     messages: messageSuggestions(r, plan[0]), sent: sentMessages.get(r.id) || [], caller_id: DEMO_CALLER_ID };
 }
 export function sendMessage(r, { channel, key, text }, by) {

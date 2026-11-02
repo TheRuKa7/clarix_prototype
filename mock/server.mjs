@@ -21,7 +21,7 @@ import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
   statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns,
-  setAgentMetrics, checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage } from './calling-report.mjs';
+  setAgentMetrics, allCountryRules, setCountryRule, resetCountryRule, registerCheck, countriesOf, retryPreview, checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage } from './calling-report.mjs';
 /** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
 const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
 
@@ -841,8 +841,11 @@ function newCampaignRows(t, form) {
     const check = checkUploadRow(Object.fromEntries((t.contextMappings || []).map((m) => [m.fieldName, get(m.fieldName)]))); const context = check.ctx;
     const missing = (t.contextMappings || []).filter((m) => m.required && !context[m.fieldName]).map((m) => m.fieldName);
     const bad = phone.length !== 10 ? `contact_phone "${get('contact_phone')}" is not a valid number` : missing.length ? `Missing ${missing.join(', ')}` : check.error ? check.error.note : seen.has(phone) ? 'Same phone number as an earlier row' : null; seen.add(phone);
+    const reg = bad ? null : registerCheck(get('contact_phone')).hit; const blocked = reg?.action === 'block' ? reg.note : null;
+    if (reg && !blocked) check.warnings.push({ kind: 'register', field: 'contact_phone', note: reg.note });
+    if (blocked) return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, raw_phone: get('contact_phone'), email: get('contact_email'), context, bad: blocked, check: { ...check, error: { kind: 'register', field: 'contact_phone', note: blocked } } };
     if (bad && !check.error) check.error = { kind: phone.length !== 10 ? 'phone' : 'other', field: '', note: bad };
-    return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, email: get('contact_email'), context, bad, check };
+    return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, raw_phone: get('contact_phone'), email: get('contact_email'), context, bad, check };
   });
   return { rows, matched: keys.filter((k) => col(k) >= 0), missing: keys.filter((k) => col(k) < 0) };
 }
@@ -853,8 +856,14 @@ on('POST', '/api/v1/reports/calling/new-campaign/check', ({ q, req, raw }) => {
   ok({ file: form.file.filename, rows: r.rows.length, will_dial: r.rows.length - bad.length - tests, calls: r.rows.length - bad.length, bad, tests, matched: r.matched, missing: r.missing,
     fixed: r.rows.filter((x) => x.check?.fixes.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.fixes.map((f) => f.note) })),
     warnings: r.rows.filter((x) => x.check?.warnings.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.warnings.map((f) => f.note) })),
-    note: uploadNote(t.name, r.rows.map((x) => x.check), r.rows.length) });
+    note: uploadNote(t.name, r.rows.map((x) => x.check), r.rows.length), countries: countriesOf(r.rows.map((x) => x.raw_phone || x.phone)) });
 });
+// Calling rules per country (Settings): hours by weekday, rest days, holidays, the do-not-call register. Retries obey them.
+on('GET', '/api/v1/reports/calling/calling-rules', () => ok({ countries: allCountryRules() }));
+on('PUT', '/api/v1/reports/calling/calling-rules/:code', ({ p, body }) => { const r = setCountryRule(p.code, body); r ? ok(r) : fail(404, 'Unknown country'); });
+on('POST', '/api/v1/reports/calling/calling-rules/:code/reset', ({ p }) => ok(resetCountryRule(p.code)));
+on('POST', '/api/v1/reports/calling/retry-rules/preview', ({ body }) => ok(retryPreview(cleanRule(body?.rule), String(body?.country || 'IN'), null, body?.start_hour)));
+
 on('GET', '/api/v1/reports/calling/new-campaign/tips', ({ q }) => { const t = templates.find((x) => x.id === q.get('agent')); t ? ok(agentTips(t.name, newCampaignAgents().find((x) => x.key === t.id)?.inputs ?? [])) : fail(404, 'Agent not found'); });
 // Retry rules per agent: how often and when a row that was not reached is called again.
 const cleanRule = (b) => { const d = defaultRetryRule(); const r = { ...d, ...(b || {}) };
