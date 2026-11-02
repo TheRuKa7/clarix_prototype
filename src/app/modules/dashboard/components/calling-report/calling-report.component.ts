@@ -12,7 +12,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 export type PeriodKey = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
 /** from and to are ISO instants; days is the span, for pages that still think in days. */
-export interface ReportScope { period: PeriodKey; from: string; to: string; days: number; agents: string[]; includeTests: boolean; campaign?: string; }
+export interface ReportScope { period: PeriodKey; from: string; to: string; days: number; agents: string[]; includeTests: boolean; campaign?: string; unit?: string; }
 export interface ReportLineView { key: string; label: string; count: number; share: number | null; strong?: boolean; sub?: boolean; good?: boolean; }
 export interface ReportBox { key: string; step: number; label: string; total: number; lines: ReportLineView[]; }
 export interface ByAgentRow { agent: string; agent_key: string; planned: number; picked_up: number; answered: number; success: number; success_rate: number | null; avg_talk_seconds: number | null; }
@@ -26,6 +26,8 @@ export interface CallingReport {
   sum_check: { ok: boolean; gaps: { box: string; expected: number; got: number }[] };
   /** Agents with planned calls in the period (any agent filter ignored), with that count. */
   agents: { key: string; label: string; count: number }[];
+  /** The per-agent stat the funnel is counted in ('' = calls), and the stats on offer. */
+  unit?: string; units_available?: { field: string; label: string }[];
   /** Weekly (or daily, for two weeks or less) success, logic doc section 7. */
   trend: { unit: 'week' | 'day'; buckets: TrendBucket[] };
   /** The period just before this one, the same length: for the change shown on each rate. */
@@ -36,7 +38,7 @@ export interface ReportCallRow {
   call_status: string; status_reason: string; goal_reached: string; duration_seconds: number | null; callback_at: string | null; uploaded_by: string; summary?: string; retries?: number;
 }
 /** The call log's search box and per-column "contains" filters; the export uses the same. */
-export interface LogFilters { q: string; cols: Record<string, string> }
+export interface LogFilters { q: string; cols: Record<string, string | string[]> }
 export interface CallingReportSource {
   report(scope: ReportScope): Promise<CallingReport>;
   calls(scope: ReportScope, box: string, skip: number, limit: number, filters?: LogFilters): Promise<{ rows: ReportCallRow[]; total: number }>;
@@ -47,6 +49,14 @@ export interface CallingReportSource {
   openCallLogs?(scope: ReportScope, box: string): void;
   /** The workspace's internal test numbers: calls to them count only as Internal test calls. */
   testNumbers?(): Promise<string[]>;
+  /** Distinct values of one call log column, for the multi-select filter. */
+  values?(scope: ReportScope, box: string, filters: LogFilters, column: string): Promise<{ value: string; count: number }[]>;
+  /** Open follow ups and work still running, for the small box on the dashboard. */
+  tasks?(scope: ReportScope): Promise<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number }>;
+  openCampaigns?(): void;
+  /** Each agent's custom stats (POs, items…): what to count the funnel and campaigns in. */
+  agentStats?(): Promise<{ agent: string; label: string; fields: { field: string; label: string }[]; stats: { field: string; label: string }[] }[]>;
+  saveAgentStats?(agent: string, stats: { field: string; label: string }[]): Promise<unknown>;
   /** Opens the Follow ups page, where the product has one. */
   openFollowUps?(): void;
   saveTestNumbers?(numbers: string[]): Promise<string[]>;
@@ -58,6 +68,8 @@ const BOX_LABELS: Record<string, string> = { uploaded: 'Uploaded', planned: 'Pla
   goal_yes: 'Goal reached: Yes', goal_no: 'Goal reached: No', goal_na: 'Goal reached: N/A' };
 const PAGE = 10;
 /** The call log's columns, in order: key, header. */
+/** Columns filtered by picking values (several at once); the rest by typing. */
+const PICK_COLUMNS = new Set(['agent', 'campaign', 'call_status', 'status_reason', 'goal_reached', 'retries']);
 const LOG_COLUMNS: [string, string][] = [['call_date', 'Call date'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['caller_name', 'Caller'], ['phone', 'Phone'], ['summary', 'Call summary'],
   ['call_status', 'Call status'], ['status_reason', 'Status reason'], ['callback_at', 'Call back'], ['duration_seconds', 'Duration'], ['retries', 'Retries'], ['goal_reached', 'Goal']];
 const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation: '#7c3aed', not_picked_up: '#d97706', in_progress: '#a8a29e', not_planned: '#d6d3d1' };
@@ -81,6 +93,30 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           </span>
         }
         @if (agents().length || period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Reset period</button> }
+        @if (mode() === 'dashboard' && (r()?.units_available?.length || 0) > 0) {
+          <div class="cr-seg" role="group" aria-label="Count by">
+            <button type="button" [class.on]="!unit()" (click)="setUnit('')">Calls</button>
+            @for (u of r()?.units_available ?? []; track u.field) { <button type="button" [class.on]="unit() === u.field" (click)="setUnit(u.field)">{{ u.label }}</button> }
+          </div>
+        }
+        @if (mode() === 'dashboard' && source().agentStats) {
+          <div class="cr-drop">
+            <button type="button" class="cr-link" (click)="openStats()">Custom stats</button>
+            @if (statsOpen()) {
+              <div class="cr-menu cr-stats-menu" role="dialog" aria-label="Custom stats per agent">
+                <b>Custom stats per agent</b>
+                <p class="cr-muted">Count the funnel and campaigns in what each agent's upload carries, as well as calls.</p>
+                @for (a of statsDraft(); track a.agent) {
+                  <div class="cr-stat-agent"><span>{{ a.label }}</span>
+                    @for (f of a.fields; track f.field) { <label class="cr-opt"><input type="checkbox" [checked]="isStat(a, f.field)" (change)="toggleStat(a, f)"> {{ f.label }} <small>{{ f.field }}</small></label> }
+                    @empty { <small class="cr-muted">No number columns in this agent's upload.</small> }
+                  </div>
+                }
+                <div class="cr-tests-foot"><span class="cr-grow"></span><button type="button" class="cr-btn" (click)="statsOpen.set(false)">Cancel</button><button type="button" class="cr-btn cr-primary" (click)="saveStats()">Save</button></div>
+              </div>
+            }
+          </div>
+        }
         <span class="cr-grow"></span>
         <span class="cr-meta">{{ periodLabel() }} · {{ tzLabel() }}</span>
         <div class="cr-drop">
@@ -98,6 +134,13 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
       @if (r(); as rep) {
+        @if (mode() === 'dashboard' && tasks(); as t) {
+          <div class="cr-tasks" role="list" aria-label="Follow ups and active tasks">
+            <button type="button" role="listitem" (click)="source().openFollowUps?.()"><b>{{ num(t.follow_ups) }}</b> follow ups open <small>{{ t.callbacks }} callbacks · {{ t.follow_up_required }} follow-up required</small></button>
+            <button type="button" role="listitem" (click)="source().openCampaigns?.()"><b>{{ num(t.running_campaigns) }}</b> campaign{{ t.running_campaigns === 1 ? '' : 's' }} running</button>
+            <button type="button" role="listitem" (click)="open('in_progress', 'Not finished')"><b>{{ num(t.not_finished) }}</b> calls not finished</button>
+          </div>
+        }
         @if (mode() === 'dashboard') {
         <!-- The funnel, one row: each step's count and its share of the step before. Click a step to see its calls below. -->
         <div class="cr-card">
@@ -111,7 +154,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           </div>
 
           <!-- Call status: every planned row by how its call ended. Click a status to see its calls below. -->
-          <div class="cr-status-head"><span>Call status</span><span class="cr-muted">{{ num(rep.headline.planned) }} planned · {{ num(rep.stats.dials) }} dials · avg talk {{ mmss(rep.stats.avg_talk_seconds) }}</span></div>
+          <div class="cr-status-head"><span>Call status{{ unitName() ? ' · counted in ' + unitName() : '' }}</span><span class="cr-muted">{{ num(rep.headline.planned) }} {{ unitName() ? unitName() + ' planned' : 'planned' }} · {{ num(rep.stats.dials) }} dials · avg talk {{ mmss(rep.stats.avg_talk_seconds) }}</span></div>
           <div class="cr-bar" role="img" [attr.aria-label]="'Call status of ' + rep.headline.planned + ' planned calls'">
             @for (g of groups(); track g.key) { @if (g.count) { <span [style.width.%]="g.width" [style.background]="g.color" [title]="g.label + ': ' + g.count + ' (' + pct(g.width / 100) + ' of planned)'"></span> } }
           </div>
@@ -147,7 +190,19 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             <table class="cr-table">
               <thead>
                 <tr>@for (col of LOG_COLUMNS; track col[0]) { <th>{{ col[1] }}</th> }</tr>
-                <tr class="cr-frow">@for (col of LOG_COLUMNS; track col[0]) { <th><input type="text" [value]="colFilters()[col[0]] || ''" (input)="setCol(col[0], $any($event.target).value)" [attr.aria-label]="'Filter ' + col[1]" placeholder="Filter"></th> }</tr>
+                <tr class="cr-frow">@for (col of LOG_COLUMNS; track col[0]) {
+                  <th>@if (PICK_COLUMNS.has(col[0])) {
+                    <div class="cr-drop">
+                      <button type="button" class="cr-pick" [class.on]="picked(col[0]).length" (click)="openPick(col[0])">{{ picked(col[0]).length ? picked(col[0]).length + ' selected' : 'All' }} ▾</button>
+                      @if (pickOpen() === col[0]) {
+                        <div class="cr-menu cr-pick-menu" role="listbox" [attr.aria-label]="'Filter ' + col[1]">
+                          <label class="cr-opt"><input type="checkbox" [checked]="!picked(col[0]).length" (change)="setPicked(col[0], [])"> All</label>
+                          @for (v of pickValues(); track v.value) { <label class="cr-opt"><input type="checkbox" [checked]="picked(col[0]).includes(v.value)" (change)="togglePicked(col[0], v.value)"> <span class="cr-opt-l">{{ v.value || '(blank)' }}</span><small>{{ v.count }}</small></label> }
+                        </div>
+                      }
+                    </div>
+                  } @else { <input type="text" [value]="textFilter(col[0])" (input)="setCol(col[0], $any($event.target).value)" [attr.aria-label]="'Filter ' + col[1]" placeholder="Filter"> }</th>
+                }</tr>
               </thead>
               @if (drillRows().length) {
                 <tbody>
@@ -232,6 +287,19 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-scroll { overflow-x: auto; }
     .cr-search { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); width: 220px; }
     .cr-frow th { background: var(--cr-bg); padding: 4px 6px; }
+    .cr-pick { width: 100%; min-width: 72px; text-align: left; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-muted); cursor: pointer; white-space: nowrap; }
+    .cr-pick.on { border-color: var(--cr-accent); color: var(--cr-accent); }
+    .cr-pick-menu { max-height: 280px; overflow: auto; font-weight: 400; }
+    .cr-stats-menu { width: 340px; gap: 8px; padding: 12px; max-height: 420px; overflow: auto; }
+    .cr-stat-agent { display: grid; gap: 2px; border-top: 1px solid var(--cr-line); padding-top: 6px; }
+    .cr-stat-agent > span { font-weight: 600; font-size: 13px; }
+    .cr-tests-foot { display: flex; gap: 8px; }
+    .cr-primary { background: var(--cr-text); color: var(--cr-bg); border-color: var(--cr-text); }
+    .cr-tasks { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cr-tasks button { display: flex; align-items: baseline; gap: 6px; border: 1px solid var(--cr-line); border-radius: 10px; background: var(--cr-bg); padding: 7px 12px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; }
+    .cr-tasks button:hover { background: var(--cr-soft); }
+    .cr-tasks b { font-size: 16px; }
+    .cr-tasks small { color: var(--cr-muted); font-size: 12px; }
     .cr-frow input { width: 100%; min-width: 64px; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
     .cr-table th { text-align: left; font-weight: 500; color: var(--cr-muted); background: var(--cr-soft); padding: 7px 10px; white-space: nowrap; }
@@ -286,8 +354,16 @@ export class CallingReportComponent {
   protected readonly drillPage = signal(0);
   protected readonly LOG_COLUMNS = LOG_COLUMNS;
   protected readonly search = signal('');
-  protected readonly colFilters = signal<Record<string, string>>({});
-  protected readonly logFiltered = computed(() => !!this.search().trim() || Object.values(this.colFilters()).some((v) => v.trim()));
+  protected readonly colFilters = signal<Record<string, string | string[]>>({});
+  protected readonly PICK_COLUMNS = PICK_COLUMNS;
+  protected readonly pickOpen = signal('');
+  protected readonly pickValues = signal<{ value: string; count: number }[]>([]);
+  protected readonly unit = signal('');
+  protected readonly unitName = computed(() => this.r()?.units_available?.find((u) => u.field === this.unit())?.label ?? '');
+  protected readonly tasks = signal<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number } | null>(null);
+  protected readonly statsOpen = signal(false);
+  protected readonly statsDraft = signal<{ agent: string; label: string; fields: { field: string; label: string }[]; stats: { field: string; label: string }[] }[]>([]);
+  protected readonly logFiltered = computed(() => !!this.search().trim() || Object.values(this.colFilters()).some((v) => (Array.isArray(v) ? v.length : v.trim())));
   private typing: ReturnType<typeof setTimeout> | null = null;
   private seq = 0;
 
@@ -308,7 +384,7 @@ export class CallingReportComponent {
   protected readonly days = computed(() => { const [a, b] = this.range(); return Math.max(1, Math.round((b - a) / 86400000)); });
   protected readonly scope = computed<ReportScope>(() => {
     const [a, b] = this.range();
-    return { period: this.period(), from: new Date(a).toISOString(), to: new Date(b).toISOString(), days: this.days(), agents: this.agents(), includeTests: this.includeTests(), campaign: this.campaign() || undefined };
+    return { period: this.period(), from: new Date(a).toISOString(), to: new Date(b).toISOString(), days: this.days(), agents: this.agents(), includeTests: this.includeTests(), campaign: this.campaign() || undefined, unit: this.unit() || undefined };
   });
   protected readonly periodLabel = computed(() => {
     const [a, b] = this.range(); const from = this.ymd(a), to = this.ymd(b);
@@ -401,6 +477,7 @@ export class CallingReportComponent {
     if (p === 'custom') { this.customFrom.set(q.get('from') || ''); this.customTo.set(q.get('to') || ''); }
     this.agents.set((q.get('agents') || '').split(',').filter(Boolean));
     this.includeTests.set(q.get('tests') === '1');
+    this.unit.set(q.get('unit') || '');
     this.search.set(q.get('q') || ''); try { this.colFilters.set(JSON.parse(q.get('f') || '{}')); } catch { /* ignore bad filters */ }
     const box = q.get('box'); if (box) { this.box.set({ key: box, label: BOX_LABELS[box] || box }); this.drillPage.set(Math.max(0, Number(q.get('page') || 0))); }
   }
@@ -408,7 +485,7 @@ export class CallingReportComponent {
     const b = this.box(); const custom = this.period() === 'custom';
     this.router.navigate([], { relativeTo: this.route, replaceUrl: true, queryParamsHandling: 'merge', queryParams: {
       period: this.period() === '30d' ? null : this.period(), from: custom ? this.customFrom() || null : null, to: custom ? this.customTo() || null : null,
-      agents: this.agents().join(',') || null, tests: this.includeTests() ? '1' : null, box: b?.key ?? null, page: this.drillPage() || null, q: this.search().trim() || null, f: this.logFilters().cols && Object.keys(this.logFilters().cols).length ? JSON.stringify(this.logFilters().cols) : null } });
+      agents: this.agents().join(',') || null, tests: this.includeTests() ? '1' : null, unit: this.unit() || null, box: b?.key ?? null, page: this.drillPage() || null, q: this.search().trim() || null, f: this.logFilters().cols && Object.keys(this.logFilters().cols).length ? JSON.stringify(this.logFilters().cols) : null } });
   }
 
   async load(): Promise<void> {
@@ -421,6 +498,7 @@ export class CallingReportComponent {
       // A list restored from the address gets its proper name once the report is in.
       const b = this.box(); if (b) { const l = rep.funnel.flatMap((x) => x.lines).find((x) => x.key === b.key); if (l && l.label !== b.label) this.box.set({ key: b.key, label: l.label }); }
       await this.fetchBox();
+      if (this.mode() === 'dashboard') this.source().tasks?.(sc).then((t) => { if (my === this.seq) this.tasks.set(t); }).catch(() => {});
     } catch {
       if (my === this.seq) this.error.set('Could not load the calling report.');
     } finally { if (my === this.seq) this.loading.set(false); }
@@ -464,7 +542,7 @@ export class CallingReportComponent {
   /** Menus close on a click anywhere else; Escape closes a menu, then the list. */
   protected onDocClick(ev: Event): void {
     const t = ev.target as HTMLElement | null; if (t?.closest('.cr-drop')) return;
-    this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false);
+    this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false);
   }
   protected onEscape(): void {
     if (this.agentsOpen() || this.shareOpen() || this.testsOpen()) { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); } else if (this.box()) this.close();
@@ -472,7 +550,31 @@ export class CallingReportComponent {
 
   protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k, this.logFilters()), `${this.fileName()}-${k}${this.logFiltered() ? '-filtered' : ''}.xlsx`); }
   /** Non-empty column filters and the search box, as sent to the call log and the export. */
-  private logFilters(): LogFilters { return { q: this.search().trim(), cols: Object.fromEntries(Object.entries(this.colFilters()).filter(([, v]) => v.trim())) }; }
+  private logFilters(): LogFilters { return { q: this.search().trim(), cols: Object.fromEntries(Object.entries(this.colFilters()).filter(([, v]) => (Array.isArray(v) ? v.length : v.trim()))) }; }
+  protected textFilter(k: string): string { const v = this.colFilters()[k]; return typeof v === 'string' ? v : ''; }
+  protected picked(k: string): string[] { const v = this.colFilters()[k]; return Array.isArray(v) ? v : []; }
+  /** Opens a column's value list, counted with the other filters on. */
+  protected async openPick(k: string): Promise<void> {
+    if (this.pickOpen() === k) { this.pickOpen.set(''); return; }
+    this.pickOpen.set(k); this.pickValues.set([]);
+    const f = this.logFilters(); delete f.cols[k];
+    try { this.pickValues.set((await this.source().values?.(this.scope(), this.box()?.key ?? 'uploaded', f, k)) ?? []); } catch { /* the list stays empty */ }
+  }
+  protected setPicked(k: string, vals: string[]): void { this.colFilters.set({ ...this.colFilters(), [k]: vals }); this.refilter(); }
+  protected togglePicked(k: string, v: string): void { const cur = this.picked(k); this.setPicked(k, cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]); }
+  protected setUnit(u: string): void { this.unit.set(u); this.emit(); }
+  protected async openStats(): Promise<void> {
+    if (this.statsOpen()) { this.statsOpen.set(false); return; }
+    try { this.statsDraft.set(await this.source().agentStats!()); this.statsOpen.set(true); } catch { this.error.set('Could not load the custom stats.'); }
+  }
+  protected isStat(a: { stats: { field: string }[] }, field: string): boolean { return a.stats.some((s) => s.field === field); }
+  protected toggleStat(a: { agent: string; stats: { field: string; label: string }[] }, f: { field: string; label: string }): void {
+    this.statsDraft.set(this.statsDraft().map((x) => (x.agent !== a.agent ? x : { ...x, stats: this.isStat(x, f.field) ? x.stats.filter((s) => s.field !== f.field) : [...x.stats, f] })));
+  }
+  protected async saveStats(): Promise<void> {
+    try { for (const a of this.statsDraft()) await this.source().saveAgentStats!(a.agent, a.stats); this.statsOpen.set(false); await this.load(); }
+    catch { this.error.set('Could not save the custom stats.'); }
+  }
   protected setSearch(v: string): void { this.search.set(v); this.refilter(); }
   protected setCol(k: string, v: string): void { this.colFilters.set({ ...this.colFilters(), [k]: v }); this.refilter(); }
   protected clearLogFilters(): void { this.search.set(''); this.colFilters.set({}); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }

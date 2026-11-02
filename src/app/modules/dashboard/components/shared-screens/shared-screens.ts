@@ -10,6 +10,8 @@ import { CallingReportComponent, CallingReportSource, ReportCallRow } from '../c
 export interface CampaignLine {
   campaign_id: string; campaign: string; agent: string; agent_key: string; uploaded_by: string; created_at: string | null; uploaded: number; planned: number; picked_up: number;
   answered: number; success: number; success_rate: number | null; not_finished: number; bad_data: number; status: 'Running' | 'Completed' | 'Stopped' | 'Failed';
+  /** The agent's custom stats for this campaign: total in the sheet, covered on answered calls, accepted. */
+  stats?: { field: string; label: string; total: number; covered: number; accepted: number }[];
 }
 export interface CampaignsSource {
   list(p: { from: string | null; to: string | null; state: string; q: string; skip: number; limit: number }): Promise<{ rows: CampaignLine[]; total: number; running: number }>;
@@ -32,9 +34,11 @@ export interface NewCampaignSource {
   opened(campaignId: string): void;
   cancel(): void;
 }
+export type FollowRow = ReportCallRow & { email?: string; kind: 'Callback' | 'Follow-up'; task: string; owner: string; follow: { state: string; by?: string; at?: string } };
 export interface FollowUpsSource {
-  list(tab: string, show: string): Promise<{ rows: (ReportCallRow & { follow: { state: string; by?: string; at?: string } })[]; counts: { callback: number; follow_up: number } }>;
-  act(id: string, action: 'done' | 'open' | 'call_again'): Promise<unknown>;
+  list(show: string, kind: string): Promise<{ rows: FollowRow[]; counts: { open: number; callback: number; follow_up: number; done: number } }>;
+  act(id: string, action: 'done' | 'open'): Promise<unknown>;
+  exportXlsx(show: string, kind: string): Promise<Blob>;
   openCall(row: ReportCallRow): void;
 }
 
@@ -73,6 +77,13 @@ const CSS = `
   .s-empty { margin: 0; padding: 16px; color: var(--s-muted); font-size: 13px; }
   .s-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--s-soft); font-size: 13px; }
   .s-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .s-cov { font-size: 12.5px; }
+  .s-cov small { display: inline; color: var(--s-muted); }
+  .s-check { width: 16px; height: 16px; cursor: pointer; }
+  tr.done td { color: var(--s-muted); }
+  tr.done .s-task { text-decoration: line-through; }
+  .s-task { font-weight: 500; white-space: normal; min-width: 220px; }
+  td.s-wrap { white-space: normal; min-width: 260px; max-width: 420px; color: var(--s-muted); font-size: 12.5px; }
   .s-actions .s-btn { padding: 4px 10px; font-size: 12.5px; }
 `;
 const STATUS_COLOR: Record<string, string> = { Running: '#d97706', Completed: '#16a34a', Stopped: '#a8a29e', Failed: '#dc2626' };
@@ -105,7 +116,7 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
       <div class="s-card">
         <div class="s-scroll">
           <table>
-            <thead><tr><th>Campaign</th><th>Agent</th><th>Status</th><th class="num">Uploaded</th><th class="num">Planned</th><th class="num">Picked up</th><th class="num">Answered</th><th class="num">Success rate</th><th></th></tr></thead>
+            <thead><tr><th>Campaign</th><th>Agent</th><th>Status</th><th class="num">Uploaded</th><th class="num">Planned</th><th class="num">Picked up</th><th class="num">Answered</th><th class="num">Success rate</th><th>Coverage</th><th></th></tr></thead>
             <tbody>
               @for (c of rows(); track c.campaign_id) {
                 <tr class="click" (click)="source().open(c)" tabindex="0" (keydown.enter)="source().open(c)">
@@ -113,6 +124,7 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
                   <td class="cut" [title]="c.agent">{{ c.agent }}</td>
                   <td><span class="s-chip" [style.--c]="color(c.status)"><i></i>{{ c.status }}</span></td>
                   <td class="num">{{ c.uploaded }}</td><td class="num">{{ c.planned }}</td><td class="num">{{ c.picked_up }}</td><td class="num">{{ c.answered }}</td><td class="num">{{ pct(c.success_rate) }}</td>
+                  <td>@for (st of c.stats ?? []; track st.field) { <div class="s-cov" [title]="st.label + ': ' + st.covered + ' of ' + st.total + ' on answered calls, ' + st.accepted + ' accepted'">{{ st.label }} <b>{{ st.covered }}/{{ st.total }}</b> <small>{{ st.accepted }} accepted</small></div> } @empty { <span class="s-muted">—</span> }</td>
                   <td><div class="s-actions">
                     <button type="button" class="s-btn" (click)="$event.stopPropagation(); results(c)">Results</button>
                     @if (c.status === 'Running') { <button type="button" class="s-btn s-danger" (click)="$event.stopPropagation(); stop(c)">Stop</button> }
@@ -304,7 +316,7 @@ export class NewCampaignComponent {
   }
 }
 
-// ── Follow ups ────────────────────────────────────────────────────────────────
+// ── Follow ups: one checklist ─────────────────────────────────────────────────
 @Component({
   selector: 'app-follow-ups-list',
   standalone: true,
@@ -312,49 +324,51 @@ export class NewCampaignComponent {
   styles: [CSS],
   template: `
     <div class="s">
-      <div class="s-head"><div><h1 class="s-title">Follow ups</h1><p class="s-sub">Answered calls a person acts on next: callbacks the caller asked for, and answers the team must follow up.</p></div></div>
       <div class="s-head">
-        <div class="s-seg" role="tablist">
-          <button type="button" [class.on]="tab() === 'callback'" (click)="tab.set('callback')">Callbacks ({{ counts().callback }})</button>
-          <button type="button" [class.on]="tab() === 'follow_up'" (click)="tab.set('follow_up')">Follow-up required ({{ counts().follow_up }})</button>
+        <div><h1 class="s-title">Follow ups</h1><p class="s-sub">What a person does next after a call: tick it off when done. The owner is whoever uploaded the sheet.</p></div>
+        <span class="s-grow"></span>
+        <button type="button" class="s-btn" (click)="exportList()">Export</button>
+      </div>
+      <div class="s-head">
+        <div class="s-seg" role="group" aria-label="Type">
+          <button type="button" [class.on]="kind() === 'all'" (click)="kind.set('all')">All ({{ counts().open }})</button>
+          <button type="button" [class.on]="kind() === 'callback'" (click)="kind.set('callback')">Callbacks ({{ counts().callback }})</button>
+          <button type="button" [class.on]="kind() === 'follow_up'" (click)="kind.set('follow_up')">Follow-up required ({{ counts().follow_up }})</button>
         </div>
-        <div class="s-seg" role="group" aria-label="Show"><button type="button" [class.on]="show() === 'open'" (click)="show.set('open')">Open</button><button type="button" [class.on]="show() === 'done'" (click)="show.set('done')">Done</button></div>
+        <div class="s-seg" role="group" aria-label="Show"><button type="button" [class.on]="show() === 'open'" (click)="show.set('open')">To do</button><button type="button" [class.on]="show() === 'done'" (click)="show.set('done')">Done ({{ counts().done }})</button></div>
       </div>
       <div class="s-card">
         <div class="s-scroll">
           <table>
-            <thead><tr><th>Contact</th><th>Agent</th><th>Campaign</th><th>{{ tab() === 'callback' ? 'Call back' : 'Answer' }}</th><th>Last call</th><th>State</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Action task</th><th>Summary</th><th>Owner</th><th>Caller</th><th>Last call</th></tr></thead>
             <tbody>
               @for (r of rows(); track r.id) {
-                <tr class="click" (click)="source().openCall(r)">
-                  <td>{{ r.caller_name || '—' }}<small>{{ r.phone }}</small></td><td class="cut">{{ r.agent }}</td><td class="cut" [title]="r.campaign">{{ r.campaign }}</td>
-                  <td class="cut" [title]="r.summary || ''">{{ tab() === 'callback' ? (r.callback_at || 'No time given') : (r.summary || r.status_reason) }}</td>
+                <tr class="click" [class.done]="r.follow.state === 'done'" (click)="source().openCall(r)" [title]="'Open the call with ' + (r.caller_name || r.phone)">
+                  <td (click)="$event.stopPropagation()"><input type="checkbox" class="s-check" [checked]="r.follow.state === 'done'" (change)="toggle(r)" [attr.aria-label]="'Done: ' + r.task"></td>
+                  <td class="s-task">{{ r.task }}<small>{{ r.kind }}@if (r.follow.state === 'done' && r.follow.by) { · done by {{ r.follow.by }} }</small></td>
+                  <td class="s-wrap">{{ r.summary || r.status_reason }}</td>
+                  <td>{{ r.owner }}</td>
+                  <td>{{ r.caller_name || '—' }}<small>{{ r.phone }}{{ r.email ? ' · ' + r.email : '' }}</small><small>{{ r.agent }} · {{ r.campaign }}</small></td>
                   <td>{{ when(r.call_date) }}</td>
-                  <td>{{ r.follow.state === 'queued' ? 'Call queued' : r.follow.state === 'done' ? 'Done' : 'Open' }}@if (r.follow.by) { <small>{{ r.follow.by }}</small> }</td>
-                  <td><div class="s-actions">
-                    @if (r.follow.state !== 'done') {
-                      <button type="button" class="s-btn" (click)="$event.stopPropagation(); act(r.id, 'call_again')">Call again</button>
-                      <button type="button" class="s-btn" (click)="$event.stopPropagation(); act(r.id, 'done')">Mark done</button>
-                    } @else { <button type="button" class="s-btn" (click)="$event.stopPropagation(); act(r.id, 'open')">Reopen</button> }
-                  </div></td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
-        @if (!rows().length) { <p class="s-empty">{{ show() === 'open' ? 'Nothing open here.' : 'Nothing done yet.' }}</p> }
+        @if (!rows().length) { <p class="s-empty">{{ show() === 'open' ? 'Nothing to do here.' : 'Nothing done yet.' }}</p> }
       </div>
     </div>
   `,
 })
 export class FollowUpsListComponent {
   readonly source = input.required<FollowUpsSource>();
-  protected readonly tab = signal('callback');
+  protected readonly kind = signal('all');
   protected readonly show = signal('open');
-  protected readonly rows = signal<Awaited<ReturnType<FollowUpsSource['list']>>['rows']>([]);
-  protected readonly counts = signal({ callback: 0, follow_up: 0 });
+  protected readonly rows = signal<FollowRow[]>([]);
+  protected readonly counts = signal({ open: 0, callback: 0, follow_up: 0, done: 0 });
   protected readonly when = when;
-  constructor() { effect(() => { this.tab(); this.show(); untracked(() => this.load()); }); }
-  private async load(): Promise<void> { const r = await this.source().list(this.tab(), this.show()); this.rows.set(r.rows); this.counts.set(r.counts); }
-  protected async act(id: string, a: 'done' | 'open' | 'call_again'): Promise<void> { await this.source().act(id, a); this.load(); }
+  constructor() { effect(() => { this.kind(); this.show(); untracked(() => this.load()); }); }
+  private async load(): Promise<void> { const r = await this.source().list(this.show(), this.kind()); this.rows.set(r.rows); this.counts.set(r.counts); }
+  protected async toggle(r: FollowRow): Promise<void> { await this.source().act(r.id, r.follow.state === 'done' ? 'open' : 'done'); this.load(); }
+  protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.show(), this.kind()), `follow-ups-${this.kind()}-${this.show()}.xlsx`); }
 }

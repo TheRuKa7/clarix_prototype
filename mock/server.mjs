@@ -19,7 +19,10 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
-import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction } from './calling-report.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
+  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel } from './calling-report.mjs';
+/** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
+const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -754,7 +757,7 @@ function callingRow(e) {
     call_status: d.call_status, status_reason: d.status_reason, goal_reached: d.goal_reached, test_status: e.report.test_status, test_goal: e.report.test_goal,
     outcome_source: d.outcome_source, changed_by: d.changed_by, changed_at: d.changed_at, change_note: d.change_note, review_status_reason: d.review_status_reason,
     callback_at: out.callback_date || out.callback_time ? [out.callback_date, out.callback_time].filter(Boolean).join(' ') : null,
-    duration_seconds: e.callDurationSeconds ?? null, retries: Math.max(0, (e.attemptLog?.length || 1) - 1) };
+    duration_seconds: e.callDurationSeconds ?? null, retries: Math.max(0, (e.attemptLog?.length || 1) - 1), units: numbersOf(e.context) };
 }
 function callingRows() {
   const rows = executions.map(callingRow);
@@ -769,12 +772,13 @@ function callingRows() {
 function callingScope(q) {
   const days = Number(q.get('days') || 0);
   return { from: q.get('from') || (days ? new Date(Date.now() - days * 86400000).toISOString() : null), to: q.get('to') || null,
-    agents: (q.get('agents') || '').split(',').filter(Boolean), includeTests: q.get('include_tests') === '1', campaign: q.get('campaign') || '' };
+    agents: (q.get('agents') || '').split(',').filter(Boolean), includeTests: q.get('include_tests') === '1', campaign: q.get('campaign') || '', unit: q.get('unit') || '' };
 }
+const clarixAgentsMeta = () => templates.map((t) => ({ key: t.id, label: t.name, numberFields: (t.contextMappings || []).filter((m) => m.dataType === 'NUMBER').map((m) => m.fieldName) }));
 on('GET', '/api/v1/reports/calling', ({ q }) => {
   const all = callingRows(); const sc = callingScope(q);
   const agentsAll = agentChoices(all, sc);
-  ok(callingReport(all, sc, { workspace: 'Moglix', agentsAll }));
+  ok(callingReport(all, sc, { workspace: 'Moglix', agentsAll, unitsAvailable: unitsFor(scopeRows(all, { ...sc, agents: [] }), clarixAgentsMeta()) }));
 });
 // One call page: every call list opens this, by report row id (the execution id, or "sheet:bad:row" for rejected rows).
 function callDetail(id) {
@@ -795,7 +799,9 @@ function callDetail(id) {
 // ── Shared screens (phase 3): campaigns, follow ups, new campaign. Same paths and shapes as the Echo mock. ──
 const campaignScope = (q) => ({ from: q.get('from') || null, to: q.get('to') || null, state: q.get('state') || 'all', q: q.get('q') || '' });
 on('GET', '/api/v1/reports/calling/campaigns', ({ q }) => {
-  const list = filterCampaigns(campaignSummaries(callingRows()), campaignScope(q)); const skip = Number(q.get('skip') || 0), limit = Number(q.get('limit') || 20);
+  const all = callingRows(); const metas = statsByAgent(clarixAgentsMeta());
+  const list = filterCampaigns(campaignSummaries(all), campaignScope(q)).map((c) => ({ ...c, stats: campaignStats(all.filter((r) => r.campaign_id === c.campaign_id), metas.find((m) => m.agent === c.agent_key)?.stats || []) }));
+  const skip = Number(q.get('skip') || 0), limit = Number(q.get('limit') || 20);
   ok({ rows: list.slice(skip, skip + limit), total: list.length, running: list.filter((c) => c.status === 'Running').length });
 });
 on('GET', '/api/v1/reports/calling/campaigns/:id', ({ p }) => { const c = campaignSummaries(callingRows()).find((x) => x.campaign_id === p.id); c ? ok(c) : fail(404, 'Campaign not found'); });
@@ -846,6 +852,24 @@ on('PATCH', '/api/v1/reports/calling/call/:id/outcome', ({ p, body }) => {
   e.outcome_override = { status_reason: body.status_reason, note: String(body.note || '').slice(0, 500), by: USER, at: nowIso() };
   ok(callDetail(p.id));
 });
+// ── Custom stats per agent, column values, follow-up checklist, tasks (same in Echo and Clarix) ──
+on('GET', '/api/v1/reports/calling/agent-stats', ({ q }) => ok(statsByAgent(clarixAgentsMeta())));
+on('PUT', '/api/v1/reports/calling/agent-stats/:agent', ({ p, body }) => {
+  const a = (clarixAgentsMeta()).find((x) => x.key === p.agent); if (!a) return fail(404, 'Agent not found');
+  agentStats.set(a.key, (Array.isArray(body?.stats) ? body.stats : []).filter((s) => a.numberFields.includes(s.field)).map((s) => ({ field: s.field, label: String(s.label || unitLabel(s.field)).slice(0, 30) })));
+  ok(statsByAgent([a])[0]);
+});
+on('GET', '/api/v1/reports/calling/calls/values', ({ q }) => {
+  const column = q.get('column') || ''; const f = logFilters(q); delete f.cols[column];
+  ok({ values: columnValues(filterRows(rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded'), f), column) });
+});
+on('GET', '/api/v1/reports/calling/follow-ups/checklist', ({ q }) => ok(followChecklist(scopeRows(callingRows(), callingScope(q)), q.get('show') || 'open', q.get('kind') || 'all')));
+on('GET', '/api/v1/reports/calling/follow-ups/export.xlsx', ({ q }) => {
+  const list = followChecklist(scopeRows(callingRows(), callingScope(q)), q.get('show') || 'open', q.get('kind') || 'all').rows;
+  const cell = (r, k) => (k === 'call_date' ? (r.call_date ? new Date(r.call_date).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' }) : '') : r[k] ?? '');
+  file(writeXlsx([[...FOLLOW_COLUMNS.map(([, l]) => l), 'Done'], ...list.map((r) => [...FOLLOW_COLUMNS.map(([k]) => cell(r, k)), r.follow.state === 'done' ? 'Yes' : 'No'])], 'Follow ups'), XLSX, 'follow-ups.xlsx');
+});
+on('GET', '/api/v1/reports/calling/tasks', ({ q }) => ok(tasksSummary(scopeRows(callingRows(), callingScope(q)))));
 // Workspace test numbers: calls to these count only on the "Internal test calls" line.
 on('GET', '/api/v1/reports/calling/test-numbers', () => ok({ numbers: [...TEST_NUMBERS] }));
 on('PUT', '/api/v1/reports/calling/test-numbers', ({ body }) => {

@@ -11,6 +11,7 @@ function reportSource(r: ReportService, router: Router): CallingReportSource {
     report: (sc) => firstValueFrom(r.callingReport(sc)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(r.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(r.callingReportExport(sc, box, f)),
+    values: (sc, box, f, col) => firstValueFrom(r.reportColumnValues(sc, box, f, col)),
     openCall: (row) => router.navigate(['/workflows/calls', row.id]),
   };
 }
@@ -48,7 +49,7 @@ export class ClarixNewCampaignPage {
 export class ClarixFollowUpsPage {
   private r = inject(ReportService); private router = inject(Router);
   readonly source: FollowUpsSource = {
-    list: (tab, show) => firstValueFrom(this.r.reportFollowUps(tab, show)), act: (id, a) => firstValueFrom(this.r.reportFollowUpAct(id, a)),
+    list: (show, kind) => firstValueFrom(this.r.followChecklist(show, kind)), act: (id, a) => firstValueFrom(this.r.reportFollowUpAct(id, a)), exportXlsx: (show, kind) => firstValueFrom(this.r.followChecklistExport(show, kind)),
     openCall: (row) => this.router.navigate(['/workflows/calls', row.id]),
   };
 }

@@ -186,10 +186,15 @@ export function previousRange(from, to) {
 
 /** The report for a scope, plus the headline of the period before it for the change shown on each rate. */
 export function callingReport(allRows, scope, opts = {}) {
-  const to = scope.to || new Date().toISOString();
-  const rep = buildReport(scopeRows(allRows, { ...scope, to }), { ...opts, from: scope.from, to, includeTests: scope.includeTests });
+  const to = scope.to || new Date().toISOString(); const unit = scope.unit || '';
+  // Count by a per-agent stat (POs, items): each row counts as many times as its upload says; talk time and dials stay per call.
+  const weigh = (rs) => (unit ? rs.flatMap((r) => { const w = Math.max(0, Math.round(Number(r.units?.[unit]) || 0)); return w ? Array(w).fill(r) : []; }) : rs);
+  const callsRows = scopeRows(allRows, { ...scope, to });
+  const rep = buildReport(weigh(callsRows), { ...opts, from: scope.from, to, includeTests: scope.includeTests });
+  if (unit) { const plain = buildReport(callsRows, { ...opts, from: scope.from, to, includeTests: scope.includeTests }); rep.stats = plain.stats; }
+  rep.unit = unit; rep.units_available = opts.unitsAvailable || [];
   if (scope.from) {
-    const p = previousRange(scope.from, to); const h = buildReport(scopeRows(allRows, { ...scope, ...p }), { ...opts, ...p, includeTests: scope.includeTests }).headline;
+    const p = previousRange(scope.from, to); const h = buildReport(weigh(scopeRows(allRows, { ...scope, ...p })), { ...opts, ...p, includeTests: scope.includeTests }).headline;
     rep.previous = { ...p, planned: h.planned, picked_up: h.picked_up, answered: h.answered, success: h.success, picked_up_share: h.picked_up_share, answered_share: h.answered_share, success_rate: h.success_rate };
   }
   return rep;
@@ -272,10 +277,10 @@ function cellText(r, k, timeZone = 'Asia/Kolkata') {
 }
 /** Search across every column, and "contains" per column (case does not matter). The export uses the same filters. */
 export function filterRows(rows, { q = '', cols = {} } = {}) {
-  const term = String(q || '').trim().toLowerCase(); const want = Object.entries(cols || {}).filter(([, v]) => String(v ?? '').trim());
+  const term = String(q || '').trim().toLowerCase(); const want = Object.entries(cols || {}).filter(([, v]) => (Array.isArray(v) ? v.length : String(v ?? '').trim()));
   if (!term && !want.length) return rows;
   return rows.filter((r) => (!term || COLUMNS.some(([k]) => cellText(r, k).toLowerCase().includes(term)))
-    && want.every(([k, v]) => cellText(r, k).toLowerCase().includes(String(v).trim().toLowerCase())));
+    && want.every(([k, v]) => (Array.isArray(v) ? v.includes(cellText(r, k)) : cellText(r, k).toLowerCase().includes(String(v).trim().toLowerCase()))));
 }
 /** Reads ?q= and ?filters= (JSON of column: text) from a request. */
 export function logFilters(q) { let cols = {}; try { cols = JSON.parse(q.get('filters') || '{}'); } catch { /* ignore bad filters */ } return { q: q.get('q') || '', cols }; }
@@ -314,4 +319,63 @@ export function followUpAction(id, action, by) {
   const at = new Date().toISOString();
   const next = action === 'done' ? { state: 'done', by, at } : action === 'call_again' ? { state: 'queued', by, at } : { state: 'open', by, at };
   followState.set(id, next); return next;
+}
+
+// ── Custom stats per agent (POs, items, …) ────────────────────────────────────
+/** Readable names for the usual count columns; anything else reads as its column name. */
+const UNIT_LABELS = { po_count: 'POs', item_count: 'Items', po_value: 'PO value', rfx_count: 'RFQs', line_count: 'Lines' };
+export const unitLabel = (field) => UNIT_LABELS[field] || field.replace(/_count$/, '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+/** agent key -> [{ field, label }] the workspace chose; absent means "every number column of the agent's upload". */
+export const agentStats = new Map();
+/** agents: [{ key, label, numberFields: [] }] -> each agent's stats, defaulting to its number columns. */
+export function statsByAgent(agents) {
+  return agents.map((a) => ({ agent: a.key, label: a.label, fields: a.numberFields.map((f) => ({ field: f, label: unitLabel(f) })),
+    stats: agentStats.get(a.key) || a.numberFields.map((f) => ({ field: f, label: unitLabel(f) })) }));
+}
+/** The stats offered in "Count by" for the agents in rows: union of their chosen stats. */
+export function unitsFor(rows, agents) {
+  const keys = new Set(rows.map((r) => r.agent_key)); const out = new Map();
+  for (const a of statsByAgent(agents.filter((x) => keys.has(x.key)))) for (const st of a.stats) if (!out.has(st.field)) out.set(st.field, st);
+  return [...out.values()];
+}
+/** A campaign's custom stats: total, answered (covered) and accepted, per stat of its agent. */
+export function campaignStats(rows, stats) {
+  return stats.map((st) => {
+    const sum = (rs) => rs.reduce((n, r) => n + (Number(r.units?.[st.field]) || 0), 0);
+    return { field: st.field, label: st.label, total: sum(rows.filter(BOX.planned)), covered: sum(rows.filter(BOX.answered)), accepted: sum(rows.filter(BOX.accepted)) };
+  });
+}
+
+/** Distinct values of one column (with the other filters on), for the multi-select column filter. */
+export function columnValues(rows, column) {
+  const m = new Map(); for (const r of rows) { const v = cellText(r, column); m.set(v, (m.get(v) || 0) + 1); }
+  return [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)).slice(0, 200);
+}
+
+// ── Follow ups as a checklist ─────────────────────────────────────────────────
+/** What the owner has to do, in one line, from the outcome and what the caller said. */
+export function followTask(r) {
+  const s = `${r.summary || ''} ${r.status_reason || ''}`.toLowerCase();
+  if (r.status_reason === 'Success: Callback requested') return r.callback_at ? `Call back on ${r.callback_at}` : 'Call back: agree a day and time';
+  if (/reject|price|rate|revised/.test(s)) return 'Talk to the buyer: PO rejected or price issue';
+  if (/cannot supply|unavailab|not able to supply/.test(s)) return 'Find another supplier: cannot supply';
+  if (/mail|email|copy|whatsapp|po number|details/.test(s)) return 'Send the PO details, then confirm acceptance';
+  if (/portal|check|update/.test(s)) return 'Confirm acceptance after the supplier checks the portal';
+  if (/contact|left the company|person/.test(s)) return 'Get the right contact and call again';
+  return 'Follow up on the answer';
+}
+/** Every open (or done) follow-up: callbacks and answers to act on, with task, owner (who uploaded the sheet) and caller. */
+export function followChecklist(rows, show = 'open', kind = 'all') {
+  const pick = (k) => rowsInBox(rows, k).map((r) => ({ ...r, kind: k === 'callback' ? 'Callback' : 'Follow-up', task: followTask(r), owner: r.uploaded_by || '—', follow: followState.get(r.id) || { state: 'open' } }));
+  const all = [...pick('callback'), ...pick('follow_up')].sort((a, b) => String(b.call_date).localeCompare(String(a.call_date)));
+  const open = all.filter((r) => r.follow.state !== 'done');
+  const list = all.filter((r) => (kind === 'all' || r.kind === (kind === 'callback' ? 'Callback' : 'Follow-up')) && (show === 'all' || (show === 'done' ? r.follow.state === 'done' : r.follow.state !== 'done')));
+  return { rows: list, counts: { open: open.length, callback: open.filter((r) => r.kind === 'Callback').length, follow_up: open.filter((r) => r.kind === 'Follow-up').length, done: all.length - open.length } };
+}
+export const FOLLOW_COLUMNS = [['caller_name', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['kind', 'Type'], ['task', 'Action task'], ['summary', 'Summary'], ['owner', 'Owner'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['callback_at', 'Call back'], ['call_date', 'Last call']];
+
+/** The dashboard's small box: open follow ups and the work still running. */
+export function tasksSummary(rows) {
+  const f = followChecklist(rows); const camps = campaignSummaries(rows);
+  return { follow_ups: f.counts.open, callbacks: f.counts.callback, follow_up_required: f.counts.follow_up, running_campaigns: camps.filter((c) => c.status === 'Running').length, not_finished: rows.filter(BOX.in_progress).length };
 }
