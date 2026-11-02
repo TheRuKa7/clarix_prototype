@@ -42,6 +42,17 @@ export interface FollowUpList {
 export class ReportService {
   private readonly http = inject(HttpClient);
   private data<T>(o: Observable<{ data: T }>): Observable<T> { return o.pipe(map((r) => r.data)); }
+  /** Calling report: same scope for the dashboard, any box's calls and the 14-column export. */
+  private reportParams(sc: { days: number; agents: string[]; includeTests: boolean }): HttpParams {
+    return new HttpParams().set('days', sc.days).set('agents', sc.agents.join(',')).set('include_tests', sc.includeTests ? '1' : '');
+  }
+  callingReport(sc: { days: number; agents: string[]; includeTests: boolean }): Observable<any> { return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.report, { params: this.reportParams(sc) })); }
+  callingReportCalls(sc: { days: number; agents: string[]; includeTests: boolean }, box: string, skip: number, limit: number): Observable<any> {
+    return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.calls, { params: this.reportParams(sc).set('box', box).set('skip', skip).set('limit', limit) }));
+  }
+  callingReportExport(sc: { days: number; agents: string[]; includeTests: boolean }, box: string): Observable<Blob> {
+    return this.http.get(ENDPOINTS.callingReport.exportXlsx, { params: this.reportParams(sc).set('box', box), responseType: 'blob' });
+  }
 
   summary(days: number, by: string, agent = ''): Observable<ReportSummary> {
     return this.data(this.http.get<{ data: ReportSummary }>(ENDPOINTS.reports.summary, { params: new HttpParams().set('days', days).set('by', by).set('agent', agent) }));

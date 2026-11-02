@@ -38,6 +38,12 @@ export const ENDPOINTS = {
         schedule: (id: string) => `${clarix.baseURL}/api/v1/report-schedules/${id}`,
         sendNow: (id: string) => `${clarix.baseURL}/api/v1/report-schedules/${id}/send-now`,
     },
+    /** Calling report (Calling-Report-Logic.md v1): the dashboard, the calls behind a box, and the export. */
+    callingReport: {
+        report: `${clarix.baseURL}/api/v1/reports/calling`,
+        calls: `${clarix.baseURL}/api/v1/reports/calling/calls`,
+        exportXlsx: `${clarix.baseURL}/api/v1/reports/calling/export.xlsx`,
+    },
     /** Follow ups: rows that calling alone cannot settle. */
     followUps: {
         list: `${clarix.baseURL}/api/v1/follow-ups`,

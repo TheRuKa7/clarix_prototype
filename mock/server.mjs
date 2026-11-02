@@ -19,6 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable } from './calling-report.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -446,7 +447,7 @@ function readSheet(file) {
 }
 
 async function dispatchToEcho(template, sheet, rows) {
-  const payload = { batchId: sheet.id, name: `${template.name}_${sheet.id}`, agent: template.providerAgentId, rows };
+  const payload = { batchId: sheet.id, name: `${template.name}_${sheet.id}`, agent: template.providerAgentId, rows, fileName: sheet.originalFilename, uploadedBy: sheet.uploadedBy };
   try {
     const r = await fetch(`${ECHO_URL}/__mock/clarix-batch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (r.ok) return true;
@@ -722,6 +723,65 @@ function voiceMetrics(q) {
 }
 const CALL_LOG_COLUMNS = [['call_time', 'Call Date'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['uploaded_by', 'Uploaded by'], ['caller_name', 'Caller Name'], ['phone', 'Phone'], ['email', 'Email'],
   ['summary', 'Call Summary'], ['status', 'Call Status'], ['status_reason', 'Status Reason'], ['callback_at', 'Call back'], ['duration_seconds', 'Duration'], ['retries', 'Retries'], ['goal_reached', 'Goal Reached']];
+// ── Calling report (Calling-Report-Logic.md v1). Echo decides each row's status; the mock mirrors the same rules. ──
+const TEST_NUMBERS = new Set();
+const DND_LINE = new Set(['unreachable', 'blocked', 'rejected', 'network_error']);
+function executionFacts(e) {
+  const o = e.outcome || (e.status === 'COMPLETED' ? 'completed' : e.status === 'IN_PROGRESS' ? 'waiting' : ['STOPPED', 'CANCELLED'].includes(e.status) ? 'stopped' : 'network_error');
+  const said = String(conversations.get(e.activeConversationId)?.transcriptText || '');
+  return {
+    isTest: TEST_NUMBERS.has(e.resolvedContact?.phone),
+    badData: o === 'bad_data' ? 'Failed the upload check' : o === 'repeated_number' ? 'Same phone number as an earlier row' : null,
+    stopped: o === 'stopped' || o === 'expired', inProgress: ['waiting', 'calling', 'on_call', 'will_retry'].includes(o) || e.status === 'IN_PROGRESS',
+    // Open question Q1: a busy tone counts as not picked (No answer) until PM decides otherwise.
+    line: o === 'no_answer' || o === 'busy' ? 'no_answer' : DND_LINE.has(o) ? 'dnd' : o === 'voicemail' ? 'voicemail' : 'picked',
+    talkSeconds: e.callDurationSeconds || 0, spoke: /^(customer|caller|user|supplier):/im.test(said) || ['completed', 'caller_hung_up', 'wrong_number'].includes(o) && !said,
+    audioFailed: o === 'call_dropped', result: o === 'wrong_number' ? 'wrong_number' : resultFromAnswers(e.extractedFields, e.id),
+  };
+}
+function callingRow(e) {
+  const facts = executionFacts(e); const key = `${e.status}|${e.outcome}|${(e.attemptLog || []).length}|${facts.isTest}`;
+  // Decided once when the row is final; kept with the execution (plan D7).
+  if (!e.report || e.report.key !== key) e.report = { key, ...decideStatus(facts), decided_at: nowIso() };
+  const t = templates.find((x) => x.id === e.templateId); const s = sheets.find((x) => x.id === e.batchId);
+  const last = (e.attemptLog || []).slice(-1)[0]; const out = e.extractedFields || {}; const conv = conversations.get(e.activeConversationId);
+  const said = Object.entries(out).filter(([, v]) => v !== '' && v != null && typeof v !== 'object').slice(0, 3).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join('; ');
+  return { id: e.id, call_id: e.id, campaign_id: e.batchId, call_date: last?.startedAt || (e.report.call_status === 'Bad data' ? null : e.batchSubmittedAt || e.createdAt), uploaded_at: s?.createdAt || e.createdAt,
+    agent: t?.name || '', agent_key: e.templateId, campaign: s?.originalFilename || '', uploaded_by: e.triggeredBy || s?.uploadedBy || '',
+    caller_name: e.name || '', phone: e.resolvedContact?.phone || '', email: e.resolvedContact?.email || '', summary: conv?.postCallIntelligence?.summary?.mom?.[0] || said,
+    call_status: e.report.call_status, status_reason: e.report.status_reason, goal_reached: e.report.goal_reached, test_status: e.report.test_status, test_goal: e.report.test_goal,
+    callback_at: out.callback_date || out.callback_time ? [out.callback_date, out.callback_time].filter(Boolean).join(' ') : null,
+    duration_seconds: e.callDurationSeconds ?? null, retries: Math.max(0, (e.attemptLog?.length || 1) - 1) };
+}
+function callingRows() {
+  const rows = executions.map(callingRow);
+  // Rows that failed the upload check never became executions: they still count as uploaded, Bad data.
+  for (const s of sheets) {
+    const t = templates.find((x) => x.id === s.templateId);
+    (s.failedRows || []).forEach((f, i) => rows.push({ id: `${s.id}:bad:${f.row ?? i}`, call_id: null, campaign_id: s.id, call_date: null, uploaded_at: s.createdAt, agent: t?.name || s.templateName || '', agent_key: s.templateId,
+      campaign: s.originalFilename || '', uploaded_by: s.uploadedBy || '', caller_name: '', phone: '', email: '', summary: '', ...decideStatus({ badData: f.reason || 'Failed the upload check' }), callback_at: null, duration_seconds: null, retries: 0 }));
+  }
+  return rows;
+}
+function callingScope(q) {
+  const days = Number(q.get('days') || 0);
+  return { from: q.get('from') || (days ? new Date(Date.now() - days * 86400000).toISOString() : null), to: q.get('to') || null,
+    agents: (q.get('agents') || '').split(',').filter(Boolean), includeTests: q.get('include_tests') === '1' };
+}
+on('GET', '/api/v1/reports/calling', ({ q }) => {
+  const all = callingRows(); const sc = callingScope(q);
+  const agentsAll = templates.filter((t) => all.some((r) => r.agent_key === t.id)).map((t) => ({ key: t.id, label: t.name })).sort((a, b) => a.label.localeCompare(b.label));
+  ok(buildReport(scopeRows(all, sc), { workspace: 'Moglix', from: sc.from, to: sc.to || nowIso(), includeTests: sc.includeTests, agentsAll }));
+});
+on('GET', '/api/v1/reports/calling/calls', ({ q }) => {
+  const rows = rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded');
+  const skip = Number(q.get('skip') || 0); const limit = Number(q.get('limit') || 25);
+  ok({ rows: rows.slice(skip, skip + limit), total: rows.length });
+});
+on('GET', '/api/v1/reports/calling/export.xlsx', ({ q }) => {
+  const rows = rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded');
+  file(writeXlsx(exportTable(rows), 'Calls'), XLSX, `calling-report-${nowIso().slice(0, 10)}.xlsx`);
+});
 on('GET', '/api/v1/dashboard/voice', ({ q }) => ok(voiceMetrics(q)));
 on('GET', '/api/v1/dashboard/voice/calls', ({ q }) => {
   const rows = voiceScope(q); const skip = Number(q.get('skip') || 0); const limit = Number(q.get('limit') || 50);

@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, resource, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { ReportLine, ReportRow, ReportService } from '../../services/report.service';
-import { StatRowComponent } from '../../components/stat-row/stat-row.component';
-import { ReportShareComponent } from '../../components/report-share/report-share.component';
 import { GROUPS } from '../../utils/report-card';
+import { CallingReportComponent, CallingReportSource, ReportScope } from '../../components/calling-report/calling-report.component';
 
 const ALL_BYS = [{ key: 'agent', label: 'Agent' }, { key: 'campaign', label: 'Campaign' }, { key: 'day', label: 'Day' }];
 const EMPTY: ReportLine = { contacts: 0, dialled: 0, reached: 0, completed: 0, not_reached: 0, failed: 0, in_progress: 0, not_dialled: 0, follow_up: 0, talk_seconds: 0 };
@@ -18,12 +17,22 @@ const EMPTY: ReportLine = { contacts: 0, dialled: 0, reached: 0, completed: 0, n
 @Component({
   selector: 'app-dashboard-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, ReportShareComponent, StatRowComponent],
+  imports: [LucideAngularModule, RouterLink, CallingReportComponent],
   templateUrl: './dashboard-overview.component.html',
   styleUrl: './dashboard-overview.component.scss',
 })
 export class DashboardOverviewComponent {
   private readonly reports = inject(ReportService);
+  private readonly router = inject(Router);
+  /** Where the calling report reads from. Every row opens its call (execution) page. */
+  protected readonly reportSource: CallingReportSource = {
+    report: (sc) => firstValueFrom(this.reports.callingReport(sc)),
+    calls: (sc, box, skip, limit) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit)),
+    exportXlsx: (sc, box) => firstValueFrom(this.reports.callingReportExport(sc, box)),
+    openCall: (row) => { if (row.call_id && !row.id.includes(':bad:')) this.router.navigate(['/workflows/templates', (row as any).agent_key, 'executions', row.call_id], { queryParams: { returnUrl: this.router.url } }); },
+  };
+  /** The report's period and single agent drive the sections below it. */
+  protected onReportScope(sc: ReportScope): void { this.days.set(sc.days); this.setAgent(sc.agents.length === 1 ? sc.agents[0] : ''); }
   protected readonly WINDOWS = [{ days: 1, label: 'Today' }, { days: 7, label: '7 days' }, { days: 30, label: '30 days' }];
   protected readonly GROUPS = GROUPS;
   protected readonly days = signal(30);

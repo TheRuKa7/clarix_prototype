@@ -54,6 +54,9 @@ const exp = Date.UTC(2099, 0, 1);
 const boot = `<script>
 (async () => {
   const base = document.baseURI;
+  // GitHub Pages answers every unknown path with this page, including deep links into next/: send those to next/.
+  const next = new URL('next/', base);
+  if (location.pathname.startsWith(next.pathname)) { location.replace(next.href); return; }
   try {
     const reg = await navigator.serviceWorker.register(new URL('mock-sw.js', base), { scope: new URL('./', base).pathname });
     await navigator.serviceWorker.ready;

@@ -19,6 +19,8 @@ self.addEventListener('fetch', (e) => {
   const base = BASES.find((b) => url.pathname.startsWith(b.prefix));
   if (base) return e.respondWith(answer(e.request, url, base));
   // App routes load the app shell, so deep links and reloads answer 200 instead of the 404 page.
+  // The next prototype lives under next/ with its own worker: leave its pages alone.
+  if (url.pathname.startsWith(`${scope}next/`)) return;
   if (e.request.mode === 'navigate' && url.pathname.startsWith(scope) && !/\.[a-z0-9]+$/i.test(url.pathname)) e.respondWith(fetch(`${scope}index.html`));
 });
 

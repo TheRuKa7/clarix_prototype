@@ -3,57 +3,14 @@
     <h1 class="rx-title">Dashboard</h1>
     <div class="rx-actions">
       @if ((data()?.active_calls ?? 0) > 0) { <span class="rx-live"><i></i>{{ data()!.active_calls }} on the line</span> }
-      <select class="rx-select db-agent" [class.on]="!!agent()" (change)="pickAgent($event)" aria-label="Agent" title="Pick one agent to see its own answers">
-        <option value="" [selected]="!agent()">All agents</option>
-        @for (a of agents(); track a.key) { <option [value]="a.key" [selected]="agent() === a.key">{{ a.label }}</option> }
-      </select>
-      <div class="rx-seg" role="group" aria-label="Period">
-        @for (w of WINDOWS; track w.days) { <button type="button" [class.on]="days() === w.days" (click)="days.set(w.days)">{{ w.label }}</button> }
-      </div>
       <button type="button" class="rx-icon-btn" (click)="refresh()" [disabled]="report.isLoading()" title="Refresh" aria-label="Refresh"><lucide-icon name="refresh-cw" [size]="15"></lucide-icon></button>
-      <app-report-share [summary]="data()" [days]="days()" [by]="by()" [byLabel]="byLabel()" [period]="period()" [agent]="agent()" [agents]="agents()"></app-report-share>
     </div>
   </div>
 
   @if (report.error()) { <p class="rx-note" role="alert">Could not load the dashboard. <button type="button" class="rx-link" (click)="refresh()">Try again</button></p> }
 
-  <!-- The whole operation as one flow: each step says how many made it and what share of the step before. -->
-  <div class="rx-card db-funnel">
-    <div class="db-step" title="Contacts dialled at least once in this period.">
-      <span class="db-k"><lucide-icon name="phone-outgoing" [size]="14"></lucide-icon> Dialled</span><b>{{ total().dialled }}</b><small>{{ total().contacts }} contacts</small>
-    </div>
-    <lucide-icon class="db-arrow" name="chevron-right" [size]="18"></lucide-icon>
-    <div class="db-step" title="Call picked up on at least one dial.">
-      <span class="db-k"><lucide-icon name="phone" [size]="14"></lucide-icon> Reached</span><b>{{ total().reached }}</b><small>{{ pc(total().reached, total().dialled) }}% of {{ total().dialled }}</small>
-    </div>
-    <lucide-icon class="db-arrow" name="chevron-right" [size]="18"></lucide-icon>
-    <div class="db-step" title="Call status Completed: the caller spoke and the agent finished.">
-      <span class="db-k"><lucide-icon name="message-square" [size]="14"></lucide-icon> Completed</span><b>{{ total().completed }}</b><small>{{ pc(total().completed, total().reached) }}% of {{ total().reached }}</small>
-    </div>
-    <a class="db-step db-follow" routerLink="/workflows/follow-ups" [class.none]="!total().follow_up" title="Contacts calling cannot settle: blocked, wrong number, declined, or every try used. Open Follow ups.">
-      <span class="db-k"><lucide-icon name="user-check" [size]="14"></lucide-icon> Needs follow up</span><b>{{ total().follow_up }}</b><small>a person takes these</small>
-    </a>
-    <div class="db-side">
-      <span>Talk time<b>{{ talk(total().talk_seconds) }}</b></span>
-      <span>Still in progress<b>{{ total().in_progress }}</b></span>
-      <span>Campaigns<b>{{ data()?.campaigns ?? 0 }}</b></span>
-    </div>
-  </div>
-
-  @if (data()?.stats) {
-    <app-stat-row [stats]="data()!.stats" [result]="data()!.result" [scope]="rowScope()"></app-stat-row>
-  }
-
-  <div class="rx-card db-mix">
-    <div class="db-mix-head"><span class="rx-card-title">Call status</span><span class="rx-sub">as sent by Echo</span></div>
-    <div class="db-bar" role="img" aria-label="Call status mix">
-      @for (g of groups(); track g.key) { <span [style.width.%]="g.count / groupTotal() * 100" [style.background]="g.color" [title]="g.label + ': ' + g.count"></span> }
-    </div>
-    <div class="db-legend">
-      @for (o of data()?.by_outcome ?? []; track o.key) { <span><i [class]="'g-' + o.group"></i>{{ o.label }} <b>{{ o.count }}</b></span> }
-    </div>
-  </div>
-
+  <!-- The calling report (Calling-Report-Logic.md v1): the same component and numbers as Echo. Its period and agent drive the sections below. -->
+  <app-calling-report [source]="reportSource" [initialDays]="days()" workspace="Moglix" (scopeChange)="onReportScope($event)"></app-calling-report>
 
       <!-- Input and why calls did not finish: two layers every agent has, built from field types and one fixed reason list. -->
       <div class="ly-two">
