@@ -49,6 +49,9 @@ const isStatus = (st) => (r) => r.call_status === st;
 const isReason = (re) => (r) => r.call_status === 'Answered' && r.status_reason === re;
 const isSuccess = (r) => r.call_status === 'Answered' && String(r.status_reason).startsWith('Success');
 const PLANNED_OUT = new Set(['Bad data', 'Internal test call', 'Stopped']);
+// Rows still being dialled (waiting, on a call, or waiting for a retry) have no result yet: they sit under Planned as
+// "Not finished", never under Picked up, and stay out of every rate until they end.
+const UNFINISHED = 'In progress';
 const NOT_PICKED = new Set(['Not picked', 'DND', 'Voicemail']);
 export const BOX = {
   uploaded: () => true,
@@ -57,14 +60,15 @@ export const BOX = {
   stopped: isStatus('Stopped'),
   planned: (r) => !PLANNED_OUT.has(r.call_status),
   not_picked_up: (r) => NOT_PICKED.has(r.call_status),
-  picked_up: (r) => !PLANNED_OUT.has(r.call_status) && !NOT_PICKED.has(r.call_status),
+  picked_up: (r) => !PLANNED_OUT.has(r.call_status) && !NOT_PICKED.has(r.call_status) && r.call_status !== UNFINISHED,
+  finished: (r) => !PLANNED_OUT.has(r.call_status) && r.call_status !== UNFINISHED,
   no_answer: isStatus('Not picked'),
   dnd: isStatus('DND'),
   voicemail: isStatus('Voicemail'),
   answered: isStatus('Answered'),
   silent: isStatus('No reply'),
   system_issue: isStatus('System issue'),
-  in_progress: isStatus('In progress'),
+  in_progress: isStatus(UNFINISHED),
   success: isSuccess,
   accepted: isReason('Success: Accepted'),
   partial: isReason('Success: Partial'),
@@ -99,14 +103,15 @@ export function buildReport(rows, { workspace = '', from = null, to = null, time
   const talk = answered.reduce((s, r) => s + (Number(r.duration_seconds) || 0), 0);
   const uploaded = rows.length; const pl = planned.length; const pu = n('picked_up'); const an = answered.length; const su = n('success');
   const box = (key, step, label, total, lines) => ({ key, step, label, total, lines: lines.map((l) => ({ ...l, share: pct(l.count, l.of ?? total) })) });
-  const notPicked = n('not_picked_up'); const notSucc = n('not_successful');
+  const notPicked = n('not_picked_up'); const notSucc = n('not_successful'); const open = n('in_progress'); const settled = pl - open;
   const funnel = [
     box('uploaded', 1, 'Uploaded', uploaded, [line(rows, 'planned', 'Planned to call', { strong: true }), line(rows, 'bad_data', 'Bad data'), line(rows, 'test', 'Internal test calls'),
       ...(n('stopped') ? [line(rows, 'stopped', 'Stopped before dialling')] : [])]),
-    box('planned', 2, 'Planned to call', pl, [line(rows, 'picked_up', 'Picked up', { strong: true }), line(rows, 'not_picked_up', 'Not picked up', { strong: true }),
-      line(rows, 'no_answer', 'No answer', { sub: true, of: notPicked }), line(rows, 'dnd', 'DND / blocked', { sub: true, of: notPicked }), line(rows, 'voicemail', 'Voicemail', { sub: true, of: notPicked })]),
-    box('picked_up', 3, 'Picked up', pu, [line(rows, 'answered', 'Answered', { strong: true }), line(rows, 'silent', 'Silent'), line(rows, 'system_issue', 'System issue'),
-      ...(n('in_progress') ? [line(rows, 'in_progress', 'In progress')] : [])]),
+    // Picked up and Not picked up are shares of finished rows; Not finished is a share of all planned rows.
+    box('planned', 2, 'Planned to call', pl, [line(rows, 'picked_up', 'Picked up', { strong: true, of: settled }), line(rows, 'not_picked_up', 'Not picked up', { strong: true, of: settled }),
+      line(rows, 'no_answer', 'No answer', { sub: true, of: notPicked }), line(rows, 'dnd', 'DND / blocked', { sub: true, of: notPicked }), line(rows, 'voicemail', 'Voicemail', { sub: true, of: notPicked }),
+      ...(open ? [line(rows, 'in_progress', 'Not finished', { strong: true })] : [])]),
+    box('picked_up', 3, 'Picked up', pu, [line(rows, 'answered', 'Answered', { strong: true }), line(rows, 'silent', 'Silent'), line(rows, 'system_issue', 'System issue')]),
     box('answered', 4, 'Answered', an, [line(rows, 'success', 'Success', { strong: true, good: true }),
       line(rows, 'accepted', 'Accepted', { sub: true, of: su }), line(rows, 'partial', 'Partial', { sub: true, of: su }), line(rows, 'follow_up', 'Follow-up required', { sub: true, of: su }), line(rows, 'callback', 'Callback requested', { sub: true, of: su }),
       line(rows, 'not_successful', 'Not successful', { strong: true }),
@@ -115,14 +120,14 @@ export function buildReport(rows, { workspace = '', from = null, to = null, time
   const byAgent = [...new Set(planned.map((r) => r.agent))].sort().map((agent) => {
     const mine = rows.filter((r) => r.agent === agent); const a = mine.filter(BOX.answered); const s = mine.filter(BOX.success).length;
     const t = a.reduce((x, r) => x + (Number(r.duration_seconds) || 0), 0);
-    return { agent, agent_key: mine[0]?.agent_key || agent, planned: mine.filter(BOX.planned).length, picked_up: mine.filter(BOX.picked_up).length, answered: a.length, success: s, success_rate: pct(s, a.length), avg_talk_seconds: a.length ? t / a.length : 0 };
+    return { agent, agent_key: mine[0]?.agent_key || agent, planned: mine.filter(BOX.planned).length, picked_up: mine.filter(BOX.picked_up).length, not_finished: mine.filter(BOX.in_progress).length, answered: a.length, success: s, success_rate: pct(s, a.length), avg_talk_seconds: a.length ? t / a.length : 0 };
   });
   // Every box must equal the sum of the boxes under it (logic doc section 3); a gap is shown, never hidden.
   const checks = [
     ['Uploaded', uploaded, pl + n('bad_data') + n('test') + n('stopped')],
-    ['Planned to call', pl, pu + notPicked],
+    ['Planned to call', pl, pu + notPicked + open],
     ['Not picked up', notPicked, n('no_answer') + n('dnd') + n('voicemail')],
-    ['Picked up', pu, an + n('silent') + n('system_issue') + n('in_progress')],
+    ['Picked up', pu, an + n('silent') + n('system_issue')],
     ['Answered', an, su + notSucc],
     ['Success', su, n('accepted') + n('partial') + n('follow_up') + n('callback')],
     ['Not successful', notSucc, n('not_given_time') + n('left') + n('wrong_number')],
@@ -131,8 +136,8 @@ export function buildReport(rows, { workspace = '', from = null, to = null, time
   return {
     generated_at: new Date().toISOString(), time_zone: timeZone, definitions_version: DEFINITIONS_VERSION, workspace, from, to, tests_included: includeTests,
     headline: { uploaded, campaigns: new Set(rows.map((r) => r.campaign_id || r.campaign)).size, planned: pl, picked_up: pu, answered: an, success: su,
-      planned_share: pct(pl, uploaded), picked_up_share: pct(pu, pl), answered_share: pct(an, pu), success_rate: pct(su, an) },
-    stats: { dials: planned.reduce((s, r) => s + 1 + (Number(r.retries) || 0), 0), avg_talk_seconds: an ? talk / an : 0, total_talk_seconds: talk, in_progress: n('in_progress') },
+      planned_share: pct(pl, uploaded), picked_up_share: pct(pu, settled), finished: settled, not_finished: open, answered_share: pct(an, pu), success_rate: pct(su, an) },
+    stats: { dials: planned.reduce((s, r) => s + 1 + (Number(r.retries) || 0), 0), avg_talk_seconds: an ? talk / an : 0, total_talk_seconds: talk, in_progress: open },
     funnel, by_agent: byAgent,
     success_field: { yes: n('goal_yes'), no: n('goal_no'), na: n('goal_na') },
     sum_check: { ok: !gaps.length, gaps },

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, resource, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { ReportLine, ReportRow, ReportService } from '../../services/report.service';
@@ -17,7 +17,7 @@ const EMPTY: ReportLine = { contacts: 0, dialled: 0, reached: 0, completed: 0, n
 @Component({
   selector: 'app-dashboard-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, CallingReportComponent],
+  imports: [LucideAngularModule, CallingReportComponent],
   templateUrl: './dashboard-overview.component.html',
   styleUrl: './dashboard-overview.component.scss',
 })
@@ -29,6 +29,7 @@ export class DashboardOverviewComponent {
     report: (sc) => firstValueFrom(this.reports.callingReport(sc)),
     calls: (sc, box, skip, limit) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit)),
     exportXlsx: (sc, box) => firstValueFrom(this.reports.callingReportExport(sc, box)),
+    openCallLogs: () => this.router.navigate(['/workflows/calls']),
     openCall: (row) => { if (row.call_id && !row.id.includes(':bad:')) this.router.navigate(['/workflows/templates', (row as any).agent_key, 'executions', row.call_id], { queryParams: { returnUrl: this.router.url } }); },
   };
   /** The report's period and single agent drive the sections below it. */
