@@ -78,6 +78,9 @@ export const BOX = {
   not_given_time: isReason('Agent not given time to speak'),
   left: isReason('Left before answering'),
   wrong_number: isReason('Wrong number'),
+  // Group boxes for the call status bar.
+  no_conversation: (r) => r.call_status === 'No reply' || r.call_status === 'System issue',
+  not_planned: (r) => PLANNED_OUT.has(r.call_status),
   goal_yes: (r) => r.goal_reached === 'Yes',
   goal_no: (r) => r.goal_reached === 'No',
   goal_na: (r) => r.goal_reached === 'N/A' && r.call_status !== 'Internal test call',
@@ -234,3 +237,27 @@ export function agentChoices(allRows, scope = {}) {
 
 /** Phone numbers as stored for test matching: the last 10 digits. */
 export const normalisePhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
+
+// ── One call page (phase 2) ───────────────────────────────────────────────────
+/** The outcomes a person can pick for an answered call (PRD Flow B). */
+export const ANSWERED_REASONS = ['Success: Accepted', 'Success: Partial', 'Success: Follow-up required', 'Success: Callback requested', 'Agent not given time to speak', 'Left before answering', 'Wrong number'];
+
+/** A person's change always wins over the review, and is kept with who, when and why. */
+export function personOutcome(decided, o) {
+  if (!o) return { ...decided, outcome_source: 'review' };
+  return { ...decided, call_status: 'Answered', status_reason: o.status_reason, goal_reached: o.status_reason.startsWith('Success') ? 'Yes' : 'No',
+    outcome_source: 'person', changed_by: o.by || '', changed_at: o.at || null, change_note: o.note || '', review_status_reason: decided.status_reason };
+}
+
+/** Checks a requested change: only answered calls get an outcome, and only from the list. */
+export function checkOutcomeChange(row, body) {
+  if ((row.test_status || row.call_status) !== 'Answered') return 'Only answered calls have an outcome to change.';
+  if (!ANSWERED_REASONS.includes(body?.status_reason)) return 'Pick an outcome from the list.';
+  return null;
+}
+
+/** The calls before and after this one in its campaign, for Previous and Next on the call page. */
+export function neighbours(rows, row) {
+  const same = rows.filter((r) => r.campaign_id === row.campaign_id); const i = same.findIndex((r) => r.id === row.id);
+  return { prev_id: i > 0 ? same[i - 1].id : null, next_id: i >= 0 && i < same.length - 1 ? same[i + 1].id : null, position: i + 1, of: same.length };
+}

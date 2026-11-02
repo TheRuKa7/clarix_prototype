@@ -33,7 +33,7 @@ export interface CallingReport {
 }
 export interface ReportCallRow {
   id: string; call_id: string | null; campaign_id: string; primary_id?: string; call_date: string | null; agent: string; campaign: string; caller_name: string; phone: string;
-  call_status: string; status_reason: string; goal_reached: string; duration_seconds: number | null; callback_at: string | null; uploaded_by: string;
+  call_status: string; status_reason: string; goal_reached: string; duration_seconds: number | null; callback_at: string | null; uploaded_by: string; summary?: string; retries?: number;
 }
 export interface CallingReportSource {
   report(scope: ReportScope): Promise<CallingReport>;
@@ -55,6 +55,7 @@ const PERIODS: { key: PeriodKey; label: string }[] = [{ key: 'today', label: 'To
 const BOX_LABELS: Record<string, string> = { uploaded: 'Uploaded', planned: 'Planned', picked_up: 'Picked up', answered: 'Answered', success: 'Success', in_progress: 'Not finished',
   goal_yes: 'Goal reached: Yes', goal_no: 'Goal reached: No', goal_na: 'Goal reached: N/A' };
 const PAGE = 10;
+const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation: '#7c3aed', not_picked_up: '#d97706', in_progress: '#a8a29e', not_planned: '#d6d3d1' };
 
 @Component({
   selector: 'app-calling-report',
@@ -63,17 +64,7 @@ const PAGE = 10;
   host: { '(document:click)': 'onDocClick($event)', '(document:keydown.escape)': 'onEscape()' },
   template: `
     <section class="cr" [class.cr-busy]="loading()">
-      <header class="cr-head">
-        <div>
-          <h2 class="cr-title">Calling report</h2>
-          <p class="cr-sub"><b>{{ r()?.workspace || workspace() }}</b> · {{ agentLabel() }} · {{ periodLabel() }}</p>
-        </div>
-        <div class="cr-meta">
-          @if (r()) { <span>Generated {{ when(r()!.generated_at) }}</span><span>Times in {{ tzLabel() }}</span> }
-        </div>
-      </header>
-
-      <div class="cr-filters" role="toolbar" aria-label="Report filters">
+      <div class="cr-top">
         <div class="cr-seg" role="group" aria-label="Period">
           @for (p of PERIODS; track p.key) { <button type="button" [class.on]="period() === p.key" (click)="setPeriod(p.key)">{{ p.label }}</button> }
         </div>
@@ -85,7 +76,7 @@ const PAGE = 10;
           </span>
         }
         <div class="cr-drop">
-          <button type="button" class="cr-btn" [class.on]="agents().length" (click)="agentsOpen.set(!agentsOpen())" [attr.aria-expanded]="agentsOpen()">{{ agents().length ? agents().length + ' agent' + (agents().length > 1 ? 's' : '') : 'All agents' }} ▾</button>
+          <button type="button" class="cr-btn" [class.on]="agents().length" (click)="agentsOpen.set(!agentsOpen())" [attr.aria-expanded]="agentsOpen()">{{ agents().length ? agentLabel() : 'All agents' }} ▾</button>
           @if (agentsOpen()) {
             <div class="cr-menu" role="listbox" aria-label="Agents">
               <label class="cr-opt"><input type="checkbox" [checked]="!agents().length" (change)="setAgents([])"> All agents</label>
@@ -95,21 +86,9 @@ const PAGE = 10;
             </div>
           }
         </div>
-        <label class="cr-check" title="Internal test calls are left out of every number unless this is on."><input type="checkbox" [checked]="includeTests()" (change)="setTests(!includeTests())"> Include test calls</label>
-        @if (source().testNumbers) {
-          <div class="cr-drop">
-            <button type="button" class="cr-btn cr-small" (click)="openTests()" [attr.aria-expanded]="testsOpen()" title="Phone numbers your team uses for testing">Test numbers ({{ testNumbers().length }})</button>
-            @if (testsOpen()) {
-              <div class="cr-menu cr-tests" role="dialog" aria-label="Test numbers">
-                <b>Internal test numbers</b>
-                <p>Calls to these numbers count only on the "Internal test calls" line. One per line; the last 10 digits are kept.</p>
-                <textarea rows="5" [value]="testDraft()" (input)="testDraft.set($any($event.target).value)" aria-label="Test numbers, one per line"></textarea>
-                <div class="cr-tests-foot"><span class="cr-grow"></span><button type="button" class="cr-btn" (click)="testsOpen.set(false)">Cancel</button><button type="button" class="cr-btn cr-primary" (click)="saveTests()">Save</button></div>
-              </div>
-            }
-          </div>
-        }
+        @if (agents().length || period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Clear filters</button> }
         <span class="cr-grow"></span>
+        <span class="cr-meta">{{ periodLabel() }} · {{ tzLabel() }}</span>
         <div class="cr-drop">
           <button type="button" class="cr-btn" (click)="shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
           @if (shareOpen()) {
@@ -122,249 +101,147 @@ const PAGE = 10;
         </div>
       </div>
 
-      @if (chips().length) {
-        <div class="cr-active" aria-label="Active filters">
-          @for (c of chips(); track c.key) { <span class="cr-fchip">{{ c.label }}<button type="button" (click)="removeChip(c.key)" [attr.aria-label]="'Remove ' + c.label">✕</button></span> }
-          <button type="button" class="cr-link" (click)="clearAll()">Clear all</button>
-        </div>
-      }
-
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
       @if (r(); as rep) {
-        <div class="cr-cards">
-          <button type="button" class="cr-card" (click)="open('uploaded', 'Uploaded')"><span>Uploaded</span><b>{{ num(rep.headline.uploaded) }}</b><small>{{ rep.headline.campaigns }} campaign{{ rep.headline.campaigns === 1 ? '' : 's' }}</small></button>
-          <button type="button" class="cr-card" (click)="open('planned', 'Planned')"><span>Planned</span><b>{{ num(rep.headline.planned) }}</b><small>{{ pct(rep.headline.planned_share) }} of uploaded</small></button>
-          <button type="button" class="cr-card" (click)="open('picked_up', 'Picked up')"><span>Picked up</span><b>{{ num(rep.headline.picked_up) }}</b><small>{{ pct(rep.headline.picked_up_share) }} of {{ rep.headline.not_finished ? num(rep.headline.finished) + ' finished' : 'planned' }}</small>@if (delta('picked_up_share'); as d) { <em class="cr-delta" [class.up]="d.v > 0" [class.down]="d.v < 0" [title]="d.title">{{ d.text }}</em> }</button>
-          <button type="button" class="cr-card" (click)="open('answered', 'Answered')"><span>Answered</span><b>{{ num(rep.headline.answered) }}</b><small>{{ pct(rep.headline.answered_share) }} of picked up</small>@if (delta('answered_share'); as d) { <em class="cr-delta" [class.up]="d.v > 0" [class.down]="d.v < 0" [title]="d.title">{{ d.text }}</em> }</button>
-          <button type="button" class="cr-card good" (click)="open('success', 'Success')"><span>Success</span><b>{{ num(rep.headline.success) }}</b><small>Success rate {{ pct(rep.headline.success_rate) }}</small>@if (delta('success_rate'); as d) { <em class="cr-delta" [class.up]="d.v > 0" [class.down]="d.v < 0" [title]="d.title">{{ d.text }}</em> }</button>
-        </div>
-        <div class="cr-stats">
-          <div><span>Dials</span><b>{{ num(rep.stats.dials) }}</b></div>
-          <div><span>Avg talk time</span><b>{{ mmss(rep.stats.avg_talk_seconds) }}</b></div>
-          <div><span>Total talk time</span><b>{{ hms(rep.stats.total_talk_seconds) }}</b></div>
-          <button type="button" (click)="open('in_progress', 'Not finished')" [disabled]="!rep.stats.in_progress" title="Still being dialled or waiting for a retry: no result yet, so not in any rate"><span>Not finished</span><b>{{ num(rep.stats.in_progress) }}</b></button>
-        </div>
-
-        <div class="cr-insights">
-          @if (loss(); as l) {
-            <button type="button" class="cr-insight warn" (click)="open(l.key, l.label)" title="The largest reason answered calls ended without a result. Opens those calls.">
-              <span>Biggest loss</span><b>{{ l.label }}: {{ num(l.count) }}</b><small>{{ pct(l.share) }} of answered calls</small>
-            </button>
-          }
-          <div class="cr-insight">
-            <span>Needs action</span>
-            <div class="cr-acts">
-              <button type="button" (click)="open('callback', 'Callback requested')">Callback requested <b>{{ num(lineCount('callback')) }}</b></button>
-              <button type="button" (click)="open('follow_up', 'Follow-up required')">Follow-up required <b>{{ num(lineCount('follow_up')) }}</b></button>
-              @if (source().openFollowUps) { <button type="button" class="cr-link" (click)="source().openFollowUps!()">Open Follow ups →</button> }
-            </div>
-          </div>
-        </div>
-
-        <h3 class="cr-section">Funnel</h3>
-        <div class="cr-funnel">
-          @for (b of rep.funnel; track b.key) {
-            <div class="cr-box" [class.good]="b.key === 'answered'">
-              <div class="cr-box-head"><i>{{ b.step }}</i><span>{{ b.label }}</span><b>{{ num(b.total) }}</b></div>
-              @for (l of b.lines; track l.key) {
-                <button type="button" class="cr-line" [class.strong]="l.strong" [class.sub]="l.sub" [class.good]="l.good" (click)="open(l.key, l.label)" [title]="'Show the ' + l.count + ' calls: ' + l.label">
-                  <span>@if (l.sub) { <em>–</em> }{{ l.label }}</span><b>{{ num(l.count) }}</b><small>{{ pct(l.share) }}</small>
-                </button>
-              }
-            </div>
-          }
-        </div>
-        <p class="cr-sum" [class.bad]="!rep.sum_check.ok">
-          @if (rep.sum_check.ok) { Every box adds up to the one above it. }
-          @else { Counts do not match: @for (g of rep.sum_check.gaps; track g.box) { {{ g.box }} is {{ g.expected }}, its parts add to {{ g.got }}. } }
-          <span class="cr-ver">Definitions {{ rep.definitions_version }}</span>
-        </p>
-
-        @if (rep.trend.buckets.length > 1) {
-          <h3 class="cr-section">Trend <span class="cr-sec-note">success rate by {{ rep.trend.unit }}{{ rep.trend.unit === 'week' ? ' · * part of a week' : '' }}</span></h3>
-          <div class="cr-trend" role="list" aria-label="Success rate trend">
-            @for (t of rep.trend.buckets; track t.key) {
-              <div class="cr-tcol" role="listitem" [title]="t.label + ': ' + t.planned + ' planned, ' + t.picked_up + ' picked up (' + pct(t.picked_up_share) + '), ' + t.answered + ' answered (' + pct(t.answered_share) + '), ' + t.success + ' success'">
-                <span class="cr-tval">{{ pct(t.success_rate) }}</span>
-                <div class="cr-tbar"><i [style.height.%]="(t.success_rate ?? 0) * 100"></i></div>
-                <span class="cr-tlab">{{ t.label.split(' · ')[0] }}{{ t.partial ? '*' : '' }}</span>
-                @if (t.label.includes(' · ')) { <small>{{ t.label.split(' · ')[1] }}</small> }
-                <small>{{ num(t.planned) }} planned</small>
-              </div>
-            }
-          </div>
-        }
-
-        <h3 class="cr-section">By agent</h3>
-        @if (rep.by_agent.length) {
-          <div class="cr-table" role="table" aria-label="By agent">
-            <div class="cr-tr cr-th" role="row"><span role="columnheader">Agent</span><span role="columnheader">Planned</span><span role="columnheader">Picked up</span><span role="columnheader">Answered</span><span role="columnheader">Success</span><span role="columnheader">Success rate</span><span role="columnheader">Avg talk time</span></div>
-            @for (a of rep.by_agent; track a.agent_key) {
-              <button type="button" class="cr-tr" role="row" (click)="setAgents([a.agent_key])" title="Show this agent only">
-                <span role="cell">{{ a.agent }}</span><span role="cell">{{ num(a.planned) }}</span><span role="cell">{{ num(a.picked_up) }}</span><span role="cell">{{ num(a.answered) }}</span><span role="cell">{{ num(a.success) }}</span>
-                <span role="cell" class="good">{{ pct(a.success_rate) }}</span><span role="cell">{{ mmss(a.avg_talk_seconds) }}</span>
+        <!-- The funnel, one row: each step's count and its share of the step before. Click a step to see its calls below. -->
+        <div class="cr-card">
+          <div class="cr-funnel" role="list" aria-label="Funnel">
+            @for (s of steps(); track s.key; let last = $last) {
+              <button type="button" role="listitem" class="cr-step" [class.on]="box()?.key === s.key" [class.good]="s.key === 'success'" (click)="open(s.key, s.label)">
+                <span>{{ s.label }}</span><b>{{ num(s.count) }}</b><small>{{ s.note }}</small>
               </button>
+              @if (!last) { <i class="cr-arrow" aria-hidden="true">›</i> }
             }
           </div>
-        } @else { <p class="cr-empty">No calls were planned in this period.</p> }
 
-        <h3 class="cr-section">Success field</h3>
-        <div class="cr-chips">
-          <button type="button" (click)="open('goal_yes', 'Goal reached: Yes')">Yes <b>{{ num(rep.success_field.yes) }}</b></button>
-          <button type="button" (click)="open('goal_no', 'Goal reached: No')">No <b>{{ num(rep.success_field.no) }}</b></button>
-          <button type="button" (click)="open('goal_na', 'Goal reached: N/A')">N/A <b>{{ num(rep.success_field.na) }}</b></button>
+          <!-- Call status: every planned row by how its call ended. Click a status to see its calls below. -->
+          <div class="cr-status-head"><span>Call status</span><span class="cr-muted">{{ num(rep.headline.planned) }} planned · {{ num(rep.stats.dials) }} dials · avg talk {{ mmss(rep.stats.avg_talk_seconds) }}</span></div>
+          <div class="cr-bar" role="img" [attr.aria-label]="'Call status of ' + rep.headline.planned + ' planned calls'">
+            @for (g of groups(); track g.key) { @if (g.count) { <span [style.width.%]="g.width" [style.background]="g.color" [title]="g.label + ': ' + g.count + ' (' + pct(g.width / 100) + ' of planned)'"></span> } }
+          </div>
+          <div class="cr-groups">
+            @for (g of groups(); track g.key) {
+              @if (g.count || g.always) {
+                <div class="cr-group">
+                  <button type="button" class="cr-ghead" [class.on]="box()?.key === g.key" (click)="open(g.key, g.label)"><i [style.background]="g.color"></i>{{ g.label }} <b>{{ num(g.count) }}</b><small>{{ pct(g.share) }}</small></button>
+                  @for (l of g.lines; track l.key) {
+                    <button type="button" class="cr-chip" [class.on]="box()?.key === l.key" [class.zero]="!l.count" (click)="open(l.key, l.label)">{{ l.label }} <b>{{ num(l.count) }}</b><small>{{ pct(l.share) }}</small></button>
+                  }
+                </div>
+              }
+            }
+          </div>
+          @if (!rep.sum_check.ok) { <p class="cr-note bad">Counts do not match: @for (g of rep.sum_check.gaps; track g.box) { {{ g.box }} is {{ g.expected }}, its parts add to {{ g.got }}. } </p> }
         </div>
-      } @else if (!error()) { <p class="cr-empty">Loading the report…</p> }
 
-      @if (box(); as bx) {
-        <div class="cr-scrim" (click)="close()" aria-hidden="true"></div>
-        <aside class="cr-drill" role="dialog" aria-modal="true" [attr.aria-label]="bx.label + ' calls'" tabindex="-1">
-          <div class="cr-drill-head">
-            <div><b>{{ bx.label }}</b><span>{{ drillTotal() }} call{{ drillTotal() === 1 ? '' : 's' }} · {{ agentLabel() }} · {{ periodLabel() }}</span></div><span class="cr-grow"></span>
-            @if (source().openCallLogs) { <button type="button" class="cr-btn" (click)="source().openCallLogs!(scope(), bx.key)">Open in Call logs</button> }
+        <!-- The call log: every row, newest first, or only the step or status picked above. A row opens its call. -->
+        <div class="cr-card cr-log">
+          <div class="cr-log-head">
+            <b>Calls</b>
+            @if (box(); as bx) { <span class="cr-fchip">{{ bx.label }}<button type="button" (click)="close()" aria-label="Show every call">✕</button></span> }
+            <span class="cr-muted">{{ num(drillTotal()) }} call{{ drillTotal() === 1 ? '' : 's' }}</span>
+            <span class="cr-grow"></span>
+            @if (source().openCallLogs) { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
             <button type="button" class="cr-btn" (click)="exportBox()">Export</button>
-            <button type="button" class="cr-btn" (click)="close()" aria-label="Close the list">✕</button>
           </div>
           @if (drillRows().length) {
-            <div class="cr-table cr-calls" role="table">
-              <div class="cr-tr cr-th" role="row"><span role="columnheader">Call date</span><span role="columnheader">Caller</span><span role="columnheader">Agent</span><span role="columnheader">Campaign</span><span role="columnheader">Call status</span><span role="columnheader">Status reason</span><span role="columnheader">Duration</span></div>
-              @for (c of drillRows(); track c.id) {
-                <button type="button" class="cr-tr" role="row" (click)="source().openCall(c)" [title]="'Open the call with ' + (c.caller_name || c.phone)">
-                  <span role="cell">{{ c.call_date ? when(c.call_date) : '—' }}</span><span role="cell">{{ c.caller_name || c.phone || '—' }}</span><span role="cell">{{ c.agent }}</span>
-                  <span role="cell" [title]="c.campaign">{{ c.campaign }}</span><span role="cell">{{ c.call_status }}</span><span role="cell" [title]="c.status_reason">{{ c.status_reason }}</span>
-                  <span role="cell">{{ c.duration_seconds == null ? '—' : mmss(c.duration_seconds) }}</span>
-                </button>
-              }
+            <div class="cr-scroll">
+              <table class="cr-table">
+                <thead><tr><th>Call date</th><th>Agent</th><th>Campaign</th><th>Caller</th><th>Phone</th><th>Call summary</th><th>Call status</th><th>Status reason</th><th>Call back</th><th>Duration</th><th>Retries</th><th>Goal</th></tr></thead>
+                <tbody>
+                  @for (c of drillRows(); track c.id) {
+                    <tr tabindex="0" (click)="source().openCall(c)" (keydown.enter)="source().openCall(c)" [title]="'Open the call with ' + (c.caller_name || c.phone)">
+                      <td class="nw">{{ c.call_date ? when(c.call_date) : '—' }}</td><td class="cut" [title]="c.agent">{{ c.agent }}</td><td class="cut" [title]="c.campaign">{{ c.campaign }}</td><td>{{ c.caller_name || '—' }}</td><td class="nw">{{ c.phone || '—' }}</td>
+                      <td class="cut wide" [title]="c.summary || ''">{{ c.summary || '—' }}</td><td><span class="cr-st" [style.--c]="colorOf(c)">{{ c.call_status }}</span></td><td class="cut" [title]="c.status_reason">{{ c.status_reason }}</td>
+                      <td class="nw">{{ c.callback_at || '—' }}</td><td class="nw">{{ mmss(c.duration_seconds) }}</td><td>{{ c.retries ?? 0 }}</td><td>{{ c.goal_reached }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
             </div>
             <div class="cr-pager">
               <button type="button" class="cr-btn" [disabled]="drillPage() === 0" (click)="page(-1)">Newer</button>
-              <span>{{ drillPage() * PAGE + 1 }}–{{ drillPage() * PAGE + drillRows().length }} of {{ drillTotal() }}</span>
+              <span>{{ drillPage() * PAGE + 1 }}–{{ drillPage() * PAGE + drillRows().length }} of {{ num(drillTotal()) }}</span>
               <button type="button" class="cr-btn" [disabled]="(drillPage() + 1) * PAGE >= drillTotal()" (click)="page(1)">Older</button>
             </div>
-          } @else { <p class="cr-empty">No calls in this box.</p> }
-        </aside>
-      }
+          } @else { <p class="cr-empty cr-pad">No calls here in this period.</p> }
+        </div>
+      } @else if (!error()) { <p class="cr-empty">Loading…</p> }
     </section>
   `,
   styles: [`
     :host { display: block; --cr-text: var(--ds-text, var(--text, #0c0a09)); --cr-muted: var(--ds-text-muted, var(--muted, #5c5752)); --cr-line: var(--ds-border, var(--line, #e7e5e2));
       --cr-bg: var(--ds-surface, var(--card, #fff)); --cr-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --cr-good: var(--ds-success-fg, #146c34); --cr-good-bg: var(--ds-success-bg, #ecfdf3);
-      --cr-good-line: var(--ds-success-border, #a7f3d0); --cr-bad: var(--ds-danger-fg, #b91c1c); --cr-accent: var(--ds-accent, var(--accent, #4c4184)); }
-    .cr { display: grid; gap: 14px; color: var(--cr-text); }
+      --cr-bad: var(--ds-danger-fg, #b91c1c); --cr-accent: var(--ds-accent, var(--accent, #4c4184)); }
+    .cr { display: grid; gap: 12px; color: var(--cr-text); }
     .cr-busy { opacity: .7; transition: opacity .2s; }
-    .cr-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; border-bottom: 1px solid var(--cr-line); padding-bottom: 12px; }
-    .cr-title { margin: 0; font-size: 22px; font-weight: 700; }
-    .cr-sub { margin: 4px 0 0; color: var(--cr-muted); font-size: 13px; }
-    .cr-sub b { color: var(--cr-text); font-weight: 600; }
-    .cr-meta { display: grid; text-align: right; color: var(--cr-muted); font-size: 12px; }
-    .cr-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .cr-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .cr-grow { flex: 1; }
+    .cr-meta, .cr-muted { color: var(--cr-muted); font-size: 12.5px; }
     .cr-seg { display: inline-flex; border: 1px solid var(--cr-line); border-radius: 8px; overflow: hidden; }
-    .cr-seg button { border: 0; background: var(--cr-bg); color: var(--cr-text); padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+    .cr-seg button { border: 0; background: var(--cr-bg); color: var(--cr-text); padding: 6px 11px; font: inherit; font-size: 13px; cursor: pointer; }
     .cr-seg button.on { background: var(--cr-text); color: var(--cr-bg); }
     .cr-btn { border: 1px solid var(--cr-line); background: var(--cr-bg); color: var(--cr-text); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
     .cr-btn.on { border-color: var(--cr-accent); color: var(--cr-accent); }
     .cr-btn:disabled { opacity: .5; cursor: default; }
-    .cr-check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cr-muted); cursor: pointer; }
+    .cr-link { border: 0; background: none; text-decoration: underline; color: var(--cr-muted); cursor: pointer; font: inherit; font-size: 13px; padding: 0; }
+    .cr-range { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cr-muted); }
+    .cr-range input { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-drop { position: relative; }
-    .cr-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 220px; background: var(--cr-bg); border: 1px solid var(--cr-line); border-radius: 10px; padding: 6px; display: grid; box-shadow: 0 8px 24px -12px rgba(0,0,0,.25); }
+    .cr-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px; background: var(--cr-bg); border: 1px solid var(--cr-line); border-radius: 10px; padding: 6px; display: grid; box-shadow: 0 8px 24px -12px rgba(0,0,0,.25); }
     .cr-menu.cr-right { left: auto; right: 0; }
     .cr-menu button, .cr-opt { border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; display: flex; gap: 8px; align-items: center; }
     .cr-menu button:hover, .cr-opt:hover { background: var(--cr-soft); }
-    .cr-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-    .cr-card { text-align: left; border: 1px solid var(--cr-line); border-radius: 12px; background: var(--cr-bg); padding: 14px 16px; display: grid; gap: 2px; cursor: pointer; font: inherit; color: inherit; }
-    .cr-card:hover, .cr-line:hover, .cr-tr:not(.cr-th):hover, .cr-chips button:hover { background: var(--cr-soft); }
-    .cr-card span { color: var(--cr-muted); font-size: 13px; }
-    .cr-card b { font-size: 32px; line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .cr-card small { color: var(--cr-muted); font-size: 12.5px; }
-    .cr-card.good { background: var(--cr-good-bg); border-color: var(--cr-good-line); }
-    .cr-card.good b, .cr-card.good small { color: var(--cr-good); }
-    .cr-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-    .cr-stats > * { display: flex; justify-content: space-between; align-items: center; background: var(--cr-soft); border: 0; border-radius: 10px; padding: 9px 14px; font: inherit; font-size: 13px; color: var(--cr-muted); }
-    .cr-stats button { cursor: pointer; }
-    .cr-stats b { color: var(--cr-text); font-variant-numeric: tabular-nums; }
-    .cr-section { margin: 8px 0 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--cr-muted); font-weight: 600; }
-    .cr-funnel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .cr-box { border: 1px solid var(--cr-line); border-radius: 12px; background: var(--cr-bg); padding: 12px 14px; display: grid; align-content: start; }
-    .cr-box.good { border-color: var(--cr-good-line); }
-    .cr-box-head { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--cr-line); font-weight: 600; }
-    .cr-box-head i { font-style: normal; width: 22px; height: 22px; border: 1px solid var(--cr-line); border-radius: 50%; display: grid; place-items: center; font-size: 12px; color: var(--cr-muted); }
-    .cr-box-head span { flex: 1; }
-    .cr-box-head b { font-size: 22px; font-variant-numeric: tabular-nums; }
-    .cr-line { display: grid; grid-template-columns: 1fr 64px 48px; gap: 8px; align-items: center; border: 0; background: none; padding: 6px 4px; border-radius: 6px; font: inherit; font-size: 13.5px; color: var(--cr-text); cursor: pointer; text-align: left; }
-    .cr-line b, .cr-line small { text-align: right; font-variant-numeric: tabular-nums; }
-    .cr-line b { font-weight: 500; }
-    .cr-line small { color: var(--cr-muted); }
-    .cr-line.strong span { font-weight: 600; }
-    .cr-line.sub span { padding-left: 16px; }
-    .cr-line em { font-style: normal; color: var(--cr-muted); margin-right: 8px; }
-    .cr-line.good span, .cr-line.good b { color: var(--cr-good); }
-    .cr-sum { margin: 0; font-size: 12px; color: var(--cr-muted); display: flex; gap: 12px; }
-    .cr-sum.bad { color: var(--cr-bad); font-weight: 600; }
-    .cr-ver { margin-left: auto; }
-    .cr-table { border: 1px solid var(--cr-line); border-radius: 12px; overflow: hidden; background: var(--cr-bg); }
-    .cr-tr { display: grid; grid-template-columns: 2fr repeat(6, 1fr); gap: 8px; padding: 10px 14px; border: 0; border-top: 1px solid var(--cr-line); width: 100%; background: none; font: inherit; font-size: 13.5px; color: var(--cr-text); text-align: right; cursor: pointer; }
-    .cr-tr > :first-child { text-align: left; }
-    .cr-th { border-top: 0; background: var(--cr-soft); color: var(--cr-muted); font-size: 12.5px; cursor: default; }
-    .cr-tr .good { color: var(--cr-good); font-weight: 600; }
-    .cr-calls .cr-tr { grid-template-columns: 1.3fr 1.2fr 1.1fr 1.3fr .9fr 1.5fr .6fr; text-align: left; font-size: 12.5px; }
-    .cr-calls .cr-tr > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cr-chips { display: flex; gap: 10px; flex-wrap: wrap; }
-    .cr-chips button { border: 1px solid var(--cr-line); border-radius: 999px; background: var(--cr-bg); padding: 6px 16px; font: inherit; font-size: 14px; color: var(--cr-muted); cursor: pointer; }
-    .cr-chips b { color: var(--cr-text); margin-left: 4px; }
-    .cr-delta { font-style: normal; font-size: 11.5px; color: var(--cr-muted); margin-top: 2px; }
-    .cr-delta.up { color: var(--cr-good); }
-    .cr-delta.down { color: var(--cr-bad); }
-    .cr-insights { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
-    .cr-insight { display: grid; gap: 4px; align-content: start; text-align: left; border: 1px solid var(--cr-line); border-radius: 12px; padding: 12px 14px; background: var(--cr-bg); font: inherit; color: var(--cr-text); }
-    button.cr-insight { cursor: pointer; }
-    .cr-insight.warn { border-color: var(--ds-warning-border, #fcd9a4); background: var(--ds-warning-bg, #fff8eb); }
-    .cr-insight > span { font-size: 12px; color: var(--cr-muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
-    .cr-insight > b { font-size: 15px; }
-    .cr-insight > small { font-size: 12.5px; color: var(--cr-muted); }
-    .cr-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .cr-acts > button:not(.cr-link) { border: 1px solid var(--cr-line); border-radius: 8px; background: var(--cr-bg); padding: 6px 10px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; }
-    .cr-acts b { margin-left: 4px; }
-    .cr-sec-note { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
-    .cr-trend { display: flex; gap: 10px; align-items: flex-end; border: 1px solid var(--cr-line); border-radius: 12px; padding: 12px 14px; background: var(--cr-bg); overflow-x: auto; }
-    .cr-tcol { flex: 1 0 64px; display: grid; justify-items: center; gap: 3px; font-size: 12px; text-align: center; }
-    .cr-tval { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .cr-tbar { width: 26px; height: 80px; background: var(--cr-soft); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
-    .cr-tbar i { display: block; width: 100%; background: var(--cr-good); border-radius: 6px 6px 0 0; }
-    .cr-tlab { font-weight: 600; }
-    .cr-tcol small { color: var(--cr-muted); font-size: 11px; }
     .cr-opt-l { flex: 1; }
-    .cr-opt small { color: var(--cr-muted); font-variant-numeric: tabular-nums; }
-    .cr-pad { padding: 6px 8px; }
-    .cr-small { padding: 4px 10px; font-size: 12.5px; color: var(--cr-muted); }
-    .cr-primary { background: var(--cr-text); color: var(--cr-bg); border-color: var(--cr-text); }
-    .cr-tests { width: 300px; gap: 8px; padding: 12px; }
-    .cr-tests b { font-size: 13.5px; }
-    .cr-tests p { margin: 0; font-size: 12px; color: var(--cr-muted); }
-    .cr-tests textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 8px; padding: 8px; font: 13px var(--ds-mono, ui-monospace, monospace); background: var(--cr-bg); color: var(--cr-text); resize: vertical; }
-    .cr-tests-foot { display: flex; gap: 8px; }
-    .cr-tests-foot .cr-btn { padding: 5px 12px; }
-    .cr-active { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: -4px; }
-    .cr-fchip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--cr-soft); border: 1px solid var(--cr-line); font-size: 12.5px; }
+    .cr-opt small { color: var(--cr-muted); }
+    .cr-pad { padding: 8px; }
+    .cr-card { border: 1px solid var(--cr-line); border-radius: 12px; background: var(--cr-bg); padding: 14px 16px; display: grid; gap: 10px; }
+    .cr-funnel { display: flex; align-items: stretch; gap: 4px; }
+    .cr-step { flex: 1; text-align: left; border: 1px solid transparent; border-radius: 10px; background: none; padding: 6px 10px; display: grid; gap: 1px; cursor: pointer; font: inherit; color: inherit; }
+    .cr-step:hover { background: var(--cr-soft); }
+    .cr-step.on { border-color: var(--cr-accent); }
+    .cr-step span { font-size: 12.5px; color: var(--cr-muted); }
+    .cr-step b { font-size: 26px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .cr-step small { font-size: 12px; color: var(--cr-muted); }
+    .cr-step.good { background: var(--cr-good-bg); }
+    .cr-step.good b, .cr-step.good small { color: var(--cr-good); }
+    .cr-arrow { align-self: center; font-style: normal; color: var(--cr-muted); font-size: 20px; }
+    .cr-status-head { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--cr-line); padding-top: 10px; }
+    .cr-status-head > span:first-child { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--cr-muted); font-weight: 600; }
+    .cr-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--cr-soft); }
+    .cr-bar span { height: 100%; }
+    .cr-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; }
+    .cr-group { display: flex; flex-direction: column; gap: 2px; }
+    .cr-ghead, .cr-chip { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; text-align: left; }
+    .cr-ghead { font-weight: 600; }
+    .cr-ghead i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+    .cr-chip { padding-left: 21px; }
+    .cr-ghead b, .cr-chip b { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .cr-ghead small, .cr-chip small { color: var(--cr-muted); font-weight: 400; width: 36px; text-align: right; font-size: 12px; }
+    .cr-ghead:hover, .cr-chip:hover { background: var(--cr-soft); }
+    .cr-ghead.on, .cr-chip.on { border-color: var(--cr-accent); }
+    .cr-chip.zero { color: var(--cr-muted); }
+    .cr-log { padding: 12px 0 8px; gap: 8px; }
+    .cr-log-head { display: flex; align-items: center; gap: 10px; padding: 0 16px; }
+    .cr-fchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--cr-soft); border: 1px solid var(--cr-line); font-size: 12.5px; }
     .cr-fchip button { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
-    .cr-fchip button:hover { background: var(--cr-line); color: var(--cr-text); }
-    .cr-range { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cr-muted); }
-    .cr-range input { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); }
-    .cr-scrim { position: fixed; inset: 0; background: rgba(12, 10, 9, .32); z-index: 1000; }
-    .cr-drill { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100vw); z-index: 1001; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px;
-      background: var(--cr-bg); color: var(--cr-text); border-left: 1px solid var(--cr-line); box-shadow: -12px 0 40px -20px rgba(0, 0, 0, .4); outline: none; }
-    .cr-drill-head { display: flex; gap: 10px; align-items: flex-start; }
-    .cr-drill-head > div { display: grid; gap: 2px; }
-    .cr-drill-head b { font-size: 16px; }
-    .cr-drill-head span { color: var(--cr-muted); font-size: 12.5px; }
-    .cr-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--cr-muted); }
-    .cr-note { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--cr-soft); font-size: 13px; }
+    .cr-scroll { overflow-x: auto; }
+    .cr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .cr-table th { text-align: left; font-weight: 500; color: var(--cr-muted); background: var(--cr-soft); padding: 7px 10px; white-space: nowrap; }
+    .cr-table td { padding: 7px 10px; border-top: 1px solid var(--cr-line); white-space: nowrap; }
+    .cr-table tbody tr { cursor: pointer; }
+    .cr-table tbody tr:hover { background: var(--cr-soft); }
+    .cr-table .nw { white-space: nowrap; }
+    .cr-table .cut { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cr-table .cut.wide { max-width: 260px; }
+    .cr-st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .cr-st::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #a8a29e); }
+    .cr-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--cr-muted); padding: 0 16px; }
+    .cr-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--cr-soft); font-size: 13px; }
     .cr-note.bad { color: var(--cr-bad); }
-    .cr-link { border: 0; background: none; text-decoration: underline; color: inherit; cursor: pointer; font: inherit; }
     .cr-empty { margin: 0; color: var(--cr-muted); font-size: 13px; }
-    @media (max-width: 900px) { .cr-insights { grid-template-columns: 1fr; } .cr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cr-funnel { grid-template-columns: 1fr; }
-      .cr-tr { grid-template-columns: 1.6fr repeat(6, minmax(44px, 1fr)); font-size: 12.5px; } .cr-calls .cr-tr { grid-template-columns: 1fr 1fr 1fr; } .cr-calls .cr-tr > :nth-child(n+4) { display: none; } }
+    @media (max-width: 900px) { .cr-funnel { flex-wrap: wrap; } .cr-step { flex: 1 0 40%; } .cr-arrow { display: none; } .cr-meta { width: 100%; } }
   `],
 })
 export class CallingReportComponent {
@@ -444,6 +321,44 @@ export class CallingReportComponent {
 
   /** "previous 7 days" and the like, for the change shown on each rate. */
   private readonly prevLabel = computed(() => ({ today: 'yesterday', yesterday: 'the day before', '7d': 'the previous 7 days', '30d': 'the previous 30 days', custom: `the previous ${this.days()} days` })[this.period()]);
+  private line(key: string) { return this.r()?.funnel.flatMap((b) => b.lines).find((l) => l.key === key) ?? { key, label: key, count: 0, share: null }; }
+  /** The funnel in one row: each step's count and its share of the step before. */
+  protected readonly steps = computed(() => {
+    const rep = this.r(); if (!rep) return [];
+    const h = rep.headline; const d = (k: 'picked_up_share' | 'answered_share' | 'success_rate') => { const x = this.delta(k); return x && x.v ? ` · ${x.text}` : ''; };
+    return [
+      { key: 'uploaded', label: 'Uploaded', count: h.uploaded, note: `${h.campaigns} campaign${h.campaigns === 1 ? '' : 's'}` },
+      { key: 'planned', label: 'Planned', count: h.planned, note: `${this.pct(h.planned_share)} of uploaded` },
+      { key: 'picked_up', label: 'Picked up', count: h.picked_up, note: `${this.pct(h.picked_up_share)} of ${h.not_finished ? 'finished' : 'planned'}${d('picked_up_share')}` },
+      { key: 'answered', label: 'Answered', count: h.answered, note: `${this.pct(h.answered_share)} of picked up${d('answered_share')}` },
+      { key: 'success', label: 'Success', count: h.success, note: `${this.pct(h.success_rate)} success rate${d('success_rate')}` },
+    ];
+  });
+  /** How every planned call ended, in the order of the funnel. The bar covers planned calls; "Not planned" sits outside it. */
+  protected readonly groups = computed(() => {
+    const rep = this.r(); if (!rep) return [];
+    const h = rep.headline; const L = (k: string) => this.line(k); const share = (a: number, b: number) => (b ? a / b : null);
+    const width = (n: number) => (h.planned ? (n / h.planned) * 100 : 0);
+    const silent = L('silent').count + L('system_issue').count; const notPlanned = L('bad_data').count + L('test').count + (L('stopped').count || 0);
+    return [
+      { key: 'success', label: 'Success', color: COLORS.success, count: h.success, share: h.success_rate, width: width(h.success), always: true, lines: ['accepted', 'partial', 'follow_up', 'callback'].map(L) },
+      { key: 'not_successful', label: 'Not successful', color: COLORS.not_successful, count: L('not_successful').count, share: L('not_successful').share, width: width(L('not_successful').count), always: true, lines: ['not_given_time', 'left', 'wrong_number'].map(L) },
+      { key: 'no_conversation', label: 'Picked up, no conversation', color: COLORS.no_conversation, count: silent, share: share(silent, h.picked_up), width: width(silent), always: false, lines: ['silent', 'system_issue'].map(L) },
+      { key: 'not_picked_up', label: 'Not picked up', color: COLORS.not_picked_up, count: L('not_picked_up').count, share: L('not_picked_up').share, width: width(L('not_picked_up').count), always: true, lines: ['no_answer', 'dnd', 'voicemail'].map(L) },
+      { key: 'in_progress', label: 'Not finished', color: COLORS.in_progress, count: h.not_finished, share: share(h.not_finished, h.planned), width: width(h.not_finished), always: false, lines: [] },
+      { key: 'not_planned', label: 'Not planned', color: COLORS.not_planned, count: notPlanned, share: share(notPlanned, h.uploaded), width: 0, always: false, lines: ['bad_data', 'test'].map(L) },
+    ];
+  });
+  /** The dot colour of a row's status in the call log: the colour of its group in the bar. */
+  protected colorOf(c: ReportCallRow): string {
+    const s = c.call_status, r = c.status_reason || '';
+    if (s === 'Answered') return r.startsWith('Success') ? COLORS.success : COLORS.not_successful;
+    if (s === 'No reply' || s === 'System issue') return COLORS.no_conversation;
+    if (s === 'Not picked' || s === 'DND' || s === 'Voicemail') return COLORS.not_picked_up;
+    if (s === 'In progress') return COLORS.in_progress;
+    return COLORS.not_planned;
+  }
+
   /** The largest reason answered calls ended without a result. */
   protected readonly loss = computed(() => {
     const rep = this.r(); if (!rep?.headline.answered) return null;
@@ -483,7 +398,8 @@ export class CallingReportComponent {
       if (my !== this.seq) return;
       this.r.set(rep);
       // A list restored from the address gets its proper name once the report is in.
-      const b = this.box(); if (b) { const l = rep.funnel.flatMap((x) => x.lines).find((x) => x.key === b.key); if (l && l.label !== b.label) this.box.set({ key: b.key, label: l.label }); await this.fetchBox(); }
+      const b = this.box(); if (b) { const l = rep.funnel.flatMap((x) => x.lines).find((x) => x.key === b.key); if (l && l.label !== b.label) this.box.set({ key: b.key, label: l.label }); }
+      await this.fetchBox();
     } catch {
       if (my === this.seq) this.error.set('Could not load the calling report.');
     } finally { if (my === this.seq) this.loading.set(false); }
@@ -512,15 +428,15 @@ export class CallingReportComponent {
   }
   private emit(): void { this.drillPage.set(0); this.writeUrl(); this.scopeChange.emit(this.scope()); }
 
+  /** Picks a step or status for the call log below; picking it again shows every call. */
   protected open(key: string, label: string): void {
-    this.box.set({ key, label }); this.drillPage.set(0); this.drillRows.set([]); this.writeUrl(); this.fetchBox();
-    setTimeout(() => (this.host.nativeElement.querySelector('.cr-drill') as HTMLElement | null)?.focus(), 0);
+    if (this.box()?.key === key) return this.close();
+    this.box.set({ key, label }); this.drillPage.set(0); this.writeUrl(); this.fetchBox();
   }
-  protected close(): void { this.box.set(null); this.drillRows.set([]); this.writeUrl(); }
+  protected close(): void { this.box.set(null); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }
   protected page(step: number): void { this.drillPage.set(Math.max(0, this.drillPage() + step)); this.writeUrl(); this.fetchBox(); }
   private async fetchBox(): Promise<void> {
-    const b = this.box(); if (!b) return;
-    try { const res = await this.source().calls(this.scope(), b.key, this.drillPage() * PAGE, PAGE); this.drillRows.set(res.rows); this.drillTotal.set(res.total); }
+    try { const res = await this.source().calls(this.scope(), this.box()?.key ?? 'uploaded', this.drillPage() * PAGE, PAGE); this.drillRows.set(res.rows); this.drillTotal.set(res.total); }
     catch { this.drillRows.set([]); this.drillTotal.set(0); this.error.set('Could not load these calls.'); }
   }
 
@@ -533,7 +449,7 @@ export class CallingReportComponent {
     if (this.agentsOpen() || this.shareOpen() || this.testsOpen()) { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); } else if (this.box()) this.close();
   }
 
-  protected async exportBox(): Promise<void> { const b = this.box(); if (b) this.save(await this.source().exportXlsx(this.scope(), b.key), `${this.fileName()}-${b.key}.xlsx`); }
+  protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k), `${this.fileName()}-${k}.xlsx`); }
   protected async shareSheet(): Promise<void> { this.shareOpen.set(false); this.save(await this.source().exportXlsx(this.scope(), 'uploaded'), `${this.fileName()}.xlsx`); }
   protected async sharePicture(): Promise<void> { this.shareOpen.set(false); const c = this.draw(); if (c) c.toBlob((b) => b && this.save(b, `${this.fileName()}.png`), 'image/png'); }
   protected sharePdf(): void {

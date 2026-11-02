@@ -19,7 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
-import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport } from './calling-report.mjs';
+import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS } from './calling-report.mjs';
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
@@ -747,10 +747,12 @@ function callingRow(e) {
   const t = templates.find((x) => x.id === e.templateId); const s = sheets.find((x) => x.id === e.batchId);
   const last = (e.attemptLog || []).slice(-1)[0]; const out = e.extractedFields || {}; const conv = conversations.get(e.activeConversationId);
   const said = Object.entries(out).filter(([, v]) => v !== '' && v != null && typeof v !== 'object').slice(0, 3).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join('; ');
+  const d = personOutcome(e.report, e.outcome_override);
   return { id: e.id, call_id: e.id, campaign_id: e.batchId, call_date: last?.startedAt || (e.report.call_status === 'Bad data' ? null : e.batchSubmittedAt || e.createdAt), uploaded_at: s?.createdAt || e.createdAt,
     agent: t?.name || '', agent_key: e.templateId, campaign: s?.originalFilename || '', uploaded_by: e.triggeredBy || s?.uploadedBy || '',
     caller_name: e.name || '', phone: e.resolvedContact?.phone || '', email: e.resolvedContact?.email || '', summary: conv?.postCallIntelligence?.summary?.mom?.[0] || said,
-    call_status: e.report.call_status, status_reason: e.report.status_reason, goal_reached: e.report.goal_reached, test_status: e.report.test_status, test_goal: e.report.test_goal,
+    call_status: d.call_status, status_reason: d.status_reason, goal_reached: d.goal_reached, test_status: e.report.test_status, test_goal: e.report.test_goal,
+    outcome_source: d.outcome_source, changed_by: d.changed_by, changed_at: d.changed_at, change_note: d.change_note, review_status_reason: d.review_status_reason,
     callback_at: out.callback_date || out.callback_time ? [out.callback_date, out.callback_time].filter(Boolean).join(' ') : null,
     duration_seconds: e.callDurationSeconds ?? null, retries: Math.max(0, (e.attemptLog?.length || 1) - 1) };
 }
@@ -773,6 +775,30 @@ on('GET', '/api/v1/reports/calling', ({ q }) => {
   const all = callingRows(); const sc = callingScope(q);
   const agentsAll = agentChoices(all, sc);
   ok(callingReport(all, sc, { workspace: 'Moglix', agentsAll }));
+});
+// One call page: every call list opens this, by report row id (the execution id, or "sheet:bad:row" for rejected rows).
+function callDetail(id) {
+  const rows = callingRows(); const row = rows.find((r) => r.id === id); if (!row) return null;
+  const e = executions.find((x) => x.id === row.call_id); const conv = e ? conversations.get(e.activeConversationId) : null;
+  const t = templates.find((x) => x.id === row.agent_key); const labels = new Map((t?.requiredFields || []).map((f) => [f.fieldKey, f.fieldLabel]));
+  const turns = String(conv?.transcriptText || '').split('\n').map((l) => /^([^:]{2,20}):\s*(.*)$/.exec(l.trim())).filter(Boolean)
+    .map((m) => ({ who: /^agent/i.test(m[1]) ? 'Agent' : 'Caller', text: m[2], at: null }));
+  return { ...row, ...neighbours(rows, row), dials_count: e?.attemptLog?.length || (e?.callDurationSeconds ? 1 : 0),
+    answers: Object.entries(e?.extractedFields || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => ({ key: k, label: labels.get(k) || k.replace(/_/g, ' '), value: typeof v === 'object' ? JSON.stringify(v) : String(v) })),
+    inputs: Object.entries(e?.context || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object').map(([k, v]) => ({ key: k, value: String(v) })),
+    transcript: turns, has_audio: !!conv?.durationSeconds, audio_path: conv?.durationSeconds ? `/api/v1/conversations/${conv.id}/audio` : null,
+    dials: (e?.attemptLog || []).map((a, i) => ({ n: i + 1, at: a.startedAt, ring_seconds: a.ringSeconds ?? null, talk_seconds: a.talkSeconds ?? null,
+      result: a.outcome ? (OUTCOMES[a.outcome]?.label || a.outcome) : a.callStatus || '', provider: a.provider ? [a.provider.Status, a.provider.DialStatus, a.provider.CustomerStatus].filter(Boolean).join(' · ') : '' })),
+    timeline: e ? eventsOf(e).map((v) => ({ at: v.createdAt, type: v.eventType.replace(/_/g, ' ').toLowerCase(), status: v.status, detail: v.errorMessage || '' })) : [],
+    outcome_options: ANSWERED_REASONS, product: 'clarix' };
+}
+on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
+on('PATCH', '/api/v1/reports/calling/call/:id/outcome', ({ p, body }) => {
+  const row = callingRows().find((r) => r.id === p.id); if (!row) return fail(404, 'Call not found');
+  const err = checkOutcomeChange(row, body); if (err) return fail(400, err);
+  const e = executions.find((x) => x.id === row.call_id); if (!e) return fail(400, 'This row has no call');
+  e.outcome_override = { status_reason: body.status_reason, note: String(body.note || '').slice(0, 500), by: USER, at: nowIso() };
+  ok(callDetail(p.id));
 });
 // Workspace test numbers: calls to these count only on the "Internal test calls" line.
 on('GET', '/api/v1/reports/calling/test-numbers', () => ok({ numbers: [...TEST_NUMBERS] }));
