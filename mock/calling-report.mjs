@@ -188,7 +188,7 @@ export function previousRange(from, to) {
 export function callingReport(allRows, scope, opts = {}) {
   const to = scope.to || new Date().toISOString(); const unit = scope.unit || '';
   // Count by a per-agent stat (POs, items): each row counts as many times as its upload says; talk time and dials stay per call.
-  const weigh = (rs) => (unit ? rs.flatMap((r) => { const w = Math.max(0, Math.round(Number(r.units?.[unit]) || 0)); return w ? Array(w).fill(r) : []; }) : rs);
+  const weigh = (rs) => (unit ? rs.flatMap((r) => { const w = Math.max(0, Math.round(metricValue(r, unit))); return w ? Array(w).fill(r) : []; }) : rs);
   const callsRows = scopeRows(allRows, { ...scope, to });
   const rep = buildReport(weigh(callsRows), { ...opts, from: scope.from, to, includeTests: scope.includeTests });
   if (unit) { const plain = buildReport(callsRows, { ...opts, from: scope.from, to, includeTests: scope.includeTests }); rep.stats = plain.stats; }
@@ -348,30 +348,66 @@ export function followUpAction(id, action, by) {
 /** Readable names for the usual count columns; anything else reads as its column name. */
 const UNIT_LABELS = { po_count: 'POs', item_count: 'Items', po_value: 'PO value', rfx_count: 'RFQs', line_count: 'Lines' };
 export const unitLabel = (field) => UNIT_LABELS[field] || field.replace(/_count$/, '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-/** agent key -> [{ field, label }] the workspace chose; absent means "every number column of the agent's upload". */
-export const agentStats = new Map();
-/** agents: [{ key, label, numberFields: [] }] -> each agent's stats, defaulting to its number columns. */
-export function statsByAgent(agents) {
-  return agents.map((a) => ({ agent: a.key, label: a.label, fields: a.numberFields.map((f) => ({ field: f, label: unitLabel(f) })),
-    stats: agentStats.get(a.key) || a.numberFields.map((f) => ({ field: f, label: unitLabel(f) })) }));
+// ── Agent metrics: what an agent's campaigns can be counted in, beside calls ──
+/** How a metric counts its column on each row: add up the numbers, count the list entries, or count rows that have a value. */
+export const METRIC_HOWS = [
+  { key: 'sum', label: 'Add up the numbers', example: '"1, 2" counts 3' },
+  { key: 'entries', label: 'Count the entries', example: '"2044120, 2044121" counts 2' },
+  { key: 'rows', label: 'Count rows that have it', example: 'any value counts 1' },
+];
+const SPLIT = /\s*[,;\n]\s*/;
+/** A metric's key, as the report asks for it: "sum:item_count". */
+export const metricKey = (m) => `${m.how}:${m.field}`;
+/** One row's value for a metric key, from the row's sheet values (inputs). An old plain field name means "sum". */
+export function metricValue(r, key) {
+  const [how, field] = String(key).includes(':') ? String(key).split(':') : ['sum', String(key)];
+  const v = String(r.inputs?.[field] ?? r.units?.[field] ?? '').trim(); if (!v) return 0;
+  const parts = v.split(SPLIT).filter(Boolean);
+  if (how === 'entries') return parts.length;
+  if (how === 'rows') return 1;
+  return parts.reduce((n, p) => n + (Number(p.replace(/[^\d.-]/g, '')) || 0), 0);
 }
-/** The stats offered in "Count by" for the agents in rows: union of their chosen stats. */
+/** How a column looks in an agent's sheet, to suggest how to count it. */
+function suggestHow(field, type) {
+  if (type === 'number' || /count|qty|quantity|value|amount|total/i.test(field)) return 'sum';
+  if (/numbers|_nos?$|ids$|list|details|items/i.test(field)) return 'entries';
+  return 'rows';
+}
+/** agent key -> [{ field, how, label }] the workspace set; absent means one "sum" metric per number column. */
+export const agentStats = new Map();
+/** agents: [{ key, label, numberFields, columns: [{ field, type }] }] -> each agent's columns and metrics. */
+export function statsByAgent(agents) {
+  return agents.map((a) => {
+    const columns = (a.columns || a.numberFields.map((f) => ({ field: f, type: 'number' }))).map((c) => ({ field: c.field, label: c.field.replace(/_/g, ' '), suggest: suggestHow(c.field, c.type) }));
+    const stats = (agentStats.get(a.key) || a.numberFields.map((f) => ({ field: f, how: 'sum', label: unitLabel(f) }))).map((m) => ({ ...m, key: metricKey(m) }));
+    return { agent: a.key, label: a.label, columns, hows: METRIC_HOWS, fields: columns.map((c) => ({ field: c.field, label: c.label })), stats };
+  });
+}
+/** Saves an agent's metrics: only its own columns and known ways of counting; names kept short. */
+export function setAgentMetrics(agent, list) {
+  const cols = new Set((agent.columns || []).map((c) => c.field).concat(agent.numberFields || []));
+  const clean = (Array.isArray(list) ? list : []).filter((m) => cols.has(m.field) && METRIC_HOWS.some((h) => h.key === (m.how || 'sum')))
+    .map((m) => ({ field: m.field, how: m.how || 'sum', label: String(m.label || unitLabel(m.field)).trim().slice(0, 30) || unitLabel(m.field) }));
+  agentStats.set(agent.key, [...new Map(clean.map((m) => [metricKey(m), m])).values()].slice(0, 20));
+}
+/** The metrics offered in "Count in" for the agents in rows (a campaign has one agent). */
 export function unitsFor(rows, agents) {
   const keys = new Set(rows.map((r) => r.agent_key)); const out = new Map();
-  for (const a of statsByAgent(agents.filter((x) => keys.has(x.key)))) for (const st of a.stats) if (!out.has(st.field)) out.set(st.field, st);
+  for (const a of statsByAgent(agents.filter((x) => keys.has(x.key)))) for (const st of a.stats) if (!out.has(st.key)) out.set(st.key, { field: st.key, label: st.label, how: st.how, column: st.field });
   return [...out.values()];
 }
-/** A campaign's custom stats: total, answered (covered) and accepted, per stat of its agent. */
+/** A campaign's metrics: total, answered (covered) and accepted, per metric of its agent. */
 export function campaignStats(rows, stats) {
   return stats.map((st) => {
-    const sum = (rs) => rs.reduce((n, r) => n + (Number(r.units?.[st.field]) || 0), 0);
+    const sum = (rs) => rs.reduce((n, r) => n + metricValue(r, st.key || metricKey(st)), 0);
     return { field: st.field, label: st.label, total: sum(rows.filter(BOX.planned)), covered: sum(rows.filter(BOX.answered)), accepted: sum(rows.filter(BOX.accepted)) };
   });
 }
 
 /** Distinct values of one column (with the other filters on), for the multi-select column filter. */
-export function columnValues(rows, column) {
-  const m = new Map(); for (const r of rows) { const v = cellText(r, column); m.set(v, (m.get(v) || 0) + 1); }
+export function columnValues(rows, column, search = '') {
+  const term = String(search || '').trim().toLowerCase();
+  const m = new Map(); for (const r of rows) { const v = cellText(r, column); if (!term || v.toLowerCase().includes(term)) m.set(v, (m.get(v) || 0) + 1); }
   return [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)).slice(0, 200);
 }
 
@@ -385,7 +421,13 @@ export function followTask(r) {
   if (/mail|email|copy|whatsapp|po number|details/.test(s)) return 'Send the PO details, then confirm acceptance';
   if (/portal|check|update/.test(s)) return 'Confirm acceptance after the supplier checks the portal';
   if (/contact|left the company|person/.test(s)) return 'Get the right contact and call again';
-  return 'Follow up on the answer';
+  // Order tracking answers: say what to chase, with the date the supplier gave.
+  const promised = /promised date:?\s*([\d-]+)/.exec(s)?.[1];
+  if (/delayed|late|hold/.test(s)) return promised ? `Chase the delayed line: promised ${promised}` : 'Chase the delayed line';
+  if (/dispatched|shipped/.test(s)) return 'Confirm the dispatch reached the plant';
+  if (/will_accept|will accept|eta/.test(s)) return 'Confirm the PO is accepted on the portal';
+  if (/haan|caller said/.test(s)) return 'Listen to the call and decide the next step';
+  return 'Read the answer and decide the next step';
 }
 /** Every open (or done) follow-up: callbacks and answers to act on, with task, owner (who uploaded the sheet) and caller. */
 export function followChecklist(rows, show = 'open', kind = 'all') {

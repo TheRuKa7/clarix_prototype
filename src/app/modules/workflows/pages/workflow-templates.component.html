@@ -149,6 +149,9 @@
               [attr.aria-label]="'Configure ' + template.name" title="Configure">
               <lucide-icon name="settings" [size]="15"></lucide-icon>
             </button>
+            <!-- Metrics: what this agent's campaigns can be counted in (POs, items…), beside calls. -->
+            <button type="button" class="action-btn metrics-btn" (click)="metricsFor.set({ id: template.id, name: template.name })"
+              [attr.aria-label]="'Metrics for ' + template.name" title="Metrics">Metrics</button>
             @if (actionLoading() === template.id) {
             <span class="action-btn action-loading" aria-label="Working…">
               <lucide-icon name="loader-circle" [size]="15" class="animate-spin"></lucide-icon>
@@ -283,4 +286,13 @@
 @if (showForm) {
 <app-workflow-template-form [template]="editingTemplate" (saved)="onFormSaved()"
   (cancelled)="onFormCancelled()"></app-workflow-template-form>
+}
+
+@if (metricsFor(); as mt) {
+<div class="metrics-backdrop" (click)="metricsFor.set(null)"></div>
+<aside class="metrics-drawer" role="dialog" [attr.aria-label]="'Metrics for ' + mt.name" (keydown.escape)="metricsFor.set(null)">
+  <header class="metrics-head"><div><span class="metrics-kicker">Agent setup</span><h2>{{ mt.name }}</h2></div>
+    <button type="button" class="metrics-close" (click)="metricsFor.set(null)" aria-label="Close">✕</button></header>
+  <app-agent-metrics [source]="metricsSource" [agent]="mt.id"></app-agent-metrics>
+</aside>
 }

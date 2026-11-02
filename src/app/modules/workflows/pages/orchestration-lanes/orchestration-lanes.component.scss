@@ -1,3 +1,6 @@
+// Shrinks with the page header on a phone instead of widening it.
+:host { display: block; flex: 1 1 240px; min-width: 0; max-width: 100%; }
+.or-pick, .or-name { min-width: 0; }
 /* Shared rx- styles live in src/styles/reports.scss. Below: only what the routes page adds. */
 :host { display: grid; gap: 12px; }
 .or-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

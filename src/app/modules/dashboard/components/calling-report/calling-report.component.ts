@@ -27,7 +27,7 @@ export interface CallingReport {
   /** Agents with planned calls in the period (any agent filter ignored), with that count. */
   agents: { key: string; label: string; count: number }[];
   /** The per-agent stat the funnel is counted in ('' = calls), and the stats on offer. */
-  unit?: string; units_available?: { field: string; label: string }[];
+  unit?: string; units_available?: { field: string; label: string; how?: string; column?: string }[];
   /** Weekly (or daily, for two weeks or less) success, logic doc section 7. */
   trend: { unit: 'week' | 'day'; buckets: TrendBucket[] };
   /** The period just before this one, the same length: for the change shown on each rate. */
@@ -55,7 +55,7 @@ export interface CallingReportSource {
   /** The workspace's internal test numbers: calls to them count only as Internal test calls. */
   testNumbers?(): Promise<string[]>;
   /** Distinct values of one call log column, for the multi-select filter. */
-  values?(scope: ReportScope, box: string, filters: LogFilters, column: string): Promise<{ value: string; count: number }[]>;
+  values?(scope: ReportScope, box: string, filters: LogFilters, column: string, search?: string): Promise<{ value: string; count: number }[]>;
   /** Open follow ups and work still running, for the small box on the dashboard. */
   tasks?(scope: ReportScope): Promise<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number }>;
   openCampaigns?(): void;
@@ -73,8 +73,6 @@ const BOX_LABELS: Record<string, string> = { uploaded: 'Uploaded', planned: 'Pla
   goal_yes: 'Goal reached: Yes', goal_no: 'Goal reached: No', goal_na: 'Goal reached: N/A' };
 const PAGE = 10;
 /** The call log's columns, in order: key, header. */
-/** Columns filtered by picking values (several at once); the rest by typing. */
-const PICK_COLUMNS = new Set(['agent', 'campaign', 'call_status', 'status_reason', 'goal_reached', 'retries']);
 /** Column filters that scope the whole page (funnel and call status); the others narrow only the calls list. */
 const SCOPE_COLUMNS = new Set(['agent', 'campaign', 'uploaded_by']);
 const LOG_COLUMNS: [string, string][] = [['call_date', 'Call date'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['caller_name', 'Caller'], ['phone', 'Phone'], ['summary', 'Call summary'],
@@ -89,46 +87,47 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
   template: `
     <section class="cr" [class.cr-busy]="loading()">
       <div class="cr-top">
+        <!-- Period: one dropdown. Presets, or a custom range applied with one click. A campaign page has no period. -->
         @if (!campaign()) {
-        <div class="cr-seg" role="group" aria-label="Period">
-          @for (p of PERIODS; track p.key) { <button type="button" [class.on]="period() === p.key" (click)="setPeriod(p.key)">{{ p.label }}</button> }
-        </div>
-        }
-        @if (period() === 'custom' && !campaign()) {
-          <span class="cr-range">
-            <input type="date" aria-label="From" [value]="customFrom()" [max]="customTo()" (change)="setCustom($any($event.target).value, customTo())">
-            <span>to</span>
-            <input type="date" aria-label="To" [value]="customTo()" [min]="customFrom()" [max]="today()" (change)="setCustom(customFrom(), $any($event.target).value)">
-          </span>
-        }
-        @if (!campaign() && (agents().length || period() !== '30d')) { <button type="button" class="cr-link" (click)="clearAll()">Reset period</button> }
-        <!-- Counting in POs, items or quantities only makes sense inside one agent's campaign, where the sheet's columns are known. -->
-        @if (mode() === 'dashboard' && campaign() && (r()?.units_available?.length || 0) > 0) {
-          <div class="cr-seg" role="group" aria-label="Count by">
-            <button type="button" [class.on]="!unit()" (click)="setUnit('')">Calls</button>
-            @for (u of r()?.units_available ?? []; track u.field) { <button type="button" [class.on]="unit() === u.field" (click)="setUnit(u.field)">{{ u.label }}</button> }
-          </div>
-        }
-        @if (mode() === 'dashboard' && !campaign() && source().agentStats) {
           <div class="cr-drop">
-            <button type="button" class="cr-link" (click)="place($event, false, 360); openStats()">Custom stats</button>
-            @if (statsOpen()) {
-              <div class="cr-menu cr-stats-menu" role="dialog" aria-label="Custom stats per agent" [style]="menuStyle()">
-                <b>Custom stats per agent</b>
-                <p class="cr-muted">The numbers each agent's campaigns can be counted in (POs, items…), shown on the campaign pages and the Campaigns list.</p>
-                @for (a of statsDraft(); track a.agent) {
-                  <div class="cr-stat-agent"><span>{{ a.label }}</span>
-                    @for (f of a.fields; track f.field) { <label class="cr-opt"><input type="checkbox" [checked]="isStat(a, f.field)" (change)="toggleStat(a, f)"> {{ f.label }} <small>{{ f.field }}</small></label> }
-                    @empty { <small class="cr-muted">No number columns in this agent's upload.</small> }
-                  </div>
-                }
-                <div class="cr-tests-foot"><span class="cr-grow"></span><button type="button" class="cr-btn" (click)="statsOpen.set(false)">Cancel</button><button type="button" class="cr-btn cr-primary" (click)="saveStats()">Save</button></div>
+            <button type="button" class="cr-select" [attr.aria-expanded]="periodOpen()" aria-haspopup="dialog" (click)="place($event, false, 300); togglePeriod()">
+              <span class="cr-select-k">Period</span><b>{{ periodName() }}</b><span class="cr-select-v">{{ rangeText() }}</span><i aria-hidden="true">▾</i>
+            </button>
+            @if (periodOpen()) {
+              <div class="cr-menu cr-period-menu" role="dialog" aria-label="Period" [style]="menuStyle()">
+                @for (p of PERIODS; track p.key) { @if (p.key !== 'custom') {
+                  <button type="button" class="cr-choice" [class.on]="period() === p.key" [attr.aria-pressed]="period() === p.key" (click)="setPeriod(p.key); periodOpen.set(false)"><span>{{ p.label }}</span><small>{{ presetRange(p.key) }}</small></button>
+                } }
+                <div class="cr-custom">
+                  <b>Custom range</b>
+                  <div class="cr-range"><input type="date" aria-label="From" [value]="draftFrom()" [max]="draftTo() || today()" (change)="draftFrom.set($any($event.target).value)"><span>to</span>
+                    <input type="date" aria-label="To" [value]="draftTo()" [min]="draftFrom()" [max]="today()" (change)="draftTo.set($any($event.target).value)"></div>
+                  <button type="button" class="cr-btn cr-primary" [disabled]="!draftFrom() || !draftTo()" (click)="applyCustom()">Apply range</button>
+                </div>
               </div>
             }
           </div>
         }
+        <!-- Count in: calls, or one of the agent's metrics (set up in the agent). Only on a campaign page: one agent's sheet. -->
+        @if (mode() === 'dashboard' && campaign() && (r()?.units_available?.length || 0) > 0) {
+          <div class="cr-drop">
+            <button type="button" class="cr-select" [attr.aria-expanded]="countOpen()" aria-haspopup="listbox" (click)="place($event, false, 300); countOpen.set(!countOpen())">
+              <span class="cr-select-k">Count in</span><b>{{ unitName() || 'Calls' }}</b><i aria-hidden="true">▾</i>
+            </button>
+            @if (countOpen()) {
+              <div class="cr-menu" role="listbox" aria-label="Count in" [style]="menuStyle()">
+                <button type="button" role="option" class="cr-choice" [class.on]="!unit()" [attr.aria-selected]="!unit()" (click)="setUnit(''); countOpen.set(false)"><span>Calls</span><small>one per uploaded row</small></button>
+                @for (u of r()?.units_available ?? []; track u.field) {
+                  <button type="button" role="option" class="cr-choice" [class.on]="unit() === u.field" [attr.aria-selected]="unit() === u.field" (click)="setUnit(u.field); countOpen.set(false)"><span>{{ u.label }}</span><small>{{ howText(u) }}</small></button>
+                }
+                <p class="cr-muted cr-pad">Metrics are set up in each agent, under Metrics.</p>
+              </div>
+            }
+          </div>
+        }
+        @if (!campaign() && period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Back to last 30 days</button> }
         <span class="cr-grow"></span>
-        <span class="cr-meta">{{ campaign() ? 'Whole campaign' : periodLabel() }} · {{ tzLabel() }}</span>
+        <span class="cr-meta">{{ campaign() ? 'Whole campaign · ' : '' }}{{ tzLabel() }}</span>
         <div class="cr-drop">
           <button type="button" class="cr-btn" (click)="place($event, true, 220); shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
           @if (shareOpen()) {
@@ -208,17 +207,25 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
                 }
                 <tr>@for (col of cols(); track col[0]) { <th [class.cr-gin]="col[0].startsWith('in:')" [class.cr-gout]="col[0].startsWith('out:')">{{ col[1] }}</th> }</tr>
                 <tr class="cr-frow">@for (col of cols(); track col[0]) {
-                  <th>@if (isPick(col[0])) {
+                  <th>
+                    <!-- Like Excel: one dropdown per column with a search box, Select all, and the values to tick; Enter keeps rows containing the text. -->
                     <div class="cr-drop">
-                      <button type="button" class="cr-pick" [class.on]="picked(col[0]).length" (click)="place($event, false, 280); openPick(col[0])">{{ picked(col[0]).length ? picked(col[0]).length + ' selected' : 'All' }} ▾</button>
+                      <button type="button" class="cr-pick" [class.on]="filterLabel(col[0]) !== 'All'" [attr.aria-expanded]="pickOpen() === col[0]" [attr.aria-label]="'Filter ' + col[1] + ': ' + filterLabel(col[0])" (click)="place($event, false, 300); openPick(col[0])">{{ filterLabel(col[0]) }} ▾</button>
                       @if (pickOpen() === col[0]) {
-                        <div class="cr-menu cr-pick-menu" role="listbox" [attr.aria-label]="'Filter ' + col[1]" [style]="menuStyle()">
-                          <label class="cr-opt"><input type="checkbox" [checked]="!picked(col[0]).length" (change)="setPicked(col[0], [])"> All</label>
-                          @for (v of pickValues(); track v.value) { <label class="cr-opt"><input type="checkbox" [checked]="picked(col[0]).includes(v.value)" (change)="togglePicked(col[0], v.value)"> <span class="cr-opt-l">{{ v.value || '(blank)' }}</span><small>{{ v.count }}</small></label> }
+                        <div class="cr-menu cr-pick-menu" role="dialog" [attr.aria-label]="'Filter ' + col[1]" [style]="menuStyle()">
+                          <input class="cr-pick-search" type="search" [placeholder]="'Search ' + col[1].toLowerCase()" [value]="pickSearch()" (input)="searchPick(col[0], $any($event.target).value)" (keydown.enter)="applyContains(col[0])" [attr.aria-label]="'Search ' + col[1]">
+                          @if (textFilter(col[0])) { <div class="cr-contains-on">Rows containing "{{ textFilter(col[0]) }}" <button type="button" (click)="setPicked(col[0], [])" aria-label="Remove this filter">✕</button></div> }
+                          @if (pickSearch().trim()) { <button type="button" class="cr-contains" (click)="applyContains(col[0])">Keep rows containing "{{ pickSearch().trim() }}" <small>Enter</small></button> }
+                          <label class="cr-opt cr-opt-all"><input type="checkbox" [checked]="allShownPicked(col[0])" (change)="toggleAllShown(col[0])"> <span class="cr-opt-l">{{ pickSearch().trim() ? 'Select all results' : 'Select all' }}</span></label>
+                          <div class="cr-opt-list">
+                            @for (v of pickValues(); track v.value) { <label class="cr-opt"><input type="checkbox" [checked]="isTicked(col[0], v.value)" (change)="togglePicked(col[0], v.value)"> <span class="cr-opt-l">{{ v.value || '(Blanks)' }}</span><small>{{ v.count }}</small></label> }
+                            @if (pickLoaded() && !pickValues().length) { <p class="cr-muted cr-pad">No values match.</p> }
+                          </div>
+                          <div class="cr-pick-foot"><button type="button" class="cr-link" (click)="setPicked(col[0], [])">Clear filter</button><span class="cr-grow"></span><button type="button" class="cr-btn" (click)="pickOpen.set('')">Done</button></div>
                         </div>
                       }
                     </div>
-                  } @else { <input type="text" [value]="textFilter(col[0])" (input)="setCol(col[0], $any($event.target).value)" [attr.aria-label]="'Filter ' + col[1]" placeholder="Filter"> }</th>
+                  </th>
                 }</tr>
               </thead>
               @if (drillRows().length) {
@@ -250,7 +257,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     :host { display: block; --cr-text: var(--ds-text, var(--text, #0c0a09)); --cr-muted: var(--ds-text-muted, var(--muted, #5c5752)); --cr-line: var(--ds-border, var(--line, #e7e5e2));
       --cr-bg: var(--ds-surface, var(--card, #fff)); --cr-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --cr-good: var(--ds-success-fg, #146c34); --cr-good-bg: var(--ds-success-bg, #ecfdf3);
       --cr-bad: var(--ds-danger-fg, #b91c1c); --cr-accent: var(--ds-accent, var(--accent, #4c4184)); }
-    .cr { display: grid; gap: 12px; color: var(--cr-text); }
+    .cr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; color: var(--cr-text); }
+    .cr > *, .cr-card > * { min-width: 0; }
+    @media (max-width: 720px) { .cr-groups { grid-template-columns: minmax(0, 1fr); } .cr-tasks button { flex: 1 1 100%; } .cr-status-head { flex-wrap: wrap; gap: 4px; } .cr-log-head { flex-wrap: wrap; } .cr-search { width: 100%; } }
     .cr-busy { opacity: .7; transition: opacity .2s; }
     .cr-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .cr-grow { flex: 1; }
@@ -265,6 +274,17 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-range { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cr-muted); }
     .cr-range input { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-drop { position: relative; }
+    .cr-select { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--cr-line); background: var(--cr-bg); color: var(--cr-text); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+    .cr-select:hover { background: var(--cr-soft); }
+    .cr-select-k { color: var(--cr-muted); font-size: 12px; }
+    .cr-select-v { color: var(--cr-muted); font-size: 12px; }
+    .cr-select i { font-style: normal; color: var(--cr-muted); font-size: 11px; }
+    .cr-choice { justify-content: space-between; }
+    .cr-choice small { color: var(--cr-muted); font-size: 12px; }
+    .cr-choice.on { background: var(--cr-soft); font-weight: 600; }
+    .cr-choice.on::before { content: '✓'; color: var(--cr-accent); }
+    .cr-period-menu { gap: 2px; }
+    .cr-custom { display: grid; gap: 8px; border-top: 1px solid var(--cr-line); margin-top: 4px; padding: 8px; font-size: 13px; }
     .cr-menu { position: fixed; z-index: 1000; overflow: auto; overscroll-behavior: contain; min-width: 200px; background: var(--cr-bg); border: 1px solid var(--cr-line); border-radius: 10px; padding: 6px; display: grid; box-shadow: 0 8px 24px -12px rgba(0,0,0,.25); }
     .cr-menu button, .cr-opt { border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; display: flex; gap: 8px; align-items: center; }
     .cr-menu button:hover, .cr-opt:hover { background: var(--cr-soft); }
@@ -306,7 +326,15 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-frow th { background: var(--cr-bg); padding: 4px 6px; }
     .cr-pick { width: 100%; min-width: 72px; text-align: left; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-muted); cursor: pointer; white-space: nowrap; }
     .cr-pick.on { border-color: var(--cr-accent); color: var(--cr-accent); }
-    .cr-pick-menu { font-weight: 400; text-align: left; white-space: normal; }
+    .cr-pick-menu { font-weight: 400; text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 4px; padding: 8px; color: var(--cr-text); }
+    .cr-pick-search { border: 1px solid var(--cr-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); width: 100%; box-sizing: border-box; }
+    .cr-opt-list { overflow: auto; min-height: 40px; flex: 1 1 auto; border-top: 1px solid var(--cr-line); padding-top: 4px; }
+    .cr-opt-all { font-weight: 600; }
+    .cr-contains { border: 1px dashed var(--cr-accent) !important; color: var(--cr-accent) !important; }
+    .cr-contains small { margin-left: auto; color: var(--cr-muted); }
+    .cr-contains-on { display: flex; align-items: center; gap: 6px; font-size: 12.5px; background: var(--cr-soft); border-radius: 6px; padding: 4px 8px; }
+    .cr-contains-on button { margin-left: auto; padding: 0 4px !important; }
+    .cr-pick-foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--cr-line); padding-top: 6px; }
     .cr-opt input[type=checkbox] { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--cr-accent); }
     .cr-stats-menu { gap: 8px; padding: 12px; }
     .cr-stat-agent { display: grid; gap: 2px; border-top: 1px solid var(--cr-line); padding-top: 6px; }
@@ -371,6 +399,10 @@ export class CallingReportComponent {
   protected readonly error = signal('');
   protected readonly agentsOpen = signal(false);
   protected readonly shareOpen = signal(false);
+  protected readonly periodOpen = signal(false);
+  protected readonly countOpen = signal(false);
+  protected readonly draftFrom = signal('');
+  protected readonly draftTo = signal('');
   protected readonly testsOpen = signal(false);
   protected readonly testNumbers = signal<string[]>([]);
   protected readonly testDraft = signal('');
@@ -381,7 +413,6 @@ export class CallingReportComponent {
   protected readonly LOG_COLUMNS = LOG_COLUMNS;
   protected readonly search = signal('');
   protected readonly colFilters = signal<Record<string, string | string[]>>({});
-  protected readonly PICK_COLUMNS = PICK_COLUMNS;
   protected readonly colsIn = computed(() => (this.campaign() ? this.columns()?.inputs ?? [] : []));
   protected readonly colsOut = computed(() => (this.campaign() ? this.columns()?.answers ?? [] : []));
   /** The log's columns. A campaign: who, how the call ended, what the sheet said, what the agent captured, then the call details. */
@@ -389,8 +420,6 @@ export class CallingReportComponent {
     ? [['caller_name', 'Caller'], ['phone', 'Phone'], ['call_status', 'Call status'], ['status_reason', 'Status reason'], ...this.colsIn().map((c): [string, string] => [c.key, c.label]),
        ...this.colsOut().map((c): [string, string] => [c.key, c.label]), ['callback_at', 'Call back'], ['call_date', 'Last call'], ['retries', 'Retries'], ['goal_reached', 'Goal'], ['summary', 'Call summary']]
     : LOG_COLUMNS));
-  /** Columns filtered by picking values: the fixed ones, and the agent's answers (few values each). */
-  protected isPick(k: string): boolean { return (PICK_COLUMNS.has(k) && !(this.campaign() && k === 'campaign')) || k.startsWith('out:'); }
   /** A cell's text, as the filters see it. */
   protected cell(c: ReportCallRow, k: string): string {
     if (k.startsWith('in:')) return c.inputs?.[k.slice(3)] ?? '';
@@ -409,6 +438,9 @@ export class CallingReportComponent {
   });
   protected readonly pickOpen = signal('');
   protected readonly pickValues = signal<{ value: string; count: number }[]>([]);
+  protected readonly pickSearch = signal('');
+  protected readonly pickLoaded = signal(false);
+  private pickTyping: ReturnType<typeof setTimeout> | null = null;
   protected readonly unit = signal('');
   protected readonly unitName = computed(() => this.r()?.units_available?.find((u) => u.field === this.unit())?.label ?? '');
   protected readonly tasks = signal<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number } | null>(null);
@@ -610,8 +642,29 @@ export class CallingReportComponent {
     const room = Math.max(140, Math.min(440, up ? above : below));
     this.menuStyle.set({ left: `${left}px`, width: `${w}px`, 'max-height': `${room}px`, ...(up ? { bottom: `${vh - r.top + 4}px`, top: 'auto' } : { top: `${r.bottom + 4}px`, bottom: 'auto' }) });
   }
-  private closeMenus(): void { this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false); }
-  private readonly follow = () => { if (this.shareOpen() || this.statsOpen() || this.pickOpen()) this.reposition(); };
+  /** The period dropdown: its custom range starts from the range in force. */
+  protected togglePeriod(): void {
+    if (!this.periodOpen()) { const [a, b] = this.range(); this.draftFrom.set(this.customFrom() || this.ymd(a)); this.draftTo.set(this.customTo() || this.ymd(b)); }
+    this.periodOpen.set(!this.periodOpen());
+  }
+  protected applyCustom(): void { this.period.set('custom'); this.periodOpen.set(false); this.setCustom(this.draftFrom(), this.draftTo()); }
+  protected periodName(): string { return this.period() === 'custom' ? 'Custom' : PERIODS.find((p) => p.key === this.period())?.label ?? ''; }
+  /** "3 Oct – 2 Nov 2026", the dates the period covers. */
+  protected rangeText(): string { if (this.period() === 'all') return ''; const [a, b] = this.range(); return this.days2(a, b); }
+  protected presetRange(k: PeriodKey): string {
+    const t = this.today(); const d = (n: number) => this.addDays(t, n);
+    const f = ({ all: '', today: t + '|' + t, yesterday: d(-1) + '|' + d(-1), '7d': d(-7) + '|' + t, '30d': d(-30) + '|' + t, custom: '' } as Record<string, string>)[k];
+    if (!f) return k === 'all' ? 'every call' : ''; const [x, y] = f.split('|'); return this.days2(Date.parse(x + 'T12:00:00Z'), Date.parse(y + 'T12:00:00Z'));
+  }
+  private days2(a: number, b: number): string {
+    const o: Intl.DateTimeFormatOptions = { timeZone: this.tz(), day: 'numeric', month: 'short' }; const y = new Date(b).toLocaleDateString('en-GB', { timeZone: this.tz(), year: 'numeric' });
+    const x = new Date(a).toLocaleDateString('en-GB', o), z = new Date(b).toLocaleDateString('en-GB', o); return x === z ? `${z} ${y}` : `${x} – ${z} ${y}`;
+  }
+  protected howText(u: { how?: string; column?: string }): string {
+    const c = (u.column || '').replace(/_/g, ' '); return u.how === 'entries' ? `entries in ${c}` : u.how === 'rows' ? `rows with ${c}` : `sum of ${c}`;
+  }
+  private closeMenus(): void { this.periodOpen.set(false); this.countOpen.set(false); this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false); }
+  private readonly follow = () => { if (this.shareOpen() || this.statsOpen() || this.pickOpen() || this.periodOpen() || this.countOpen()) this.reposition(); };
 
   /** Menus close on a click anywhere else; Escape closes a menu, then the list. */
   protected onDocClick(ev: Event): void {
@@ -619,7 +672,7 @@ export class CallingReportComponent {
     this.closeMenus();
   }
   protected onEscape(): void {
-    if (this.agentsOpen() || this.shareOpen() || this.testsOpen() || this.pickOpen() || this.statsOpen()) this.closeMenus(); else if (this.box()) this.close();
+    if (this.agentsOpen() || this.shareOpen() || this.testsOpen() || this.pickOpen() || this.statsOpen() || this.periodOpen() || this.countOpen()) this.closeMenus(); else if (this.box()) this.close();
   }
 
   protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k, this.logFilters()), `${this.fileName()}-${k}${this.logFiltered() ? '-filtered' : ''}.xlsx`); }
@@ -630,15 +683,40 @@ export class CallingReportComponent {
   protected readonly pageFiltered = computed(() => Object.entries(this.colFilters()).some(([k, v]) => SCOPE_COLUMNS.has(k) && (Array.isArray(v) ? v.length : v.trim())));
   protected textFilter(k: string): string { const v = this.colFilters()[k]; return typeof v === 'string' ? v : ''; }
   protected picked(k: string): string[] { const v = this.colFilters()[k]; return Array.isArray(v) ? v : []; }
-  /** Opens a column's value list, counted with the other filters on. */
+  /** Opens a column's value list, counted with the other filters on, with its search box focused. */
   protected async openPick(k: string): Promise<void> {
     if (this.pickOpen() === k) { this.pickOpen.set(''); return; }
-    this.pickOpen.set(k); this.pickValues.set([]);
-    const f = this.logFilters(); delete f.cols[k];
-    try { this.pickValues.set((await this.source().values?.(this.scope(), this.box()?.key ?? 'uploaded', f, k)) ?? []); } catch { /* the list stays empty */ }
+    this.pickOpen.set(k); this.pickSearch.set(''); this.pickValues.set([]);
+    setTimeout(() => (this.host.nativeElement.querySelector('.cr-pick-search') as HTMLInputElement | null)?.focus(), 0);
+    await this.loadValues(k);
   }
+  private async loadValues(k: string): Promise<void> {
+    const f = this.logFilters(); delete f.cols[k]; const q = this.pickSearch().trim(); this.pickLoaded.set(false);
+    try { const v = (await this.source().values?.(this.scope(), this.box()?.key ?? 'uploaded', f, k, q)) ?? []; if (this.pickOpen() === k && this.pickSearch().trim() === q) { this.pickValues.set(v); this.pickLoaded.set(true); } } catch { this.pickLoaded.set(true); }
+  }
+  /** Typing in a column's search box narrows its value list (the rows change only on a tick or Enter). */
+  protected searchPick(k: string, v: string): void { this.pickSearch.set(v); if (this.pickTyping) clearTimeout(this.pickTyping); this.pickTyping = setTimeout(() => this.loadValues(k), 200); }
+  /** Enter: keep the rows whose cell contains the typed text. */
+  protected applyContains(k: string): void { const t = this.pickSearch().trim(); if (!t) return; this.colFilters.set({ ...this.colFilters(), [k]: t }); this.refilter(); }
+  /** No filter means every value is ticked, as in Excel. */
+  protected isTicked(k: string, v: string): boolean { const f = this.colFilters()[k]; return Array.isArray(f) ? f.includes(v) : !f; }
+  protected allShownPicked(k: string): boolean { const f = this.colFilters()[k]; if (!f || (Array.isArray(f) && !f.length)) return true; return Array.isArray(f) && this.pickValues().length > 0 && this.pickValues().every((x) => f.includes(x.value)); }
+  /** Select all: with no search, back to every row; with a search, tick (or untick) every value found. */
+  protected toggleAllShown(k: string): void {
+    const shown = this.pickValues().map((x) => x.value);
+    if (!this.pickSearch().trim()) { this.setPicked(k, this.allShownPicked(k) ? ['\u0000none'] : []); return; }
+    const cur = this.picked(k); const all = shown.every((v) => cur.includes(v));
+    this.setPicked(k, all ? cur.filter((v) => !shown.includes(v)) : [...new Set([...cur, ...shown])]);
+  }
+  /** The column header's dropdown label. */
+  protected filterLabel(k: string): string { const f = this.colFilters()[k]; if (typeof f === 'string' && f.trim()) return `"${f.trim()}"`; if (Array.isArray(f) && f.length) return f.length === 1 && f[0] === '\u0000none' ? 'None' : f.length === 1 ? (f[0] || '(Blanks)') : `${f.length} selected`; return 'All'; }
   protected setPicked(k: string, vals: string[]): void { this.colFilters.set({ ...this.colFilters(), [k]: vals }); this.refilter(); }
-  protected togglePicked(k: string, v: string): void { const cur = this.picked(k); this.setPicked(k, cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]); }
+  /** Unticking a value while every value is shown ticks all the others, as in Excel. */
+  protected togglePicked(k: string, v: string): void {
+    const f = this.colFilters()[k]; const all = !f || (Array.isArray(f) && !f.length) || typeof f === 'string';
+    if (all) { this.setPicked(k, this.pickValues().map((x) => x.value).filter((x) => x !== v)); return; }
+    const cur = this.picked(k).filter((x) => x !== '\u0000none'); this.setPicked(k, cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]);
+  }
   protected setUnit(u: string): void { this.unit.set(u); this.emit(); }
   protected async openStats(): Promise<void> {
     if (this.statsOpen()) { this.statsOpen.set(false); return; }

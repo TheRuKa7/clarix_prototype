@@ -11,7 +11,7 @@ function reportSource(r: ReportService, router: Router): CallingReportSource {
     report: (sc, f) => firstValueFrom(r.callingReport(sc, f)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(r.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(r.callingReportExport(sc, box, f)),
-    values: (sc, box, f, col) => firstValueFrom(r.reportColumnValues(sc, box, f, col)),
+    values: (sc, box, f, col, q) => firstValueFrom(r.reportColumnValues(sc, box, f, col, q)),
     openCall: (row) => router.navigate(['/workflows/calls', row.id]),
   };
 }

@@ -77,7 +77,8 @@ export interface FollowUpsSource {
 const CSS = `
   :host { display: block; --s-text: var(--ds-text, var(--text, #0c0a09)); --s-muted: var(--ds-text-muted, var(--muted, #5c5752)); --s-line: var(--ds-border, var(--line, #e7e5e2));
     --s-bg: var(--ds-surface, var(--card, #fff)); --s-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --s-good: var(--ds-success-fg, #146c34); --s-accent: var(--ds-accent, var(--accent, #4c4184)); color: var(--s-text); }
-  .s { display: grid; gap: 12px; }
+  .s { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .s > * { min-width: 0; }
   .s-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .s-title { margin: 0; font-size: 22px; font-weight: 700; }
   .s-sub { margin: 2px 0 0; color: var(--s-muted); font-size: 13px; }
@@ -95,6 +96,16 @@ const CSS = `
   .s-card { border: 1px solid var(--s-line); border-radius: 12px; background: var(--s-bg); }
   .s-pad { padding: 14px 16px; display: grid; gap: 10px; }
   .s-scroll { overflow-x: auto; }
+  @media (max-width: 720px) {
+    .s-seg { flex-wrap: wrap; }
+    .s-search { width: 100%; }
+    table.s-stack thead { display: none; }
+    table.s-stack, table.s-stack tbody, table.s-stack tr, table.s-stack td { display: block; width: auto; }
+    table.s-stack tr { border-top: 1px solid var(--s-line); padding: 8px 4px; }
+    table.s-stack td { border: 0; padding: 3px 12px; white-space: normal; max-width: none; text-align: left; }
+    table.s-stack td[data-l]::before { content: attr(data-l) ': '; color: var(--s-muted); font-size: 12px; }
+    table.s-stack td.num { display: inline-block; }
+  }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; font-weight: 500; color: var(--s-muted); background: var(--s-soft); padding: 8px 12px; white-space: nowrap; font-size: 12.5px; }
   td { padding: 9px 12px; border-top: 1px solid var(--s-line); white-space: nowrap; }
@@ -111,7 +122,10 @@ const CSS = `
   .s-actions { display: flex; gap: 6px; justify-content: flex-end; }
   .s-cov { font-size: 12.5px; }
   .s-cov small { display: inline; color: var(--s-muted); }
-  .s-check { width: 16px; height: 16px; cursor: pointer; }
+  .s-check { width: 20px; height: 20px; cursor: pointer; accent-color: var(--s-accent); }
+  td.s-caller { white-space: normal; min-width: 200px; max-width: 300px; }
+  .s-cut { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+  .s-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 8px 12px; font-size: 13px; color: var(--s-muted); }
   tr.done td { color: var(--s-muted); }
   tr.done .s-task { text-decoration: line-through; }
   .s-task { font-weight: 500; white-space: normal; min-width: 220px; }
@@ -147,16 +161,16 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
       @if (error()) { <p class="s-note">{{ error() }}</p> }
       <div class="s-card">
         <div class="s-scroll">
-          <table>
+          <table class="s-stack">
             <thead><tr><th>Campaign</th><th>Agent</th><th>Status</th><th class="num">Uploaded</th><th class="num">Planned</th><th class="num">Picked up</th><th class="num">Answered</th><th class="num">Success rate</th><th>Coverage</th><th></th></tr></thead>
             <tbody>
               @for (c of rows(); track c.campaign_id) {
                 <tr class="click" (click)="source().open(c)" tabindex="0" (keydown.enter)="source().open(c)">
                   <td class="cut" [title]="c.campaign">{{ c.campaign }}<small>{{ c.uploaded_by || '—' }} · {{ when(c.created_at) }}</small></td>
-                  <td class="cut" [title]="c.agent">{{ c.agent }}</td>
+                  <td class="cut" data-l="Agent" [title]="c.agent">{{ c.agent }}</td>
                   <td><span class="s-chip" [style.--c]="color(c.status)"><i></i>{{ c.status }}</span></td>
-                  <td class="num">{{ c.uploaded }}</td><td class="num">{{ c.planned }}</td><td class="num">{{ c.picked_up }}</td><td class="num">{{ c.answered }}</td><td class="num">{{ pct(c.success_rate) }}</td>
-                  <td>@for (st of c.stats ?? []; track st.field) { <div class="s-cov" [title]="st.label + ': ' + st.covered + ' of ' + st.total + ' on answered calls, ' + st.accepted + ' accepted'">{{ st.label }} <b>{{ st.covered }}/{{ st.total }}</b> <small>{{ st.accepted }} accepted</small></div> } @empty { <span class="s-muted">—</span> }</td>
+                  <td class="num" data-l="Uploaded">{{ c.uploaded }}</td><td class="num" data-l="Planned">{{ c.planned }}</td><td class="num" data-l="Picked up">{{ c.picked_up }}</td><td class="num" data-l="Answered">{{ c.answered }}</td><td class="num" data-l="Success rate">{{ pct(c.success_rate) }}</td>
+                  <td data-l="Coverage">@for (st of c.stats ?? []; track st.field) { <div class="s-cov" [title]="st.label + ': ' + st.covered + ' of ' + st.total + ' on answered calls, ' + st.accepted + ' accepted'">{{ st.label }} <b>{{ st.covered }}/{{ st.total }}</b> <small>{{ st.accepted }} accepted</small></div> } @empty { <span class="s-muted">—</span> }</td>
                   <td><div class="s-actions">
                     <button type="button" class="s-btn" (click)="$event.stopPropagation(); results(c)">Results</button>
                     @if (c.status === 'Running') { <button type="button" class="s-btn s-danger" (click)="$event.stopPropagation(); stop(c)">Stop</button> }
@@ -467,36 +481,120 @@ export class NewCampaignComponent {
       </div>
       <div class="s-card">
         <div class="s-scroll">
-          <table>
+          <table class="s-stack">
             <thead><tr><th></th><th>Action task</th><th>Summary</th><th>Owner</th><th>Caller</th><th>Last call</th></tr></thead>
             <tbody>
-              @for (r of rows(); track r.id) {
+              @for (r of pageRows(); track r.id) {
                 <tr class="click" [class.done]="r.follow.state === 'done'" (click)="source().openCall(r)" [title]="'Open the call with ' + (r.caller_name || r.phone)">
                   <td (click)="$event.stopPropagation()"><input type="checkbox" class="s-check" [checked]="r.follow.state === 'done'" (change)="toggle(r)" [attr.aria-label]="'Done: ' + r.task"></td>
                   <td class="s-task">{{ r.task }}<small>{{ r.kind }}@if (r.follow.state === 'done' && r.follow.by) { · done by {{ r.follow.by }} }</small></td>
-                  <td class="s-wrap">{{ r.summary || r.status_reason }}</td>
-                  <td>{{ r.owner }}</td>
-                  <td>{{ r.caller_name || '—' }}<small>{{ r.phone }}{{ r.email ? ' · ' + r.email : '' }}</small><small>{{ r.agent }} · {{ r.campaign }}</small></td>
-                  <td>{{ when(r.call_date) }}</td>
+                  <td class="s-wrap" data-l="Summary">{{ r.summary || r.status_reason }}</td>
+                  <td data-l="Owner">{{ r.owner }}</td>
+                  <td class="s-caller" data-l="Caller">{{ r.caller_name || '—' }}<small>{{ r.phone }}{{ r.email ? ' · ' + r.email : '' }}</small><small class="s-cut" [title]="r.agent + ' · ' + r.campaign">{{ r.agent }} · {{ r.campaign }}</small></td>
+                  <td data-l="Last call">{{ when(r.call_date) }}</td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
         @if (!rows().length) { <p class="s-empty">{{ show() === 'open' ? 'Nothing to do here.' : 'Nothing done yet.' }}</p> }
+        @if (rows().length > PAGE) {
+          <div class="s-pager"><button type="button" class="s-btn" [disabled]="page() === 0" (click)="page.set(page() - 1)">Previous</button>
+            <span>{{ page() * PAGE + 1 }}–{{ Math.min((page() + 1) * PAGE, rows().length) }} of {{ rows().length }}</span>
+            <button type="button" class="s-btn" [disabled]="(page() + 1) * PAGE >= rows().length" (click)="page.set(page() + 1)">Next</button></div>
+        }
       </div>
     </div>
   `,
 })
 export class FollowUpsListComponent {
+  protected readonly PAGE = 20;
+  protected readonly Math = Math;
+  protected readonly page = signal(0);
+  protected readonly pageRows = computed(() => this.rows().slice(this.page() * this.PAGE, (this.page() + 1) * this.PAGE));
   readonly source = input.required<FollowUpsSource>();
   protected readonly kind = signal('all');
   protected readonly show = signal('open');
   protected readonly rows = signal<FollowRow[]>([]);
   protected readonly counts = signal({ open: 0, callback: 0, follow_up: 0, done: 0 });
   protected readonly when = when;
-  constructor() { effect(() => { this.kind(); this.show(); untracked(() => this.load()); }); }
-  private async load(): Promise<void> { const r = await this.source().list(this.show(), this.kind()); this.rows.set(r.rows); this.counts.set(r.counts); }
+  constructor() { effect(() => { this.kind(); this.show(); untracked(() => { this.page.set(0); this.load(); }); }); }
+  private async load(): Promise<void> { const r = await this.source().list(this.show(), this.kind()); this.rows.set(r.rows); this.counts.set(r.counts); if (this.page() * this.PAGE >= r.rows.length) this.page.set(0); }
   protected async toggle(r: FollowRow): Promise<void> { await this.source().act(r.id, r.follow.state === 'done' ? 'open' : 'done'); this.load(); }
   protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.show(), this.kind()), `follow-ups-${this.kind()}-${this.show()}.xlsx`); }
+}
+
+// ── Agent metrics: what an agent's campaigns can be counted in, beside calls ──
+export interface AgentMetric { field: string; how: 'sum' | 'entries' | 'rows'; label: string }
+export interface AgentMetricsRow { agent: string; label: string; columns: { field: string; label: string; suggest: string }[]; hows: { key: string; label: string; example: string }[]; stats: AgentMetric[] }
+export interface AgentMetricsSource { load(): Promise<AgentMetricsRow[]>; save(agent: string, stats: AgentMetric[]): Promise<unknown> }
+@Component({
+  selector: 'app-agent-metrics',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .am { display: grid; gap: 12px; }
+    .am-row { display: grid; grid-template-columns: minmax(140px, 1.1fr) minmax(140px, 1fr) minmax(170px, 1.1fr) minmax(150px, 1.2fr) auto; gap: 10px; align-items: end; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; }
+    .am-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
+    .am-row input, .am-row select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .am-ex { font-size: 12.5px; color: var(--s-muted); align-self: center; }
+    .am-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+    .am-chip { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .am-chip:hover { border-color: var(--s-accent); color: var(--s-accent); }
+    .am-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .am-ok { color: var(--s-good); font-size: 13px; }
+    @media (max-width: 760px) { .am-row { grid-template-columns: 1fr 1fr; } }
+  `],
+  template: `
+    <div class="am">
+      <div><b>Metrics</b>
+        <p class="s-muted">What {{ row()?.label || 'this agent' }}'s campaigns can be counted in, beside calls: POs, items, quantities. A campaign page's "Count in" and the Campaigns list use them. Each metric counts one column of the agent's sheet.</p></div>
+      @if (row(); as a) {
+        @for (m of draft(); track $index; let i = $index) {
+          <div class="am-row">
+            <label>Name<input [value]="m.label" maxlength="30" (input)="set(i, { label: $any($event.target).value })" [attr.aria-label]="'Name of metric ' + (i + 1)"></label>
+            <label>Column in the sheet<select (change)="set(i, { field: $any($event.target).value })" [attr.aria-label]="'Column of metric ' + (i + 1)">@for (c of a.columns; track c.field) { <option [value]="c.field" [selected]="c.field === m.field">{{ c.label }}</option> }</select></label>
+            <label>How to count it<select (change)="set(i, { how: $any($event.target).value })" [attr.aria-label]="'How metric ' + (i + 1) + ' counts'">@for (h of a.hows; track h.key) { <option [value]="h.key" [selected]="h.key === m.how">{{ h.label }}</option> }</select></label>
+            <span class="am-ex">{{ example(m) }}</span>
+            <button type="button" class="s-btn" (click)="remove(i)" [attr.aria-label]="'Remove ' + m.label">Remove</button>
+          </div>
+        } @empty { <p class="s-note">No metrics yet: this agent's campaigns are counted in calls only.</p> }
+        <div class="am-add"><span class="s-muted">Add:</span>
+          @for (c of suggestions(); track c.field) { <button type="button" class="am-chip" (click)="add(c.field, c.suggest)">+ {{ nameFor(c.field, c.suggest) }}</button> }
+          <button type="button" class="am-chip" (click)="add(a.columns[0]?.field || '', 'sum')" [disabled]="!a.columns.length">+ Other metric</button>
+        </div>
+        <div class="am-foot">@if (saved()) { <span class="am-ok">Saved</span> }@if (error()) { <span class="s-muted">{{ error() }}</span> }
+          <button type="button" class="s-btn" (click)="reset()" [disabled]="!dirty()">Undo changes</button>
+          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save metrics' }}</button></div>
+      } @else { <p class="s-empty">{{ error() || 'Loading the metrics…' }}</p> }
+    </div>
+  `,
+})
+export class AgentMetricsComponent {
+  readonly source = input.required<AgentMetricsSource>();
+  readonly agent = input.required<string>();
+  protected readonly row = signal<AgentMetricsRow | null>(null);
+  protected readonly draft = signal<AgentMetric[]>([]);
+  protected readonly saved = signal(false);
+  protected readonly busy = signal(false);
+  protected readonly error = signal('');
+  protected readonly dirty = computed(() => JSON.stringify(this.draft()) !== JSON.stringify(this.clean(this.row()?.stats ?? [])));
+  /** Columns not counted yet, each with the way it most likely counts. */
+  protected readonly suggestions = computed(() => { const used = new Set(this.draft().map((m) => m.field)); return (this.row()?.columns ?? []).filter((c) => !used.has(c.field)).slice(0, 8); });
+  constructor() { effect(() => { const a = this.agent(); const s = this.source(); untracked(() => this.load(s, a)); }); }
+  private clean(list: AgentMetric[]): AgentMetric[] { return list.map((m) => ({ field: m.field, how: m.how || 'sum', label: m.label })); }
+  private async load(s: AgentMetricsSource, a: string): Promise<void> {
+    try { const r = (await s.load()).find((x) => x.agent === a) ?? null; this.row.set(r); this.draft.set(this.clean(r?.stats ?? [])); if (!r) this.error.set('This agent has no sheet columns to count.'); }
+    catch { this.error.set('Could not load the metrics.'); }
+  }
+  protected nameFor(field: string, how: string): string { const f = field.replace(/_/g, ' ').replace(/ count$| numbers$| nos?$/i, ''); const n = f.charAt(0).toUpperCase() + f.slice(1); return how === 'rows' ? `Rows with ${f}` : /^po$/i.test(f) ? 'POs' : n.endsWith('s') ? n : n + 's'; }
+  protected example(m: AgentMetric): string { return { sum: 'Adds up the numbers: "1, 2" counts 3', entries: 'Counts entries: "2044120, 2044121" counts 2', rows: 'Each row with a value counts 1' }[m.how] ?? ''; }
+  protected set(i: number, part: Partial<AgentMetric>): void { this.saved.set(false); this.draft.set(this.draft().map((m, j) => (j === i ? { ...m, ...part } : m))); }
+  protected add(field: string, how: string): void { if (!field) return; this.saved.set(false); this.draft.set([...this.draft(), { field, how: how as AgentMetric['how'], label: this.nameFor(field, how) }]); }
+  protected remove(i: number): void { this.saved.set(false); this.draft.set(this.draft().filter((_, j) => j !== i)); }
+  protected reset(): void { this.draft.set(this.clean(this.row()?.stats ?? [])); }
+  protected async save(): Promise<void> {
+    const a = this.row(); if (!a) return; this.busy.set(true); this.error.set('');
+    try { await this.source().save(a.agent, this.draft()); await this.load(this.source(), a.agent); this.saved.set(true); } catch { this.error.set('Could not save the metrics.'); } finally { this.busy.set(false); }
+  }
 }

@@ -23,10 +23,13 @@ import {
 } from '../models/workflow-template.model';
 import { WorkflowTemplateService } from '../services/workflow-template.service';
 import { WorkflowTemplateFormComponent } from './workflow-template-form.component';
+import { firstValueFrom } from 'rxjs';
+import { AgentMetricsComponent, AgentMetricsSource } from '../../dashboard/components/shared-screens/shared-screens';
+import { ReportService } from '../../dashboard/services/report.service';
 
 @Component({
   selector: 'app-workflow-templates',
-  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective],
+  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent],
   templateUrl: './workflow-templates.component.html',
   styleUrl: './workflow-templates.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +39,12 @@ export class WorkflowTemplatesComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly confirm = inject(ConfirmDialogService);
+  private readonly reports = inject(ReportService);
+  /** The agent whose metrics drawer is open: what its campaigns can be counted in (POs, items…). */
+  protected readonly metricsFor = signal<{ id: string; name: string } | null>(null);
+  protected readonly metricsSource: AgentMetricsSource = {
+    load: () => firstValueFrom(this.reports.reportAgentStats()), save: (a, st) => firstValueFrom(this.reports.saveReportAgentStats(a, st)),
+  };
   private readonly destroy$ = new Subject<void>();
 
   /** When set (via ?templateId= from Execution Reports), the list is narrowed to this one template. */

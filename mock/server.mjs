@@ -21,7 +21,7 @@ import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
   statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns,
-  checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage } from './calling-report.mjs';
+  setAgentMetrics, checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage } from './calling-report.mjs';
 /** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
 const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
 
@@ -785,7 +785,8 @@ function callingScope(q) {
   return { from: q.get('from') || (days ? new Date(Date.now() - days * 86400000).toISOString() : null), to: q.get('to') || null,
     agents: (q.get('agents') || '').split(',').filter(Boolean), includeTests: q.get('include_tests') === '1', campaign: q.get('campaign') || '', unit: q.get('unit') || '' };
 }
-const clarixAgentsMeta = () => templates.map((t) => ({ key: t.id, label: t.name, numberFields: (t.contextMappings || []).filter((m) => m.dataType === 'NUMBER').map((m) => m.fieldName) }));
+const clarixAgentsMeta = () => templates.map((t) => ({ key: t.id, label: t.name, numberFields: (t.contextMappings || []).filter((m) => m.dataType === 'NUMBER').map((m) => m.fieldName),
+  columns: (t.contextMappings || []).map((m) => ({ field: m.fieldName, type: String(m.dataType || '').toLowerCase() })) }));
 on('GET', '/api/v1/reports/calling', ({ q }) => {
   // The call log's search and column filters scope the whole report, so a multi-select pick changes the funnel too.
   const all = filterRows(callingRows(), logFilters(q)); const sc = callingScope(q);
@@ -889,12 +890,12 @@ on('PATCH', '/api/v1/reports/calling/call/:id/outcome', ({ p, body }) => {
 on('GET', '/api/v1/reports/calling/agent-stats', ({ q }) => ok(statsByAgent(clarixAgentsMeta())));
 on('PUT', '/api/v1/reports/calling/agent-stats/:agent', ({ p, body }) => {
   const a = (clarixAgentsMeta()).find((x) => x.key === p.agent); if (!a) return fail(404, 'Agent not found');
-  agentStats.set(a.key, (Array.isArray(body?.stats) ? body.stats : []).filter((s) => a.numberFields.includes(s.field)).map((s) => ({ field: s.field, label: String(s.label || unitLabel(s.field)).slice(0, 30) })));
+  setAgentMetrics(a, body?.stats);
   ok(statsByAgent([a])[0]);
 });
 on('GET', '/api/v1/reports/calling/calls/values', ({ q }) => {
   const column = q.get('column') || ''; const f = logFilters(q); delete f.cols[column];
-  ok({ values: columnValues(filterRows(rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded'), f), column) });
+  ok({ values: columnValues(filterRows(rowsInBox(scopeRows(callingRows(), callingScope(q)), q.get('box') || 'uploaded'), f), column, q.get('vq') || '') });
 });
 on('GET', '/api/v1/reports/calling/follow-ups/checklist', ({ q }) => ok(followChecklist(scopeRows(callingRows(), callingScope(q)), q.get('show') || 'open', q.get('kind') || 'all')));
 on('GET', '/api/v1/reports/calling/follow-ups/export.xlsx', ({ q }) => {

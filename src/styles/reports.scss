@@ -235,3 +235,7 @@
 .cd-sub-name { display: flex; align-items: baseline; gap: 10px; padding-left: 14px; }
 .cd-sub-n { min-width: 18px; font-family: var(--ds-mono); font-size: 11px; color: var(--ds-text-muted); text-align: right; }
 .cd-sub-pad { padding-left: 42px; }
+
+// Phones: page sections and their controls shrink to the screen instead of widening it.
+.rx-page > * { min-width: 0; max-width: 100%; }
+.rx-card, .rx-select, .rx-input { min-width: 0; max-width: 100%; }

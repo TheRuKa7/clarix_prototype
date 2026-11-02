@@ -34,7 +34,7 @@ export class DashboardOverviewComponent {
     openFollowUps: () => this.router.navigate(['/workflows/follow-ups']),
     openCallLogs: () => this.router.navigate(['/workflows/calls'], { queryParamsHandling: 'preserve' }),
     openCampaigns: () => this.router.navigate(['/workflows/campaigns']),
-    values: (sc, box, f, col) => firstValueFrom(this.reports.reportColumnValues(sc, box, f, col)),
+    values: (sc, box, f, col, q) => firstValueFrom(this.reports.reportColumnValues(sc, box, f, col, q)),
     tasks: (sc) => firstValueFrom(this.reports.reportTasks(sc)),
     agentStats: () => firstValueFrom(this.reports.reportAgentStats()),
     saveAgentStats: (a, st) => firstValueFrom(this.reports.saveReportAgentStats(a, st)),

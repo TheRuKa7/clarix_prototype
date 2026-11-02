@@ -1,6 +1,6 @@
 <div class="erf">
   <div class="erf__header">
-    <button type="button" class="erf__back" (click)="cancel()">
+    <button type="button" class="erf__back" (click)="cancel()" aria-label="Back to reports" title="Back to reports">
       <lucide-icon name="arrow-left" [size]="18"></lucide-icon>
     </button>
     <h1 class="erf__title">{{ isEdit() ? 'Edit Report' : 'New Report' }}</h1>
@@ -33,10 +33,10 @@
   <section class="erf__card">
     <div class="erf__details-grid">
       <div class="erf__field">
-        <label class="erf__label">Workflow Template</label>
-        <select class="erf__select" [disabled]="isEdit()"
+        <label class="erf__label">Agent</label>
+        <select class="erf__select" aria-label="Agent" [disabled]="isEdit()"
           (change)="onTemplateChange($any($event.target).value)">
-          <option value="" [selected]="!selectedTemplateId()">Select a template…</option>
+          <option value="" [selected]="!selectedTemplateId()">Pick an agent…</option>
           @for (t of templates(); track t.id) {
           <option [value]="t.id" [selected]="t.id === selectedTemplateId()">{{ t.name }}</option>
           }

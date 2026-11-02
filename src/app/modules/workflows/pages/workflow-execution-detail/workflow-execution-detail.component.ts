@@ -109,7 +109,7 @@ export class WorkflowExecutionDetailComponent implements OnInit, OnDestroy {
   protected readonly siblings = signal<string[]>([]);
   private siblingsBatch = '';
   protected readonly position = computed(() => this.siblings().indexOf(this.executionId) + 1);
-  protected readonly backLabel = computed(() => (this.from() === 'campaign' ? 'Campaign' : this.from() === 'calls' ? 'Call Logs' : 'All runs'));
+  protected readonly backLabel = computed(() => (this.from() === 'campaign' ? 'Campaign' : this.from() === 'calls' ? 'Call logs' : 'All runs'));
   protected hasTalk(): boolean { const e = this.execution(); return !!e?.activeConversationId && e.status === 'COMPLETED' && !!e.callDurationSeconds; }
   go(step: number): void {
     const list = this.siblings();

@@ -57,7 +57,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
           }
           <span class="cp-grow"></span>
           @if (audioUrl()) { <a class="cp-btn" [href]="audioUrl()" [download]="'recording-' + c.id + '.wav'">Download audio</a> }
-          <button type="button" class="cp-btn" (click)="exportJson()">Export JSON</button>
+          <button type="button" class="cp-btn" (click)="exportJson()" title="Every detail of this call in one file, for your IT team">Download details</button>
         }
       </div>
 
@@ -114,7 +114,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
             @if (c.timeline.length) {
               <section class="cp-card">
                 <h2>Timeline</h2>
-                <div class="cp-rows">@for (e of c.timeline; track $index) { <div class="cp-row"><span class="cp-muted">{{ when(e.at) }}</span><span>{{ e.type }}</span><span class="cp-muted">{{ e.status }}{{ e.detail ? ' · ' + e.detail : '' }}</span></div> }</div>
+                <div class="cp-rows">@for (e of c.timeline; track $index) { <div class="cp-row"><span class="cp-muted">{{ when(e.at) }}</span><span>{{ plainEvent(e.type) }}</span><span class="cp-muted">{{ plainStatus(e.status) }}{{ e.detail ? ' · ' + e.detail : '' }}</span></div> }</div>
               </section>
             }
           </div>
@@ -184,7 +184,8 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
   styles: [`
     :host { display: block; --cp-text: var(--ds-text, var(--text, #0c0a09)); --cp-muted: var(--ds-text-muted, var(--muted, #5c5752)); --cp-line: var(--ds-border, var(--line, #e7e5e2));
       --cp-bg: var(--ds-surface, var(--card, #fff)); --cp-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --cp-good: var(--ds-success-fg, #146c34); --cp-accent: var(--ds-accent, var(--accent, #4c4184)); }
-    .cp { display: grid; gap: 12px; color: var(--cp-text); }
+    .cp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; color: var(--cp-text); }
+    .cp > *, .cp-col > * { min-width: 0; }
     .cp-busy { opacity: .7; }
     .cp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .cp-grow { flex: 1; }
@@ -233,7 +234,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
     .cp-row { display: grid; grid-template-columns: 1.2fr 1fr 1.6fr; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--cp-line); }
     .cp-row:last-child { border-bottom: 0; }
     audio { width: 100%; }
-    @media (max-width: 900px) { .cp-grid { grid-template-columns: 1fr; } .cp-edit { grid-template-columns: 1fr; } .cp-row { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .cp-grid { grid-template-columns: minmax(0, 1fr); } .cp-bar { flex-wrap: wrap; } .cp-edit { grid-template-columns: 1fr; } .cp-row { grid-template-columns: 1fr; } }
   `],
 })
 export class CallPageComponent implements OnDestroy {
@@ -319,6 +320,13 @@ export class CallPageComponent implements OnDestroy {
   private transcriptText(): string { return (this.d()?.transcript ?? []).map((t) => `${t.who}: ${t.text}`).join('\n'); }
   private save(blob: Blob, name: string): void { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 
+  /** Timeline steps in plain words: "webhook received" means the phone line sent back the call's result. */
+  protected plainEvent(t: string): string {
+    const m: Record<string, string> = { 'workflow triggered': 'Row picked up for calling', 'call initiated': 'Call placed', 'waiting for webhook': 'Waiting for the call result',
+      'webhook received': 'Call result received', 'workflow failed': 'Call did not connect', 'workflow completed': 'Call finished', 'extraction completed': 'Answers saved', 'retry scheduled': 'Call again scheduled' };
+    return m[String(t).toLowerCase()] ?? String(t).charAt(0).toUpperCase() + String(t).slice(1);
+  }
+  protected plainStatus(st: string): string { return ({ SUCCESS: 'Done', FAILED: 'Did not work', PENDING: 'Waiting' } as Record<string, string>)[st] ?? st; }
   protected mmss(s: number | null | undefined): string { if (s == null) return '—'; const t = Math.round(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; }
   protected when(iso: string | null): string { return iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'; }
 }
