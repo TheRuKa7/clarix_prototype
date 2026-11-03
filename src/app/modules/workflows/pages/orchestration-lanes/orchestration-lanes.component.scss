@@ -15,7 +15,7 @@
 .or-route { display: grid; grid-template-columns: 34px minmax(0, 2.2fr) minmax(200px, 1fr) minmax(150px, 0.7fr); gap: 14px; align-items: start; padding: 12px 14px 12px 8px; overflow: visible; }
 .or-n { display: grid; justify-items: center; gap: 0; color: var(--ds-text-muted); padding-top: 2px; }
 .or-n b { font-family: var(--ds-mono); font-size: 13px; color: var(--ds-text); }
-.or-move { display: inline-flex; border: 0; background: transparent; color: var(--ds-text-placeholder); cursor: pointer; padding: 1px; border-radius: 4px; }
+.or-move { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; border: 0; background: transparent; color: var(--ds-text-muted); cursor: pointer; padding: 4px; border-radius: 6px; }
 .or-move:hover:not(:disabled) { color: var(--ds-text); background: var(--ds-hover); } .or-move:disabled { opacity: .3; cursor: default; }
 .or-rules, .or-to { display: grid; gap: 6px; align-content: start; min-width: 0; }
 .or-rule { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; }

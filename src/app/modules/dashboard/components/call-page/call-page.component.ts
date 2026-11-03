@@ -152,7 +152,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
                 } @else { <p class="cp-muted">No more calls planned for this row.</p> }
                 @if (st.messages.length) {
                   <div class="cp-seg" role="group" aria-label="Channel">
-                    @for (ch of channels(st); track ch) { <button type="button" [class.on]="channel() === ch" (click)="channel.set(ch)">{{ ch === 'whatsapp' ? 'WhatsApp' : 'Email' }}</button> }
+                    @for (ch of channels(st); track ch) { <button type="button" [class.on]="channel() === ch" [attr.aria-pressed]="channel() === ch" (click)="channel.set(ch)">{{ ch === 'whatsapp' ? 'WhatsApp' : 'Email' }}</button> }
                   </div>
                   @for (m of shown(st); track m.key + m.channel) {
                     <div class="cp-msg">

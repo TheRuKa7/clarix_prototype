@@ -58,7 +58,7 @@ export class ClarixFollowUpsPage {
   };
 }
 
-@Component({ selector: 'app-clarix-calling-rules', standalone: true, imports: [CallingRulesComponent], template: `<div class="rx-page"><app-calling-rules [source]="source"></app-calling-rules></div>` })
+@Component({ selector: 'app-clarix-calling-rules', standalone: true, imports: [CallingRulesComponent], template: `<div class="rx-page"><app-calling-rules [source]="source" [page]="true"></app-calling-rules></div>` })
 export class ClarixCallingRulesPage {
   private r = inject(ReportService);
   /** Calling rules per country: hours, rest days, holidays, do-not-call registers. */

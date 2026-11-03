@@ -347,7 +347,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-bar span { height: 100%; }
     .cr-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; }
     .cr-group { display: flex; flex-direction: column; gap: 2px; }
-    .cr-ghead, .cr-chip { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; text-align: left; }
+    .cr-ghead, .cr-chip { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 4px 6px; min-height: 26px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; text-align: left; }
     .cr-ghead { font-weight: 600; }
     .cr-ghead i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
     .cr-chip { padding-left: 21px; }
@@ -362,12 +362,12 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-fchip.on { border-color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 10%, var(--cr-bg)); color: var(--cr-accent); font-weight: 500; }
     .cr-fchip.on button { color: var(--cr-accent); }
     .cr-fchip button:hover { background: color-mix(in srgb, var(--cr-accent) 18%, transparent); }
-    .cr-fchip button { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
+    .cr-fchip button { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 24px; height: 24px; border-radius: 50%; font-size: 11px; }
     .cr-scroll { overflow-x: auto; }
     .cr-search { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); width: 220px; }
     .cr-th { display: flex; align-items: center; gap: 6px; }
     .cr-th-l { flex: 1; }
-    .cr-pick { display: inline-flex; align-items: center; gap: 3px; flex: none; min-width: 24px; height: 22px; justify-content: center; border: 1px solid transparent; border-radius: 6px; padding: 0 5px; font: inherit; font-size: 11px; background: transparent; color: var(--cr-muted); cursor: pointer; opacity: .6; }
+    .cr-pick { display: inline-flex; align-items: center; gap: 3px; flex: none; min-width: 26px; height: 26px; justify-content: center; border: 1px solid transparent; border-radius: 6px; padding: 0 5px; font: inherit; font-size: 11px; background: transparent; color: var(--cr-muted); cursor: pointer; opacity: .6; }
     .cr-pick:hover, .cr-pick:focus-visible, .cr-pick[aria-expanded=true] { opacity: 1; border-color: var(--cr-line); background: var(--cr-bg); }
     .cr-pick.on { opacity: 1; color: var(--cr-accent); border-color: color-mix(in srgb, var(--cr-accent) 40%, transparent); background: color-mix(in srgb, var(--cr-accent) 8%, var(--cr-bg)); }
     .cr-pick b { font-weight: 600; min-width: 14px; height: 14px; line-height: 14px; border-radius: 7px; padding: 0 3px; background: var(--cr-accent); color: #fff; font-size: 10px; }
@@ -414,7 +414,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-empty { margin: 0; color: var(--cr-muted); font-size: 13px; }
     .cr-filtered { color: var(--cr-text); }
     .cr-hint { margin: 0; padding: 0 16px; color: var(--cr-muted); font-size: 12.5px; }
-    .cr-groups-row th { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 5px 10px 0; background: var(--cr-bg); }
+    .cr-groups-row th { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; padding: 5px 10px 0; background: var(--cr-bg); }
     .cr-table th.cr-gin, .cr-table td.cr-gin { background: color-mix(in srgb, var(--cr-accent) 5%, var(--cr-bg)); }
     .cr-table th.cr-gout, .cr-table td.cr-gout { background: color-mix(in srgb, var(--cr-good) 6%, var(--cr-bg)); }
     .cr-groups-row th.cr-gin { color: var(--cr-accent); } .cr-groups-row th.cr-gout { color: var(--cr-good); }

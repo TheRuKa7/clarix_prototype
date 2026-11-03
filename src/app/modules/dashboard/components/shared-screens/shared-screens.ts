@@ -178,7 +178,7 @@ const CSS = `
   .s-actions { display: flex; gap: 6px; justify-content: flex-end; }
   .s-cov { font-size: 12.5px; }
   .s-cov small { display: inline; color: var(--s-muted); }
-  .s-check { width: 20px; height: 20px; cursor: pointer; accent-color: var(--s-accent); }
+  .s-check { width: 24px; height: 24px; cursor: pointer; accent-color: var(--s-accent); }
   td.s-caller { white-space: normal; min-width: 200px; max-width: 300px; }
   .s-cut { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
   .s-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 8px 12px; font-size: 13px; color: var(--s-muted); }
@@ -391,7 +391,7 @@ export class CampaignPageComponent {
     .nc-retry label { display: inline-flex; gap: 6px; align-items: center; }
     .nc-times { display: flex; flex-wrap: wrap; gap: 6px; }
     .nc-times span { background: var(--s-soft); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
-    .nc-times small { color: var(--s-muted); }
+    .nc-times small { color: var(--s-muted); font-size: 12px; }
     .nc-sheet { display: grid; gap: 8px; }
     .nc-grid { width: 100%; border-collapse: collapse; font-size: 12.5px; }
     .nc-grid th, .nc-grid td { border-bottom: 1px solid var(--s-line); padding: 4px 6px; text-align: left; vertical-align: top; }
@@ -399,7 +399,16 @@ export class CampaignPageComponent {
     .nc-grid input { width: 148px; max-width: 28vw; border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12.5px; background: var(--s-bg); color: var(--s-text); }
     .nc-grid tr.bad input { border-color: #fca5a5; }
     .nc-grid tr.dummy { background: var(--s-soft); }
-    .nc-pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11px; border: 1px solid var(--s-line); text-transform: capitalize; }
+    .nc-pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11.5px; border: 1px solid var(--s-line); white-space: nowrap; }
+    .nc-more { border-top: 1px solid var(--s-line); padding-top: 8px; display: grid; gap: 8px; }
+    .nc-more summary { cursor: pointer; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; list-style: none; }
+    .nc-more summary::-webkit-details-marker { display: none; }
+    .nc-more summary::before { content: '▸'; color: var(--s-muted); width: 12px; transition: transform .15s; }
+    .nc-more[open] summary::before { transform: rotate(90deg); }
+    .nc-st { white-space: nowrap; } .nc-rm { margin-left: 6px; padding: 2px 8px; font-size: 12px; }
+    .s input[type=file], :host input[type=file] { font: inherit; font-size: 13px; color: var(--s-muted); }
+    :host input[type=file]::file-selector-button { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 6px 12px; margin-right: 10px; font: inherit; font-size: 13px; cursor: pointer; }
+    .nc-more summary .s-muted { font-weight: 400; font-size: 12.5px; }
     .nc-pill.bad { color: #b91c1c; } .nc-pill.warn, .nc-pill.fixed { color: #a16207; } .nc-pill.ok { color: var(--s-good); } .nc-pill.dummy, .nc-pill.test { color: var(--s-muted); }
     .nc-hint td { color: var(--s-muted); font-size: 12px; }
     .nc-brand { display: grid; gap: 8px; border-top: 1px solid var(--s-line); padding-top: 8px; }
@@ -453,16 +462,15 @@ export class CampaignPageComponent {
                 <span class="s-muted">Every column is here. Edit a cell and it is checked again. A sample row is included so the format is obvious: it is never called, and one click removes it. Bad rows are not called — fix them here, or continue without them.</span>
                 <div class="s-scroll">
                   <table class="nc-grid">
-                    <thead><tr><th>Row</th><th>Status</th>@for (c of columns(); track c.key) { <th>{{ c.label }}</th> }<th></th></tr></thead>
+                    <thead><tr><th>Row</th><th>Status</th>@for (c of columns(); track c.key) { <th>{{ c.label }}</th> }</tr></thead>
                     <tbody>
                       @for (r of sheet(); track $index; let i = $index) {
                         <tr [class]="r.status">
-                          <td>{{ r.is_dummy ? 'Sample' : r.row }}</td>
-                          <td><span class="nc-pill" [class]="'nc-pill ' + r.status">{{ r.status === 'dummy' ? 'Not called' : r.status }}</span></td>
-                          @for (c of columns(); track c.key) { <td><input [value]="r.cells[c.key] || ''" (change)="editCell(i, c.key, $any($event.target).value)" [attr.aria-label]="c.label + ', row ' + r.row"></td> }
-                          <td>@if (r.is_dummy) { <button type="button" class="s-btn" (click)="removeRow(i)">Remove</button> }</td>
+                          <td>{{ r.is_dummy ? '—' : r.row }}</td>
+                          <td class="nc-st"><span class="nc-pill" [class]="'nc-pill ' + r.status">{{ statusWord(r.status) }}</span>@if (r.is_dummy) { <button type="button" class="s-btn nc-rm" (click)="removeRow(i)" aria-label="Remove the sample row">Remove</button> }</td>
+                          @for (c of columns(); track c.key) { <td><input [value]="r.cells[c.key] || ''" (change)="editCell(i, c.key, $any($event.target).value)" [attr.aria-label]="c.label + ', ' + (r.is_dummy ? 'sample row' : 'row ' + r.row)"></td> }
                         </tr>
-                        @if (r.issue) { <tr class="nc-hint"><td [attr.colspan]="columns().length + 3"><b>{{ r.issue }}</b> {{ r.best_practice }}</td></tr> }
+                        @if (r.issue && !r.is_dummy) { <tr class="nc-hint"><td [attr.colspan]="columns().length + 2"><b>{{ r.issue }}</b> {{ r.best_practice }}</td></tr> }
                       }
                     </tbody>
                   </table>
@@ -471,9 +479,9 @@ export class CampaignPageComponent {
             }
             @if (k.missing.includes('contact_phone')) { <p class="s-note nc-stop" role="alert"><b>contact_phone is missing.</b> Every row needs the supplier's 10-digit mobile: it is the number called and it ties each call to the row's POs and items. Add the column and upload again.</p> }
             @if (missingOther(k).length) { <p class="s-note">Columns not found in the file: {{ missingOther(k).join(', ') }}. Rows that need them will fail the check.</p> }
-            @if (k.fixed?.length) { <b class="s-muted">Fixed for you ({{ k.fixed!.length }} row{{ k.fixed!.length === 1 ? '' : 's' }}): these will be called</b><div class="nc-fixed">@for (f of k.fixed!; track f.row) { <span>Row {{ f.row }}: {{ f.notes.join('; ') }}</span> }</div> }
-            @if (k.warnings?.length) { <b class="s-muted">Check these ({{ k.warnings!.length }}): they will still be called</b><div class="nc-warn">@for (w of k.warnings!; track w.row) { <span>Row {{ w.row }}: {{ w.notes.join('; ') }}</span> }</div> }
-            @if (k.bad.length) { <b class="s-muted">Not called ({{ k.bad.length }})</b><div class="nc-bad">@for (b of k.bad; track b.row) { <span>Row {{ b.row }}: {{ b.reason }}</span> }</div> }
+            @if (!sheet().length && k.fixed?.length) { <b class="s-muted">Fixed for you ({{ k.fixed!.length }} row{{ k.fixed!.length === 1 ? '' : 's' }}): these will be called</b><div class="nc-fixed">@for (f of k.fixed!; track f.row) { <span>Row {{ f.row }}: {{ f.notes.join('; ') }}</span> }</div> }
+            @if (!sheet().length && k.warnings?.length) { <b class="s-muted">Check these ({{ k.warnings!.length }}): they will still be called</b><div class="nc-warn">@for (w of k.warnings!; track w.row) { <span>Row {{ w.row }}: {{ w.notes.join('; ') }}</span> }</div> }
+            @if (!sheet().length && k.bad.length) { <b class="s-muted">Not called ({{ k.bad.length }})</b><div class="nc-bad">@for (b of k.bad; track b.row) { <span>Row {{ b.row }}: {{ b.reason }}</span> }</div> }
             @if (k.note; as n) {
               <div class="nc-note">
                 <div class="nc-note-head"><span class="nc-ai">AI NOTE</span><b>{{ n.title }}</b><span class="s-muted">{{ n.summary }}</span><span class="s-grow"></span>
@@ -503,18 +511,23 @@ export class CampaignPageComponent {
                 <label><input type="checkbox" [checked]="ru.skip_sunday" (change)="setRule({ skip_sunday: $any($event.target).checked })"> No Sundays</label>
                 <label><input type="checkbox" [checked]="ru.avoid_saturday !== false" (change)="setRule({ avoid_saturday: $any($event.target).checked })"> No Saturdays</label>
                 <label><input type="checkbox" [checked]="ru.avoid_lunch" (change)="setRule({ avoid_lunch: $any($event.target).checked })"> Not 1–2 pm</label>
-                <label><input type="checkbox" [checked]="ru.prefer_prime_slots !== false" (change)="setRule({ prefer_prime_slots: $any($event.target).checked })"> Prefer 10–12 and 2–5</label>
               </div>
-              <div class="nc-retry-row">
-                <label><input type="checkbox" [checked]="ru.voicemail_drop !== false" (change)="setRule({ voicemail_drop: $any($event.target).checked })"> Leave a 15s voicemail</label>
-                <label><input type="checkbox" [checked]="ru.retry_silent !== false" (change)="setRule({ retry_silent: $any($event.target).checked })"> Retry silent calls</label>
-                <label><input type="checkbox" [checked]="ru.retry_system_issue !== false" (change)="setRule({ retry_system_issue: $any($event.target).checked })"> Retry system issues</label>
-                <label><input type="checkbox" [checked]="ru.retry_cut_short !== false" (change)="setRule({ retry_cut_short: $any($event.target).checked })"> Retry calls under 15s</label>
-                <label><input type="checkbox" [checked]="ru.callback_cta !== false" (change)="setRule({ callback_cta: $any($event.target).checked })"> Callback link in messages</label>
-                <label>Unblock request after <input type="number" min="1" max="5" [value]="ru.dnd_unblock_after ?? 2" (change)="setRule({ dnd_unblock_after: +$any($event.target).value })" aria-label="DND results before the unblock request"> DND results</label>
-              </div>
-              <div class="nc-brand">
-                <div class="nc-note-head"><b>Branded caller ID</b><span class="s-muted">One number for this workspace, registered with the providers you tick. The contact card goes out with unblock and callback messages.</span></div>
+              <!-- The rest is set once per agent and rarely changed: folded so the start step stays short. -->
+              <details class="nc-more">
+                <summary>More retry options <span class="s-muted">voicemail, silent and short calls, DND unblock, best hours</span></summary>
+                <div class="nc-retry-row">
+                  <label><input type="checkbox" [checked]="ru.prefer_prime_slots !== false" (change)="setRule({ prefer_prime_slots: $any($event.target).checked })"> Prefer 10–12 and 2–5</label>
+                  <label><input type="checkbox" [checked]="ru.voicemail_drop !== false" (change)="setRule({ voicemail_drop: $any($event.target).checked })"> Leave a 15s voicemail</label>
+                  <label><input type="checkbox" [checked]="ru.retry_silent !== false" (change)="setRule({ retry_silent: $any($event.target).checked })"> Retry silent calls</label>
+                  <label><input type="checkbox" [checked]="ru.retry_system_issue !== false" (change)="setRule({ retry_system_issue: $any($event.target).checked })"> Retry system issues</label>
+                  <label><input type="checkbox" [checked]="ru.retry_cut_short !== false" (change)="setRule({ retry_cut_short: $any($event.target).checked })"> Retry calls under 15s</label>
+                  <label><input type="checkbox" [checked]="ru.callback_cta !== false" (change)="setRule({ callback_cta: $any($event.target).checked })"> Callback link in messages</label>
+                  <label>Unblock request after <input type="number" min="1" max="5" [value]="ru.dnd_unblock_after ?? 2" (change)="setRule({ dnd_unblock_after: +$any($event.target).value })" aria-label="DND results before the unblock request"> DND results</label>
+                </div>
+              </details>
+              <details class="nc-more nc-brand">
+                <summary>Branded caller ID <span class="s-muted">{{ ru.branded_name ? ru.branded_name + (ru.caller_id ? ' · ' + ru.caller_id : '') : 'Not set' }}</span></summary>
+                <span class="s-muted">One number for this workspace, registered with the providers you tick. The contact card goes out with unblock and callback messages.</span>
                 <div class="nc-retry-row">
                   <label>Name on the phone <input type="text" [value]="ru.branded_name || ''" (change)="setRule({ branded_name: $any($event.target).value })" aria-label="Branded name"></label>
                   <label>Number <input type="text" [value]="ru.caller_id || ''" (change)="setRule({ caller_id: $any($event.target).value })" aria-label="Caller ID"></label>
@@ -524,7 +537,7 @@ export class CampaignPageComponent {
                   <label><input type="checkbox" [checked]="(ru.branding_providers || []).includes(p.key)" (change)="toggleBrand(p.key, $any($event.target).checked)"> {{ p.label }}<small>{{ p.sub }}</small></label>
                 }
                 <div><button type="button" class="s-btn" (click)="downloadVcard(ru)">Download contact card (.vcf)</button></div>
-              </div>
+              </details>
               @if (preview(); as pv) {
                 <span class="s-muted">Gaps: {{ gapsText() }} minutes, inside {{ pv.name }}'s calling rules ({{ pv.tz_label }}). The agent's hours can only narrow the country's. Missed at {{ pv.start.slice(11) }} on {{ dayName(pv.start) }}, it is called again at:</span>
                 <div class="nc-times">@for (t of pv.times; track $index) { <span [title]="t.moved.length ? 'Moved: ' + t.moved.join('; ') : ''">{{ dayName(t.local) }} {{ t.local.slice(11) }}@if (t.moved.length) { <small> · {{ t.moved[0] }}</small> }</span> } @empty { <span>No retries</span> }</div>
@@ -596,6 +609,8 @@ export class NewCampaignComponent {
     }); });
   }
   private pickRule(): void { const a = this.agent(); const r = this.rules.find((x) => x.agent === a)?.rule; this.rule.set(a && r ? { ...r } : null); }
+  /** A sheet row's status in words: the check's codes (ok, warn…) mean nothing to a reader. */
+  protected statusWord(s: string): string { return ({ ok: 'Will be called', fixed: 'Fixed', warn: 'Check', bad: 'Not called', test: 'Test number', dummy: 'Sample' } as Record<string, string>)[s] ?? s; }
   protected missingOther(k: { missing: string[] }): string[] { return k.missing.filter((m) => m !== 'contact_phone'); }
   protected setRule(part: Partial<RetryRule>): void { const r = this.rule(); if (r) this.rule.set({ ...r, ...part }); }
   /** The retry preview, from the server: the sheet's main country, else the workspace's home country. */
@@ -824,23 +839,25 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
     .cr2-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
     .cr2-days { display: grid; gap: 6px; }
     .cr2-day { display: grid; grid-template-columns: 130px 1fr; gap: 10px; align-items: center; font-size: 13px; }
-    .cr2-day label { display: inline-flex; gap: 8px; align-items: center; }
+    .cr2-day label { display: inline-flex; gap: 8px; align-items: center; min-height: 28px; cursor: pointer; }
+    .cr2-day input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--s-accent); cursor: pointer; }
     .cr2-day input[type=time], .cr2-add input, .cr2 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
     .cr2-day input:disabled { opacity: .45; }
     .cr2-hols { display: flex; flex-wrap: wrap; gap: 6px; }
     .cr2-hol { display: inline-flex; gap: 6px; align-items: center; background: var(--s-soft); border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12.5px; }
-    .cr2-hol button { border: 0; background: none; cursor: pointer; color: var(--s-muted); min-width: 22px; min-height: 22px; border-radius: 50%; }
+    .cr2-hol button { border: 0; background: none; cursor: pointer; color: var(--s-muted); min-width: 26px; min-height: 26px; border-radius: 50%; }
+    .cr2-hol button:hover { background: var(--s-line); color: var(--s-text); }
     .cr2-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .cr2-law { font-size: 13px; }
     .cr2-times { display: grid; gap: 4px; font-size: 13px; }
-    .cr2-times small { color: var(--s-muted); }
+    .cr2-times small { color: var(--s-muted); font-size: 12px; }
     .cr2-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
     h3 { margin: 0; font-size: 14px; }
     @media (max-width: 900px) { .cr2-grid { grid-template-columns: minmax(0, 1fr); } .cr2-day { grid-template-columns: 1fr; } }
   `],
   template: `
     <div class="cr2">
-      <div><h2 class="s-title">Calling rules</h2>
+      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Calling rules</h2>
         <p class="s-sub">When numbers in each country may be called. Every first call, retry and callback is moved into these hours, skipping rest days and holidays. Numbers on a country's do-not-call register are stopped or flagged when a sheet is uploaded. An agent's own retry hours can only narrow these.</p></div>
       <div class="cr2-tabs" role="tablist" aria-label="Country">
         @for (c of list(); track c.code) { <button type="button" role="tab" class="cr2-tab" [class.on]="code() === c.code" [attr.aria-selected]="code() === c.code" (click)="pick(c.code)">{{ c.name }}@if (c.edited) { <i title="Changed from the country's defaults"></i> }</button> }
@@ -888,6 +905,8 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 })
 export class CallingRulesComponent {
   readonly source = input.required<CallingRulesSource>();
+  /** True when this is the whole page (Clarix Admin), not a tab in Settings: the title is then the page heading. */
+  readonly page = input(false);
   protected readonly DAY_NAMES = DAY_NAMES;
   protected readonly list = signal<CountryRule[]>([]);
   protected readonly code = signal('IN');
@@ -1204,7 +1223,7 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
           <span class="grow"></span>
           @if (step() > 0) { <button type="button" class="s-btn" (click)="go(step() - 1)">Back</button> }
           @if (step() < STEPS.length - 1) { <button type="button" class="s-btn" (click)="go(step() + 1)" [disabled]="step() === 0 && !test()?.ok && !v.saved">Next</button> }
-          <button type="button" class="s-btn" (click)="runNow()" [disabled]="busy() || !v.saved || dirty()" [title]="dirty() ? 'Save first' : 'Read the rows now and start the calls'">Run now</button>
+          <button type="button" class="s-btn" (click)="runNow()" [disabled]="busy() || !v.saved || dirty()" [title]="!v.saved || dirty() ? 'Save the setup first' : 'Read the rows now and start the calls'">Run now</button>
           <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="busy() || !dirty() || !d().connector">{{ busy() ? 'Saving…' : d().schedule.on ? 'Save and turn on' : 'Save' }}</button>
         </div>
       } @else { <p class="s-empty">{{ msg() || 'Loading the data source…' }}</p> }
