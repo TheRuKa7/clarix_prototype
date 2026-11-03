@@ -46,7 +46,7 @@ export class ReportService {
   private reportParams(sc: { from: string; to: string; agents: string[]; includeTests: boolean }): HttpParams {
     return new HttpParams().set('from', sc.from).set('to', sc.to).set('agents', sc.agents.join(',')).set('include_tests', sc.includeTests ? '1' : '').set('campaign', (sc as any).campaign || '').set('unit', (sc as any).unit || '');
   }
-  callingReport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, f?: { q: string; cols: Record<string, string | string[]> }): Observable<any> { return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.report, { params: this.logParams(this.reportParams(sc), f) })); }
+  callingReport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, f?: { q: string; cols: Record<string, string | string[] | { op: string; a?: string; b?: string }> }): Observable<any> { return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.report, { params: this.logParams(this.reportParams(sc), f) })); }
   // ── Calling report extras: column values, tasks, custom stats, follow-up checklist ──
   reportColumnValues(sc: any, box: string, f: any, column: string, search = ''): Observable<any[]> { return this.data(this.http.get<{ data: any }>(`${ENDPOINTS.callingReport.report}/calls/values`, { params: this.logParams(this.reportParams(sc).set('box', box).set('column', column).set('vq', search), f) })).pipe(map((d: any) => d.values ?? [])); }
   reportTasks(sc: any): Observable<any> { return this.data(this.http.get<{ data: any }>(`${ENDPOINTS.callingReport.report}/tasks`, { params: this.reportParams(sc) })); }
@@ -76,8 +76,8 @@ export class ReportService {
     const fd = new FormData(); fd.append('file', file, file.name);
     return this.data(this.http.post<{ data: any }>(`${this.callingBase}/new-campaign/${step}`, fd, { params: new HttpParams().set('agent', agent) }));
   }
-  private logParams(p: HttpParams, f?: { q: string; cols: Record<string, string | string[]> }): HttpParams { return f ? p.set('q', f.q).set('filters', Object.keys(f.cols).length ? JSON.stringify(f.cols) : '') : p; }
-  callingReportCalls(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string, skip: number, limit: number, f?: { q: string; cols: Record<string, string | string[]> }): Observable<any> {
+  private logParams(p: HttpParams, f?: { q: string; cols: Record<string, string | string[] | { op: string; a?: string; b?: string }> }): HttpParams { return f ? p.set('q', f.q).set('filters', Object.keys(f.cols).length ? JSON.stringify(f.cols) : '') : p; }
+  callingReportCalls(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string, skip: number, limit: number, f?: { q: string; cols: Record<string, string | string[] | { op: string; a?: string; b?: string }> }): Observable<any> {
     return this.data(this.http.get<{ data: any }>(ENDPOINTS.callingReport.calls, { params: this.logParams(this.reportParams(sc).set('box', box).set('skip', skip).set('limit', limit), f) }));
   }
   reportTestNumbers(): Observable<string[]> { return this.data(this.http.get<{ data: { numbers: string[] } }>(ENDPOINTS.callingReport.testNumbers)).pipe(map((d) => d.numbers ?? [])); }
@@ -89,7 +89,7 @@ export class ReportService {
   changeCallOutcome(id: string, status_reason: string, note: string): Observable<any> { return this.data(this.http.patch<{ data: any }>(`${ENDPOINTS.callingReport.report}/call/${encodeURIComponent(id)}/outcome`, { status_reason, note })); }
   /** A file under the API (the recording), with the signed-in headers. */
   blobAt(path: string): Observable<Blob> { return this.http.get(ENDPOINTS.callingReport.report.replace('/api/v1/reports/calling', '') + path, { responseType: 'blob' }); }
-  callingReportExport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string, f?: { q: string; cols: Record<string, string | string[]> }): Observable<Blob> {
+  callingReportExport(sc: { from: string; to: string; agents: string[]; includeTests: boolean }, box: string, f?: { q: string; cols: Record<string, string | string[] | { op: string; a?: string; b?: string }> }): Observable<Blob> {
     return this.http.get(ENDPOINTS.callingReport.exportXlsx, { params: this.logParams(this.reportParams(sc).set('box', box), f), responseType: 'blob' });
   }
 

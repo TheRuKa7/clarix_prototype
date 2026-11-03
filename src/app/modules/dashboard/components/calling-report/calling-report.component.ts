@@ -42,7 +42,20 @@ export interface ReportCallRow {
 /** A campaign's own columns: its sheet's (in:key) and the agent's answers (out:key). */
 export interface CampaignColumns { inputs: { key: string; label: string }[]; answers: { key: string; label: string }[] }
 /** The call log's search box and per-column "contains" filters; the export uses the same. */
-export interface LogFilters { q: string; cols: Record<string, string | string[]> }
+/** A simple condition on one column, e.g. Duration longer than 90 (seconds) or Call date on or after 2026-10-25. */
+export interface ColCondition { op: string; a?: string; b?: string }
+export type ColFilter = string | string[] | ColCondition;
+export interface LogFilters { q: string; cols: Record<string, ColFilter> }
+const isCond = (v: ColFilter | undefined): v is ColCondition => !!v && typeof v === 'object' && !Array.isArray(v);
+/** True when a column filter actually filters. */
+const isOn = (v: ColFilter | undefined): boolean => (Array.isArray(v) ? v.length > 0 : isCond(v) ? !!v.op : !!v?.trim());
+const COND_OPS: Record<string, [string, string][]> = {
+  number: [['gt', 'Greater than'], ['lt', 'Less than'], ['between', 'Between'], ['eq', 'Equals'], ['blank', 'Is blank'], ['notblank', 'Is not blank']],
+  duration: [['gt', 'Longer than'], ['lt', 'Shorter than'], ['between', 'Between'], ['blank', 'Is blank'], ['notblank', 'Is not blank']],
+  date: [['on', 'On'], ['after', 'On or after'], ['before', 'On or before'], ['range', 'Between'], ['blank', 'Is blank'], ['notblank', 'Is not blank']],
+  text: [['contains', 'Contains'], ['not', 'Does not contain'], ['is', 'Is exactly'], ['starts', 'Starts with'], ['blank', 'Is blank'], ['notblank', 'Is not blank']],
+};
+const SYMBOL: Record<string, string> = { gt: '>', lt: '<', eq: '=', after: '≥', before: '≤', on: 'on', contains: 'contains', not: 'does not contain', is: 'is', starts: 'starts with' };
 export interface CallingReportSource {
   /** The report; the call log's search and column filters, when given, scope it too. */
   report(scope: ReportScope, filters?: LogFilters): Promise<CallingReport>;
@@ -71,7 +84,9 @@ const PERIODS: { key: PeriodKey; label: string }[] = [{ key: 'all', label: 'All 
 /** Names for boxes that are not a funnel line, so an open list can be restored from the address. */
 const BOX_LABELS: Record<string, string> = { uploaded: 'Uploaded', planned: 'Planned', picked_up: 'Picked up', answered: 'Answered', success: 'Success', in_progress: 'Not finished',
   goal_yes: 'Goal reached: Yes', goal_no: 'Goal reached: No', goal_na: 'Goal reached: N/A' };
-const PAGE = 10;
+/** Rows per page in the call log; the reader picks one. */
+const PAGE_SIZES = [10, 20, 50, 100];
+const DEFAULT_PERIOD: PeriodKey = 'all';
 /** The call log's columns, in order: key, header. */
 /** Column filters that scope the whole page (funnel and call status); the others narrow only the calls list. */
 const SCOPE_COLUMNS = new Set(['agent', 'campaign', 'uploaded_by']);
@@ -90,9 +105,12 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         <!-- Period: one dropdown. Presets, or a custom range applied with one click. A campaign page has no period. -->
         @if (!campaign()) {
           <div class="cr-drop">
-            <button type="button" class="cr-select" [attr.aria-expanded]="periodOpen()" aria-haspopup="dialog" (click)="place($event, false, 300); togglePeriod()">
-              <span class="cr-select-k">Period</span><b>{{ periodName() }}</b><span class="cr-select-v">{{ rangeText() }}</span><i aria-hidden="true">▾</i>
-            </button>
+            <span class="cr-selwrap" [class.on]="period() !== DEFAULT_PERIOD">
+              <button type="button" class="cr-select" [attr.aria-expanded]="periodOpen()" aria-haspopup="dialog" (click)="place($event, false, 300); togglePeriod()">
+                <span class="cr-select-k">Period</span><b>{{ periodName() }}</b><span class="cr-select-v">{{ rangeText() }}</span><i aria-hidden="true">▾</i>
+              </button>
+              @if (period() !== DEFAULT_PERIOD) { <button type="button" class="cr-selx" (click)="setPeriod(DEFAULT_PERIOD)" aria-label="Clear the period: show all time" title="Clear: all time">✕</button> }
+            </span>
             @if (periodOpen()) {
               <div class="cr-menu cr-period-menu" role="dialog" aria-label="Period" [style]="menuStyle()">
                 @for (p of PERIODS; track p.key) { @if (p.key !== 'custom') {
@@ -111,9 +129,12 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         <!-- Count in: calls, or one of the agent's metrics (set up in the agent). Only on a campaign page: one agent's sheet. -->
         @if (mode() === 'dashboard' && campaign() && (r()?.units_available?.length || 0) > 0) {
           <div class="cr-drop">
-            <button type="button" class="cr-select" [attr.aria-expanded]="countOpen()" aria-haspopup="listbox" (click)="place($event, false, 300); countOpen.set(!countOpen())">
-              <span class="cr-select-k">Count in</span><b>{{ unitName() || 'Calls' }}</b><i aria-hidden="true">▾</i>
-            </button>
+            <span class="cr-selwrap" [class.on]="!!unit()">
+              <button type="button" class="cr-select" [attr.aria-expanded]="countOpen()" aria-haspopup="listbox" (click)="place($event, false, 300); countOpen.set(!countOpen())">
+                <span class="cr-select-k">Count in</span><b>{{ unitName() || 'Calls' }}</b><i aria-hidden="true">▾</i>
+              </button>
+              @if (unit()) { <button type="button" class="cr-selx" (click)="setUnit('')" aria-label="Count in calls" title="Clear: count calls">✕</button> }
+            </span>
             @if (countOpen()) {
               <div class="cr-menu" role="listbox" aria-label="Count in" [style]="menuStyle()">
                 <button type="button" role="option" class="cr-choice" [class.on]="!unit()" [attr.aria-selected]="!unit()" (click)="setUnit(''); countOpen.set(false)"><span>Calls</span><small>one per uploaded row</small></button>
@@ -125,7 +146,6 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             }
           </div>
         }
-        @if (!campaign() && period() !== '30d') { <button type="button" class="cr-link" (click)="clearAll()">Back to last 30 days</button> }
         <span class="cr-grow"></span>
         <span class="cr-meta">{{ campaign() ? 'Whole campaign · ' : '' }}{{ tzLabel() }}</span>
         <div class="cr-drop">
@@ -158,8 +178,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         <div class="cr-card">
           <div class="cr-funnel" role="list" aria-label="Funnel">
             @for (s of steps(); track s.key; let last = $last) {
-              <button type="button" role="listitem" class="cr-step" [class.on]="box()?.key === s.key" [class.good]="s.key === 'success'" (click)="open(s.key, s.label)">
-                <span>{{ s.label }}</span><b>{{ num(s.count) }}</b><small>{{ s.note }}</small>
+              <button type="button" role="listitem" class="cr-step" [class.on]="box()?.key === s.key" [attr.aria-pressed]="box()?.key === s.key" [class.good]="s.key === 'success'" (click)="open(s.key, s.label)">
+                <span>{{ s.label }}@if (box()?.key === s.key) { <em class="cr-tick" aria-label="Showing these calls">✓</em> }</span><b>{{ num(s.count) }}</b><small>{{ s.note }}</small>
               </button>
               @if (!last) { <i class="cr-arrow" aria-hidden="true">›</i> }
             }
@@ -174,9 +194,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             @for (g of groups(); track g.key) {
               @if (g.count || g.always) {
                 <div class="cr-group">
-                  <button type="button" class="cr-ghead" [class.on]="box()?.key === g.key" (click)="open(g.key, g.label)"><i [style.background]="g.color"></i>{{ g.label }} <b>{{ num(g.count) }}</b><small>{{ pct(g.share) }}</small></button>
+                  <button type="button" class="cr-ghead" [class.on]="box()?.key === g.key" [attr.aria-pressed]="box()?.key === g.key" (click)="open(g.key, g.label)"><i [style.background]="g.color"></i>{{ g.label }} <b>{{ num(g.count) }}</b><small>{{ pct(g.share) }}</small></button>
                   @for (l of g.lines; track l.key) {
-                    <button type="button" class="cr-chip" [class.on]="box()?.key === l.key" [class.zero]="!l.count" (click)="open(l.key, l.label)">{{ l.label }} <b>{{ num(l.count) }}</b><small>{{ pct(l.share) }}</small></button>
+                    <button type="button" class="cr-chip" [class.on]="box()?.key === l.key" [attr.aria-pressed]="box()?.key === l.key" [class.zero]="!l.count" (click)="open(l.key, l.label)">{{ l.label }} <b>{{ num(l.count) }}</b><small>{{ pct(l.share) }}</small></button>
                   }
                 </div>
               }
@@ -190,10 +210,10 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         <div class="cr-card cr-log">
           <div class="cr-log-head">
             <b>{{ campaign() ? 'Uploaded rows' : 'Calls' }}</b>
-            @if (box(); as bx) { <span class="cr-fchip">{{ bx.label }}<button type="button" (click)="close()" aria-label="Show every call">✕</button></span> }
+            @if (box(); as bx) { <span class="cr-fchip on">Showing: {{ bx.label }}<button type="button" (click)="close()" aria-label="Show every call" title="Clear: show every call">✕</button></span> }
             <span class="cr-muted">{{ num(drillTotal()) }} {{ campaign() ? 'row' : 'call' }}{{ drillTotal() === 1 ? '' : 's' }}</span>
             <input class="cr-search" type="search" [placeholder]="campaign() ? 'Search names, POs, items…' : 'Search every column'" [value]="search()" (input)="setSearch($any($event.target).value)" aria-label="Search calls">
-            @if (logFiltered()) { <button type="button" class="cr-link" (click)="clearLogFilters()">Clear column filters</button> }
+            @if (logFiltered()) { <span class="cr-fchip on">{{ activeFilterCount() }} filter{{ activeFilterCount() === 1 ? '' : 's' }}<button type="button" (click)="clearLogFilters()" aria-label="Clear the search and column filters" title="Clear filters">✕</button></span> }
             <span class="cr-grow"></span>
             @if (source().openCallLogs && mode() === 'dashboard') { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
             <button type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
@@ -205,14 +225,25 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
                 @if (campaign() && (colsIn().length || colsOut().length)) {
                   <tr class="cr-groups-row"><th [attr.colspan]="2">Contact</th><th [attr.colspan]="2">Call</th>@if (colsIn().length) { <th class="cr-gin" [attr.colspan]="colsIn().length">From the sheet</th> }@if (colsOut().length) { <th class="cr-gout" [attr.colspan]="colsOut().length">Agent captured</th> }<th [attr.colspan]="5"></th></tr>
                 }
-                <tr>@for (col of cols(); track col[0]) { <th [class.cr-gin]="col[0].startsWith('in:')" [class.cr-gout]="col[0].startsWith('out:')">{{ col[1] }}</th> }</tr>
-                <tr class="cr-frow">@for (col of cols(); track col[0]) {
-                  <th>
-                    <!-- Like Excel: one dropdown per column with a search box, Select all, and the values to tick; Enter keeps rows containing the text. -->
-                    <div class="cr-drop">
-                      <button type="button" class="cr-pick" [class.on]="filterLabel(col[0]) !== 'All'" [attr.aria-expanded]="pickOpen() === col[0]" [attr.aria-label]="'Filter ' + col[1] + ': ' + filterLabel(col[0])" (click)="place($event, false, 300); openPick(col[0])">{{ filterLabel(col[0]) }} ▾</button>
+                <tr>@for (col of cols(); track col[0]) {
+                  <th [class.cr-gin]="col[0].startsWith('in:')" [class.cr-gout]="col[0].startsWith('out:')">
+                    <!-- Like Excel: the column name with a filter button on its right; the button shows how many values are picked. -->
+                    <div class="cr-drop cr-th">
+                      <span class="cr-th-l">{{ col[1] }}</span>
+                      <button type="button" class="cr-pick" [class.on]="filterCount(col[0]) !== ''" [attr.aria-expanded]="pickOpen() === col[0]" [attr.aria-label]="'Filter ' + col[1] + ': ' + filterLabel(col[0])" [title]="'Filter: ' + filterLabel(col[0])" (click)="place($event, false, 300); openPick(col[0])"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z" fill="currentColor"/></svg>@if (filterCount(col[0])) { <b>{{ filterCount(col[0]) }}</b> }</button>
                       @if (pickOpen() === col[0]) {
                         <div class="cr-menu cr-pick-menu" role="dialog" [attr.aria-label]="'Filter ' + col[1]" [style]="menuStyle()">
+                          <form class="cr-cond" (submit)="$event.preventDefault(); applyCond(col[0])">
+                            <select (change)="condOp.set($any($event.target).value)" [attr.aria-label]="'Condition for ' + col[1]">@for (o of condOps(col[0]); track o[0]) { <option [value]="o[0]" [selected]="o[0] === condOp()">{{ o[1] }}</option> }</select>
+                            @if (condOp() !== 'blank' && condOp() !== 'notblank') {
+                              <span class="cr-cond-in">
+                                <input [type]="kindOf(col[0]) === 'date' ? 'date' : 'text'" [placeholder]="condHint(col[0])" [value]="condA()" (input)="condA.set($any($event.target).value)" aria-label="Value">
+                                @if (condOp() === 'between' || condOp() === 'range') { <span>and</span><input [type]="kindOf(col[0]) === 'date' ? 'date' : 'text'" [placeholder]="condHint(col[0])" [value]="condB()" (input)="condB.set($any($event.target).value)" aria-label="Second value"> }
+                              </span>
+                            }
+                            <button type="submit" class="cr-btn" [disabled]="!condReady()">Apply</button>
+                          </form>
+                          @if (condText(col[0])) { <div class="cr-contains-on">{{ col[1] }} {{ condText(col[0]) }} <button type="button" (click)="setPicked(col[0], [])" aria-label="Remove this condition">✕</button></div> }
                           <input class="cr-pick-search" type="search" [placeholder]="'Search ' + col[1].toLowerCase()" [value]="pickSearch()" (input)="searchPick(col[0], $any($event.target).value)" (keydown.enter)="applyContains(col[0])" [attr.aria-label]="'Search ' + col[1]">
                           @if (textFilter(col[0])) { <div class="cr-contains-on">Rows containing "{{ textFilter(col[0]) }}" <button type="button" (click)="setPicked(col[0], [])" aria-label="Remove this filter">✕</button></div> }
                           @if (pickSearch().trim()) { <button type="button" class="cr-contains" (click)="applyContains(col[0])">Keep rows containing "{{ pickSearch().trim() }}" <small>Enter</small></button> }
@@ -244,9 +275,11 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           </div>
           @if (drillRows().length) {
             <div class="cr-pager">
+              <label class="cr-size">Rows per page <select [value]="pageSize()" (change)="setPageSize(+$any($event.target).value)">@for (n of PAGE_SIZES; track n) { <option [value]="n" [selected]="n === pageSize()">{{ n }}</option> }</select></label>
+              <span class="cr-grow"></span>
               <button type="button" class="cr-btn" [disabled]="drillPage() === 0" (click)="page(-1)">Newer</button>
-              <span>{{ drillPage() * PAGE + 1 }}–{{ drillPage() * PAGE + drillRows().length }} of {{ num(drillTotal()) }}</span>
-              <button type="button" class="cr-btn" [disabled]="(drillPage() + 1) * PAGE >= drillTotal()" (click)="page(1)">Older</button>
+              <span>{{ drillPage() * pageSize() + 1 }}–{{ drillPage() * pageSize() + drillRows().length }} of {{ num(drillTotal()) }}</span>
+              <button type="button" class="cr-btn" [disabled]="(drillPage() + 1) * pageSize() >= drillTotal()" (click)="page(1)">Older</button>
             </div>
           } @else { <p class="cr-empty cr-pad">{{ logFiltered() ? 'Nothing matches these filters.' : campaign() ? 'No rows here.' : 'No calls here in this period.' }}</p> }
         </div>
@@ -276,6 +309,11 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-drop { position: relative; }
     .cr-select { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--cr-line); background: var(--cr-bg); color: var(--cr-text); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
     .cr-select:hover { background: var(--cr-soft); }
+    .cr-selwrap { display: inline-flex; align-items: stretch; }
+    .cr-selwrap.on .cr-select { border-color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 8%, var(--cr-bg)); border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    .cr-selwrap.on .cr-select b { color: var(--cr-accent); }
+    .cr-selx { border: 1px solid var(--cr-accent); border-left: 0; border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--cr-accent) 8%, var(--cr-bg)); color: var(--cr-accent); padding: 0 9px; cursor: pointer; font-size: 12px; }
+    .cr-selx:hover { background: color-mix(in srgb, var(--cr-accent) 18%, var(--cr-bg)); }
     .cr-select-k { color: var(--cr-muted); font-size: 12px; }
     .cr-select-v { color: var(--cr-muted); font-size: 12px; }
     .cr-select i { font-style: normal; color: var(--cr-muted); font-size: 11px; }
@@ -295,7 +333,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-funnel { display: flex; align-items: stretch; gap: 4px; }
     .cr-step { flex: 1; text-align: left; border: 1px solid transparent; border-radius: 10px; background: none; padding: 6px 10px; display: grid; gap: 1px; cursor: pointer; font: inherit; color: inherit; }
     .cr-step:hover { background: var(--cr-soft); }
-    .cr-step.on { border-color: var(--cr-accent); }
+    .cr-step.on { border: 2px solid var(--cr-accent); padding: 5px 9px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--cr-accent) 15%, transparent); }
+    .cr-tick { font-style: normal; margin-left: 6px; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--cr-accent); color: #fff; font-size: 10px; vertical-align: 1px; }
     .cr-step span { font-size: 12.5px; color: var(--cr-muted); }
     .cr-step b { font-size: 26px; line-height: 1.15; font-variant-numeric: tabular-nums; }
     .cr-step small { font-size: 12px; color: var(--cr-muted); }
@@ -315,18 +354,29 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-ghead b, .cr-chip b { margin-left: auto; font-variant-numeric: tabular-nums; }
     .cr-ghead small, .cr-chip small { color: var(--cr-muted); font-weight: 400; width: 36px; text-align: right; font-size: 12px; }
     .cr-ghead:hover, .cr-chip:hover { background: var(--cr-soft); }
-    .cr-ghead.on, .cr-chip.on { border-color: var(--cr-accent); }
+    .cr-ghead.on, .cr-chip.on { border-color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 10%, var(--cr-bg)); box-shadow: inset 3px 0 0 var(--cr-accent); }
     .cr-chip.zero { color: var(--cr-muted); }
     .cr-log { padding: 12px 0 8px; gap: 8px; }
     .cr-log-head { display: flex; align-items: center; gap: 10px; padding: 0 16px; }
     .cr-fchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--cr-soft); border: 1px solid var(--cr-line); font-size: 12.5px; }
+    .cr-fchip.on { border-color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 10%, var(--cr-bg)); color: var(--cr-accent); font-weight: 500; }
+    .cr-fchip.on button { color: var(--cr-accent); }
+    .cr-fchip button:hover { background: color-mix(in srgb, var(--cr-accent) 18%, transparent); }
     .cr-fchip button { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
     .cr-scroll { overflow-x: auto; }
     .cr-search { border: 1px solid var(--cr-line); border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); width: 220px; }
-    .cr-frow th { background: var(--cr-bg); padding: 4px 6px; }
-    .cr-pick { width: 100%; min-width: 72px; text-align: left; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-muted); cursor: pointer; white-space: nowrap; }
-    .cr-pick.on { border-color: var(--cr-accent); color: var(--cr-accent); }
+    .cr-th { display: flex; align-items: center; gap: 6px; }
+    .cr-th-l { flex: 1; }
+    .cr-pick { display: inline-flex; align-items: center; gap: 3px; flex: none; min-width: 24px; height: 22px; justify-content: center; border: 1px solid transparent; border-radius: 6px; padding: 0 5px; font: inherit; font-size: 11px; background: transparent; color: var(--cr-muted); cursor: pointer; opacity: .6; }
+    .cr-pick:hover, .cr-pick:focus-visible, .cr-pick[aria-expanded=true] { opacity: 1; border-color: var(--cr-line); background: var(--cr-bg); }
+    .cr-pick.on { opacity: 1; color: var(--cr-accent); border-color: color-mix(in srgb, var(--cr-accent) 40%, transparent); background: color-mix(in srgb, var(--cr-accent) 8%, var(--cr-bg)); }
+    .cr-pick b { font-weight: 600; min-width: 14px; height: 14px; line-height: 14px; border-radius: 7px; padding: 0 3px; background: var(--cr-accent); color: #fff; font-size: 10px; }
     .cr-pick-menu { font-weight: 400; text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 4px; padding: 8px; color: var(--cr-text); }
+    .cr-cond { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--cr-line); }
+    .cr-cond select, .cr-cond input { border: 1px solid var(--cr-line); border-radius: 6px; padding: 5px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); min-width: 0; }
+    .cr-cond select { flex: 1 1 120px; }
+    .cr-cond-in { display: flex; align-items: center; gap: 4px; flex: 1 1 100%; font-size: 12px; color: var(--cr-muted); order: 3; }
+    .cr-cond-in input { flex: 1; width: 0; }
     .cr-pick-search { border: 1px solid var(--cr-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); width: 100%; box-sizing: border-box; }
     .cr-opt-list { overflow: auto; min-height: 40px; flex: 1 1 auto; border-top: 1px solid var(--cr-line); padding-top: 4px; }
     .cr-opt-all { font-weight: 600; }
@@ -346,7 +396,6 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-tasks button:hover { background: var(--cr-soft); }
     .cr-tasks b { font-size: 16px; }
     .cr-tasks small { color: var(--cr-muted); font-size: 12px; }
-    .cr-frow input[type=text] { width: 100%; min-width: 64px; box-sizing: border-box; border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
     .cr-table th { text-align: left; font-weight: 500; color: var(--cr-muted); background: var(--cr-soft); padding: 7px 10px; white-space: nowrap; }
     .cr-table td { padding: 7px 10px; border-top: 1px solid var(--cr-line); white-space: nowrap; }
@@ -357,6 +406,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-table .cut.wide { max-width: 260px; }
     .cr-st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
     .cr-st::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #a8a29e); }
+    .cr-size { display: inline-flex; align-items: center; gap: 6px; }
+    .cr-size select { border: 1px solid var(--cr-line); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 13px; background: var(--cr-bg); color: var(--cr-text); }
     .cr-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--cr-muted); padding: 0 16px; }
     .cr-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--cr-soft); font-size: 13px; }
     .cr-note.bad { color: var(--cr-bad); }
@@ -388,8 +439,13 @@ export class CallingReportComponent {
   private readonly host = inject(ElementRef<HTMLElement>);
 
   protected readonly PERIODS = PERIODS;
-  protected readonly PAGE = PAGE;
-  protected readonly period = signal<PeriodKey>('30d');
+  protected readonly PAGE_SIZES = PAGE_SIZES;
+  protected readonly DEFAULT_PERIOD = DEFAULT_PERIOD;
+  protected readonly pageSize = signal(10);
+  protected setPageSize(n: number): void { this.pageSize.set(PAGE_SIZES.includes(n) ? n : 10); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }
+  /** Column filters in force, plus the search box. */
+  protected activeFilterCount(): number { return Object.values(this.colFilters()).filter((v) => isOn(v)).length + (this.search().trim() ? 1 : 0); }
+  protected readonly period = signal<PeriodKey>(DEFAULT_PERIOD);
   protected readonly customFrom = signal('');
   protected readonly customTo = signal('');
   protected readonly agents = signal<string[]>([]);
@@ -412,7 +468,11 @@ export class CallingReportComponent {
   protected readonly drillPage = signal(0);
   protected readonly LOG_COLUMNS = LOG_COLUMNS;
   protected readonly search = signal('');
-  protected readonly colFilters = signal<Record<string, string | string[]>>({});
+  protected readonly colFilters = signal<Record<string, ColFilter>>({});
+  /** The open column menu's condition: operator and one or two values. */
+  protected readonly condOp = signal('');
+  protected readonly condA = signal('');
+  protected readonly condB = signal('');
   protected readonly colsIn = computed(() => (this.campaign() ? this.columns()?.inputs ?? [] : []));
   protected readonly colsOut = computed(() => (this.campaign() ? this.columns()?.answers ?? [] : []));
   /** The log's columns. A campaign: who, how the call ended, what the sheet said, what the agent captured, then the call details. */
@@ -432,8 +492,8 @@ export class CallingReportComponent {
   /** The filters in force, in words, for the note above the funnel. */
   protected readonly filterSummary = computed(() => {
     const name = (k: string) => this.cols().find((c) => c[0] === k)?.[1] ?? LOG_COLUMNS.find((c) => c[0] === k)?.[1] ?? k;
-    const parts = Object.entries(this.colFilters()).filter(([k, v]) => SCOPE_COLUMNS.has(k) && (Array.isArray(v) ? v.length : v.trim()))
-      .map(([k, v]) => `${name(k)}: ${Array.isArray(v) ? (v.length > 2 ? `${v.length} values` : v.map((x) => x || '(blank)').join(', ')) : `"${v}"`}`);
+    const parts = Object.entries(this.colFilters()).filter(([k, v]) => SCOPE_COLUMNS.has(k) && isOn(v))
+      .map(([k, v]) => `${name(k)}: ${Array.isArray(v) ? (v.length > 2 ? `${v.length} values` : v.map((x) => x || '(blank)').join(', ')) : isCond(v) ? this.condText(k) : `"${v}"`}`);
     return parts.join(' · ');
   });
   protected readonly pickOpen = signal('');
@@ -446,7 +506,7 @@ export class CallingReportComponent {
   protected readonly tasks = signal<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number } | null>(null);
   protected readonly statsOpen = signal(false);
   protected readonly statsDraft = signal<{ agent: string; label: string; fields: { field: string; label: string }[]; stats: { field: string; label: string }[] }[]>([]);
-  protected readonly logFiltered = computed(() => !!this.search().trim() || Object.values(this.colFilters()).some((v) => (Array.isArray(v) ? v.length : v.trim())));
+  protected readonly logFiltered = computed(() => !!this.search().trim() || Object.values(this.colFilters()).some((v) => isOn(v)));
   private typing: ReturnType<typeof setTimeout> | null = null;
   private seq = 0;
 
@@ -486,10 +546,10 @@ export class CallingReportComponent {
     return `${tz === 'Asia/Kolkata' ? 'IST' : tz} (UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')})`;
   });
 
-  /** The filters in force, each with its own remove button (the default, Last 30 days for all agents without tests, shows none). */
+  /** The filters in force, each with its own remove button (the default, All time for all agents without tests, shows none). */
   protected readonly chips = computed(() => {
     const out: { key: string; label: string }[] = [];
-    if (this.period() !== '30d') out.push({ key: 'period', label: this.period() === 'custom' ? `Dates: ${this.periodLabel().replace(/ \(custom range\)$/, '')}` : `Period: ${PERIODS.find((x) => x.key === this.period())?.label}` });
+    if (this.period() !== DEFAULT_PERIOD) out.push({ key: 'period', label: this.period() === 'custom' ? `Dates: ${this.periodLabel().replace(/ \(custom range\)$/, '')}` : `Period: ${PERIODS.find((x) => x.key === this.period())?.label}` });
     for (const k of this.agents()) out.push({ key: `agent:${k}`, label: `Agent: ${this.r()?.agents.find((a) => a.key === k)?.label ?? k}` });
     if (this.includeTests()) out.push({ key: 'tests', label: 'Test calls included' });
     return out;
@@ -562,15 +622,15 @@ export class CallingReportComponent {
     if (p === 'custom') { this.customFrom.set(q.get('from') || ''); this.customTo.set(q.get('to') || ''); }
     this.agents.set((q.get('agents') || '').split(',').filter(Boolean));
     this.includeTests.set(q.get('tests') === '1');
-    this.unit.set(q.get('unit') || '');
+    this.unit.set(q.get('unit') || ''); const n = Number(q.get('rows')); if (PAGE_SIZES.includes(n)) this.pageSize.set(n);
     this.search.set(q.get('q') || ''); try { this.colFilters.set(JSON.parse(q.get('f') || '{}')); } catch { /* ignore bad filters */ }
     const box = q.get('box'); if (box) { this.box.set({ key: box, label: BOX_LABELS[box] || box }); this.drillPage.set(Math.max(0, Number(q.get('page') || 0))); }
   }
   private writeUrl(): void {
     const b = this.box(); const custom = this.period() === 'custom';
     this.router.navigate([], { relativeTo: this.route, replaceUrl: true, queryParamsHandling: 'merge', queryParams: {
-      period: this.period() === '30d' ? null : this.period(), from: custom ? this.customFrom() || null : null, to: custom ? this.customTo() || null : null,
-      agents: this.agents().join(',') || null, tests: this.includeTests() ? '1' : null, unit: this.unit() || null, box: b?.key ?? null, page: this.drillPage() || null, q: this.search().trim() || null, f: this.logFilters().cols && Object.keys(this.logFilters().cols).length ? JSON.stringify(this.logFilters().cols) : null } });
+      period: this.period() === DEFAULT_PERIOD ? null : this.period(), from: custom ? this.customFrom() || null : null, to: custom ? this.customTo() || null : null,
+      agents: this.agents().join(',') || null, tests: this.includeTests() ? '1' : null, unit: this.unit() || null, box: b?.key ?? null, page: this.drillPage() || null, rows: this.pageSize() === 10 ? null : this.pageSize(), q: this.search().trim() || null, f: this.logFilters().cols && Object.keys(this.logFilters().cols).length ? JSON.stringify(this.logFilters().cols) : null } });
   }
 
   async load(): Promise<void> {
@@ -598,11 +658,11 @@ export class CallingReportComponent {
   protected toggleAgent(k: string): void { const a = this.agents(); this.agents.set(a.includes(k) ? a.filter((x) => x !== k) : [...a, k]); this.emit(); }
   protected setTests(on: boolean): void { this.includeTests.set(on); this.emit(); }
   protected removeChip(key: string): void {
-    if (key === 'period') { this.period.set('30d'); this.emit(); }
+    if (key === 'period') { this.period.set(DEFAULT_PERIOD); this.emit(); }
     else if (key === 'tests') this.setTests(false);
     else if (key.startsWith('agent:')) this.setAgents(this.agents().filter((a) => a !== key.slice(6)));
   }
-  protected clearAll(): void { this.period.set('30d'); this.agents.set([]); this.includeTests.set(false); this.emit(); }
+  protected clearAll(): void { this.period.set(DEFAULT_PERIOD); this.agents.set([]); this.includeTests.set(false); this.emit(); }
 
   protected openTests(): void { this.testDraft.set(this.testNumbers().join('\n')); this.testsOpen.set(!this.testsOpen()); this.agentsOpen.set(false); this.shareOpen.set(false); }
   protected async saveTests(): Promise<void> {
@@ -620,7 +680,7 @@ export class CallingReportComponent {
   protected close(): void { this.box.set(null); this.drillPage.set(0); this.writeUrl(); this.fetchBox(); }
   protected page(step: number): void { this.drillPage.set(Math.max(0, this.drillPage() + step)); this.writeUrl(); this.fetchBox(); }
   private async fetchBox(): Promise<void> {
-    try { const res = await this.source().calls(this.scope(), this.box()?.key ?? 'uploaded', this.drillPage() * PAGE, PAGE, this.logFilters()); this.drillRows.set(res.rows); this.drillTotal.set(res.total); }
+    try { const res = await this.source().calls(this.scope(), this.box()?.key ?? 'uploaded', this.drillPage() * this.pageSize(), this.pageSize(), this.logFilters()); this.drillRows.set(res.rows); this.drillTotal.set(res.total); }
     catch { this.drillRows.set([]); this.drillTotal.set(0); this.error.set('Could not load these calls.'); }
   }
 
@@ -677,16 +737,16 @@ export class CallingReportComponent {
 
   protected async exportBox(): Promise<void> { const k = this.box()?.key ?? 'uploaded'; this.save(await this.source().exportXlsx(this.scope(), k, this.logFilters()), `${this.fileName()}-${k}${this.logFiltered() ? '-filtered' : ''}.xlsx`); }
   /** Non-empty column filters and the search box, as sent to the call log and the export. */
-  private logFilters(): LogFilters { return { q: this.search().trim(), cols: Object.fromEntries(Object.entries(this.colFilters()).filter(([, v]) => (Array.isArray(v) ? v.length : v.trim()))) }; }
+  private logFilters(): LogFilters { return { q: this.search().trim(), cols: Object.fromEntries(Object.entries(this.colFilters()).filter(([, v]) => isOn(v))) }; }
   /** The Agent, Campaign and Uploaded-by picks: they scope the funnel and call status too. */
   private scopeFilters(): LogFilters { const f = this.logFilters(); return { q: '', cols: Object.fromEntries(Object.entries(f.cols).filter(([k]) => SCOPE_COLUMNS.has(k))) }; }
-  protected readonly pageFiltered = computed(() => Object.entries(this.colFilters()).some(([k, v]) => SCOPE_COLUMNS.has(k) && (Array.isArray(v) ? v.length : v.trim())));
+  protected readonly pageFiltered = computed(() => Object.entries(this.colFilters()).some(([k, v]) => SCOPE_COLUMNS.has(k) && isOn(v)));
   protected textFilter(k: string): string { const v = this.colFilters()[k]; return typeof v === 'string' ? v : ''; }
   protected picked(k: string): string[] { const v = this.colFilters()[k]; return Array.isArray(v) ? v : []; }
   /** Opens a column's value list, counted with the other filters on, with its search box focused. */
   protected async openPick(k: string): Promise<void> {
     if (this.pickOpen() === k) { this.pickOpen.set(''); return; }
-    this.pickOpen.set(k); this.pickSearch.set(''); this.pickValues.set([]);
+    this.pickOpen.set(k); this.pickSearch.set(''); this.pickValues.set([]); this.resetCond(k);
     setTimeout(() => (this.host.nativeElement.querySelector('.cr-pick-search') as HTMLInputElement | null)?.focus(), 0);
     await this.loadValues(k);
   }
@@ -699,7 +759,7 @@ export class CallingReportComponent {
   /** Enter: keep the rows whose cell contains the typed text. */
   protected applyContains(k: string): void { const t = this.pickSearch().trim(); if (!t) return; this.colFilters.set({ ...this.colFilters(), [k]: t }); this.refilter(); }
   /** No filter means every value is ticked, as in Excel. */
-  protected isTicked(k: string, v: string): boolean { const f = this.colFilters()[k]; return Array.isArray(f) ? f.includes(v) : !f; }
+  protected isTicked(k: string, v: string): boolean { const f = this.colFilters()[k]; return Array.isArray(f) ? f.includes(v) : !f || isCond(f); }
   protected allShownPicked(k: string): boolean { const f = this.colFilters()[k]; if (!f || (Array.isArray(f) && !f.length)) return true; return Array.isArray(f) && this.pickValues().length > 0 && this.pickValues().every((x) => f.includes(x.value)); }
   /** Select all: with no search, back to every row; with a search, tick (or untick) every value found. */
   protected toggleAllShown(k: string): void {
@@ -709,11 +769,54 @@ export class CallingReportComponent {
     this.setPicked(k, all ? cur.filter((v) => !shown.includes(v)) : [...new Set([...cur, ...shown])]);
   }
   /** The column header's dropdown label. */
-  protected filterLabel(k: string): string { const f = this.colFilters()[k]; if (typeof f === 'string' && f.trim()) return `"${f.trim()}"`; if (Array.isArray(f) && f.length) return f.length === 1 && f[0] === '\u0000none' ? 'None' : f.length === 1 ? (f[0] || '(Blanks)') : `${f.length} selected`; return 'All'; }
+  /** What a column holds, for its list of conditions. Sheet and answer columns count as numbers when every value is one. */
+  protected kindOf(k: string): 'number' | 'duration' | 'date' | 'text' {
+    if (k === 'duration_seconds') return 'duration';
+    if (k === 'call_date' || k === 'callback_at') return 'date';
+    if (k === 'retries') return 'number';
+    if ((k.startsWith('in:') || k.startsWith('out:')) && this.pickOpen() === k) {
+      const vs = this.pickValues().map((x) => x.value.replace(/,/g, '').trim()).filter(Boolean);
+      if (vs.length && vs.every((v) => !Number.isNaN(Number(v)))) return 'number';
+    }
+    return 'text';
+  }
+  protected condOps(k: string): [string, string][] { return COND_OPS[this.kindOf(k)]; }
+  protected condHint(k: string): string { const t = this.kindOf(k); return t === 'duration' ? 'm:ss or minutes' : t === 'number' ? 'Number' : 'Text'; }
+  private resetCond(k: string): void {
+    const f = this.colFilters()[k]; const c = isCond(f) ? f : null;
+    this.condOp.set(c?.op || COND_OPS[this.kindOf(k)][0][0]); this.condA.set(c?.a ? this.fromRaw(k, c.a) : ''); this.condB.set(c?.b ? this.fromRaw(k, c.b) : '');
+  }
+  /** Duration typed as "1:30" or "2" (minutes) becomes seconds; numbers lose their commas; text and dates go as typed. */
+  private toRaw(k: string, v: string): string {
+    const t = v.trim(); const kind = this.kindOf(k); if (!t || kind === 'text' || kind === 'date') return t;
+    if (kind === 'number') return t.replace(/,/g, '');
+    const m = t.match(/^(\d+):(\d{1,2})$/); return m ? String(+m[1] * 60 + +m[2]) : String(Math.round(Number(t) * 60));
+  }
+  private fromRaw(k: string, v: string): string { if (this.kindOf(k) !== 'duration') return v; const n = Number(v); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; }
+  protected condReady(): boolean {
+    const op = this.condOp(); const k = this.pickOpen(); if (op === 'blank' || op === 'notblank') return true;
+    const ok = (v: string) => { const raw = this.toRaw(k, v); if (!raw) return false; const kind = this.kindOf(k); return kind === 'number' || kind === 'duration' ? !Number.isNaN(Number(raw)) : true; };
+    return ok(this.condA()) && ((op !== 'between' && op !== 'range') || ok(this.condB()));
+  }
+  protected applyCond(k: string): void {
+    if (!this.condReady()) return; const op = this.condOp(); const two = op === 'between' || op === 'range'; const none = op === 'blank' || op === 'notblank';
+    const c: ColCondition = { op, ...(none ? {} : { a: this.toRaw(k, this.condA()) }), ...(two ? { b: this.toRaw(k, this.condB()) } : {}) };
+    this.colFilters.set({ ...this.colFilters(), [k]: c }); this.refilter();
+  }
+  /** "> 1:30", "between 2 and 5", "is blank": the column's condition in words, '' when there is none. */
+  protected condText(k: string): string {
+    const f = this.colFilters()[k]; if (!isCond(f) || !f.op) return '';
+    if (f.op === 'blank') return 'is blank'; if (f.op === 'notblank') return 'is not blank';
+    const v = (x?: string) => (x == null ? '' : this.kindOf(k) === 'duration' ? this.fromRaw(k, x) : this.kindOf(k) === 'text' ? `"${x}"` : x);
+    return f.op === 'between' || f.op === 'range' ? `between ${v(f.a)} and ${v(f.b)}` : `${SYMBOL[f.op] || f.op} ${v(f.a)}`;
+  }
+  /** The count on a column's filter button: values picked, 1 for "containing" text, '' when not filtered. */
+  protected filterCount(k: string): string { const f = this.colFilters()[k]; if (typeof f === 'string' || isCond(f)) return isOn(f) ? '1' : ''; if (Array.isArray(f) && f.length) return f.length === 1 && f[0] === '\u0000none' ? '0' : String(f.length); return ''; }
+  protected filterLabel(k: string): string { const f = this.colFilters()[k]; if (isCond(f)) return this.condText(k) || 'All'; if (typeof f === 'string' && f.trim()) return `"${f.trim()}"`; if (Array.isArray(f) && f.length) return f.length === 1 && f[0] === '\u0000none' ? 'None' : f.length === 1 ? (f[0] || '(Blanks)') : `${f.length} selected`; return 'All'; }
   protected setPicked(k: string, vals: string[]): void { this.colFilters.set({ ...this.colFilters(), [k]: vals }); this.refilter(); }
   /** Unticking a value while every value is shown ticks all the others, as in Excel. */
   protected togglePicked(k: string, v: string): void {
-    const f = this.colFilters()[k]; const all = !f || (Array.isArray(f) && !f.length) || typeof f === 'string';
+    const f = this.colFilters()[k]; const all = !f || (Array.isArray(f) && !f.length) || typeof f === 'string' || isCond(f);
     if (all) { this.setPicked(k, this.pickValues().map((x) => x.value).filter((x) => x !== v)); return; }
     const cur = this.picked(k).filter((x) => x !== '\u0000none'); this.setPicked(k, cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]);
   }

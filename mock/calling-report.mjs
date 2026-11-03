@@ -279,13 +279,35 @@ function cellText(r, k, timeZone = 'Asia/Kolkata') {
   return String(v ?? '');
 }
 /** Search across every column, and "contains" per column (case does not matter). The export uses the same filters. */
+/** A number to compare: duration in seconds, else the cell as a number (NaN when it is not one). */
+function numOf(r, k) {
+  if (k === 'duration_seconds') return r[k] == null ? NaN : Number(r[k]);
+  const t = cellText(r, k).replace(/,/g, '').trim(); return t === '' ? NaN : Number(t);
+}
+/** One column condition { op, a, b }. Numbers: gt, lt, eq, between. Dates (yyyy-mm-dd, IST): on, after, before, range. Text: contains, not, is, starts. Any: blank, notblank. */
+export function matchCondition(r, k, { op, a, b } = {}) {
+  if (op === 'blank') return !cellText(r, k).trim();
+  if (op === 'notblank') return !!cellText(r, k).trim();
+  if (['gt', 'lt', 'eq', 'between'].includes(op)) {
+    const n = numOf(r, k); const x = Number(a), y = Number(b); if (Number.isNaN(n)) return false;
+    return op === 'gt' ? n > x : op === 'lt' ? n < x : op === 'eq' ? n === x : n >= Math.min(x, y) && n <= Math.max(x, y);
+  }
+  if (['on', 'after', 'before', 'range'].includes(op)) {
+    if (!r[k]) return false; const day = new Date(r[k]).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const lo = a < b ? a : b, hi = a < b ? b : a;
+    return op === 'on' ? day === a : op === 'after' ? day >= a : op === 'before' ? day <= a : day >= lo && day <= hi;
+  }
+  const t = cellText(r, k).toLowerCase(), s = String(a ?? '').trim().toLowerCase();
+  return op === 'not' ? !t.includes(s) : op === 'is' ? t === s : op === 'starts' ? t.startsWith(s) : t.includes(s);
+}
+const isCond = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 export function filterRows(rows, { q = '', cols = {} } = {}) {
-  const term = String(q || '').trim().toLowerCase(); const want = Object.entries(cols || {}).filter(([, v]) => (Array.isArray(v) ? v.length : String(v ?? '').trim()));
+  const term = String(q || '').trim().toLowerCase(); const want = Object.entries(cols || {}).filter(([, v]) => (Array.isArray(v) ? v.length : isCond(v) ? !!v.op : String(v ?? '').trim()));
   if (!term && !want.length) return rows;
   const hit = (r) => COLUMNS.some(([k]) => cellText(r, k).toLowerCase().includes(term))
     || [...Object.values(r.inputs || {}), ...Object.values(r.answers || {})].some((v) => String(v ?? '').toLowerCase().includes(term));
   return rows.filter((r) => (!term || hit(r))
-    && want.every(([k, v]) => (Array.isArray(v) ? v.includes(cellText(r, k)) : cellText(r, k).toLowerCase().includes(String(v).trim().toLowerCase()))));
+    && want.every(([k, v]) => (Array.isArray(v) ? v.includes(cellText(r, k)) : isCond(v) ? matchCondition(r, k, v) : cellText(r, k).toLowerCase().includes(String(v).trim().toLowerCase()))));
 }
 /** Reads ?q= and ?filters= (JSON of column: text) from a request. */
 export function logFilters(q) { let cols = {}; try { cols = JSON.parse(q.get('filters') || '{}'); } catch { /* ignore bad filters */ } return { q: q.get('q') || '', cols }; }
