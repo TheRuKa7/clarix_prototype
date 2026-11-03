@@ -41,7 +41,10 @@ export class ClarixNewCampaignPage {
   readonly source: NewCampaignSource = {
     agents: () => firstValueFrom(this.r.newCampaignAgents()), template: (a) => firstValueFrom(this.r.newCampaignTemplate(a)),
     check: (a, f) => firstValueFrom(this.r.newCampaignPost('check', a, f)), start: (a, f) => firstValueFrom(this.r.newCampaignPost('start', a, f)),
+    dataSource: (a) => firstValueFrom(this.r.dsLoad(a)), previewSource: (a, s) => firstValueFrom(this.r.dsPreview(a, s)), runSource: (a) => firstValueFrom(this.r.dsRun(a)),
+    editSource: (a) => this.router.navigate(['/workflows/build/agents'], { queryParams: { templateId: a } }),
     tips: (a) => firstValueFrom(this.r.newCampaignTips(a)), retryRules: () => firstValueFrom(this.r.retryRules()), saveRetryRule: (a, r) => firstValueFrom(this.r.saveRetryRule(a, r)), retryPreview: (r, c) => firstValueFrom(this.r.retryPreview(r, c)),
+    recheck: (a, rows) => firstValueFrom(this.r.newCampaignRecheck(a, rows)),
     opened: (id) => this.router.navigate(['/workflows/campaigns', id]), cancel: () => this.router.navigate(['/workflows/campaigns']),
   };
 }

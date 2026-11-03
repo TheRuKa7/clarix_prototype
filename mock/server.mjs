@@ -19,9 +19,10 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
+import { CONNECTORS, testConnection, suggestMapping, buildCalls, markCalled, callsCsv, writeBackPreview, nextRuns as dsNextRuns, getSetup, saveSetup, defaultSetup, runsOf, addRun, webhookUrl, hasSetup, FILTER_OPS, SOURCE_COLUMNS } from './data-sources.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
   statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns,
-  setAgentMetrics, allCountryRules, setCountryRule, resetCountryRule, registerCheck, countriesOf, retryPreview, checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage } from './calling-report.mjs';
+  setAgentMetrics, allCountryRules, setCountryRule, resetCountryRule, registerCheck, countriesOf, retryPreview, checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage, presentSheet, buildDummyRow, cleanRetryRule } from './calling-report.mjs';
 /** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
 const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
 
@@ -838,7 +839,8 @@ function newCampaignRows(t, form) {
   const rows = data.filter((r) => r.some((v) => String(v ?? '').trim())).map((r, i) => {
     const get = (k) => { const c = col(k); return c >= 0 ? String(r[c] ?? '').trim() : ''; }; const phone = get('contact_phone').replace(/\D/g, '').slice(-10);
     // The upload check fixes what it can (extra commas, stray quotes), warns on a PO listed twice, and stops only rows it cannot call.
-    const check = checkUploadRow(Object.fromEntries((t.contextMappings || []).map((m) => [m.fieldName, get(m.fieldName)]))); const context = check.ctx;
+    const check = checkUploadRow({ contact_name: get('contact_name'), contact_phone: get('contact_phone'), contact_email: get('contact_email'), ...Object.fromEntries((t.contextMappings || []).map((m) => [m.fieldName, get(m.fieldName)])) }); const context = check.ctx;
+    if (check.is_dummy) return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, raw_phone: get('contact_phone'), email: get('contact_email'), context, bad: null, check };
     const missing = (t.contextMappings || []).filter((m) => m.required && !context[m.fieldName]).map((m) => m.fieldName);
     const bad = phone.length !== 10 ? `contact_phone "${get('contact_phone')}" is not a valid number` : missing.length ? `Missing ${missing.join(', ')}` : check.error ? check.error.note : seen.has(phone) ? 'Same phone number as an earlier row' : null; seen.add(phone);
     const reg = bad ? null : registerCheck(get('contact_phone')).hit; const blocked = reg?.action === 'block' ? reg.note : null;
@@ -847,16 +849,39 @@ function newCampaignRows(t, form) {
     if (bad && !check.error) check.error = { kind: phone.length !== 10 ? 'phone' : 'other', field: '', note: bad };
     return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, raw_phone: get('contact_phone'), email: get('contact_email'), context, bad, check };
   });
-  return { rows, matched: keys.filter((k) => col(k) >= 0), missing: keys.filter((k) => col(k) < 0) };
+  return { headers, keys, rows, matched: keys.filter((k) => col(k) >= 0), missing: keys.filter((k) => col(k) < 0) };
+}
+function sheetFor(t, r, filename, injectDummy = true) {
+  const live = r.rows.filter((x) => !x.check?.is_dummy);
+  const bad = live.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad }));
+  const tests = live.filter((x) => !x.bad && TEST_NUMBERS.has(normalisePhone(x.phone))).length;
+  const columns = r.keys.map((k) => ({ key: k, label: k }));
+  const cellOf = (x) => Object.fromEntries(r.keys.map((k) => [k, k === 'contact_name' ? x.name : k === 'contact_phone' ? (x.raw_phone || x.phone) : k === 'contact_email' ? (x.email || '') : String(x.context?.[k] ?? '')]));
+  const items = r.rows.map((x) => ({ row: x.row, is_dummy: !!x.check?.is_dummy, bad: x.check?.is_dummy ? null : x.bad, test: !x.bad && !x.check?.is_dummy && TEST_NUMBERS.has(normalisePhone(x.phone)), check: x.check, cells: cellOf(x) }));
+  if (injectDummy && !items.some((i) => i.is_dummy)) {
+    const cells = buildDummyRow(r.keys);
+    items.unshift({ row: 0, cells, check: checkUploadRow(cells), is_dummy: true, bad: null, test: false });
+  }
+  return { file: filename, rows: live.length, will_dial: live.length - bad.length - tests, calls: live.length - bad.length, bad, tests, dummies: r.rows.length - live.length,
+    matched: r.matched, missing: r.missing, columns, headers: r.headers,
+    fixed: live.filter((x) => x.check?.fixes.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.fixes.map((f) => f.note) })),
+    warnings: live.filter((x) => x.check?.warnings.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.warnings.map((f) => f.note) })),
+    note: uploadNote(t.name, live.map((x) => x.check), live.length), countries: countriesOf(live.map((x) => x.raw_phone || x.phone)),
+    ...presentSheet(items) };
 }
 on('POST', '/api/v1/reports/calling/new-campaign/check', ({ q, req, raw }) => {
   const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent'); const form = multipart(req, raw); if (!form.file?.content) return fail(400, 'Choose a file');
   let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
-  const bad = r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })); const tests = r.rows.filter((x) => !x.bad && TEST_NUMBERS.has(normalisePhone(x.phone))).length;
-  ok({ file: form.file.filename, rows: r.rows.length, will_dial: r.rows.length - bad.length - tests, calls: r.rows.length - bad.length, bad, tests, matched: r.matched, missing: r.missing,
-    fixed: r.rows.filter((x) => x.check?.fixes.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.fixes.map((f) => f.note) })),
-    warnings: r.rows.filter((x) => x.check?.warnings.length && !x.bad).map((x) => ({ row: x.row, notes: x.check.warnings.map((f) => f.note) })),
-    note: uploadNote(t.name, r.rows.map((x) => x.check), r.rows.length), countries: countriesOf(r.rows.map((x) => x.raw_phone || x.phone)) });
+  ok(sheetFor(t, r, form.file.filename));
+});
+on('POST', '/api/v1/reports/calling/new-campaign/recheck', ({ q, body }) => {
+  const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent');
+  const agent = newCampaignAgents().find((x) => x.key === t.id); const keys = agent?.inputs || ['contact_name', 'contact_phone'];
+  const data = Array.isArray(body?.rows) ? body.rows : [];
+  const csv = [keys.join(','), ...data.map((row) => keys.map((k) => { const c = String(row?.cells?.[k] ?? ''); return /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c; }).join(','))].join('\n');
+  const form = { file: { filename: 'edited.csv', content: Buffer.from(csv, 'utf8') } };
+  let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read those rows'); }
+  ok(sheetFor(t, r, 'edited.csv', false));
 });
 // Calling rules per country (Settings): hours by weekday, rest days, holidays, the do-not-call register. Retries obey them.
 on('GET', '/api/v1/reports/calling/calling-rules', () => ok({ countries: allCountryRules() }));
@@ -866,9 +891,7 @@ on('POST', '/api/v1/reports/calling/retry-rules/preview', ({ body }) => ok(retry
 
 on('GET', '/api/v1/reports/calling/new-campaign/tips', ({ q }) => { const t = templates.find((x) => x.id === q.get('agent')); t ? ok(agentTips(t.name, newCampaignAgents().find((x) => x.key === t.id)?.inputs ?? [])) : fail(404, 'Agent not found'); });
 // Retry rules per agent: how often and when a row that was not reached is called again.
-const cleanRule = (b) => { const d = defaultRetryRule(); const r = { ...d, ...(b || {}) };
-  return { schedule: RETRY_SCHEDULES.some((s) => s.key === r.schedule) ? r.schedule : d.schedule, base_minutes: Math.min(1440, Math.max(1, Number(r.base_minutes) || d.base_minutes)),
-    retries: Math.min(10, Math.max(0, Number(r.retries) || 0)), from: /^\d{2}:\d{2}$/.test(r.from) ? r.from : d.from, to: /^\d{2}:\d{2}$/.test(r.to) ? r.to : d.to, skip_sunday: !!r.skip_sunday, avoid_lunch: !!r.avoid_lunch }; };
+const cleanRule = (b) => cleanRetryRule(b);
 on('GET', '/api/v1/reports/calling/retry-rules', () => ok({ schedules: RETRY_SCHEDULES, agents: templates.map((t) => { const rule = retryRuleOf(t.id); return { agent: t.id, label: t.name, rule, gaps: retryGaps(rule) }; }) }));
 on('PUT', '/api/v1/reports/calling/retry-rules/:agent', ({ p, body }) => { if (!templates.some((t) => t.id === p.agent)) return fail(404, 'Agent not found'); const rule = cleanRule(body); retryRules.set(p.agent, rule);
   ok({ agent: p.agent, rule, gaps: retryGaps(rule), example: retryPlan(rule, new Date().toISOString()) }); });
@@ -877,12 +900,39 @@ on('POST', '/api/v1/reports/calling/new-campaign/start', async ({ q, req, raw })
   let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
   const sheet = { id: hex24(), orgId: ORG, templateId: t.id, templateName: t.name, eventType: t.triggerEventTypes?.[0], sourceSystem: 'CSV', originalFilename: form.file.filename, fileUrl: null, uploadedBy: USER,
     total: r.rows.length, triggered: 0, failed: 0, failedRows: r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })), createdAt: nowIso() };
-  const good = r.rows.filter((x) => !x.bad).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
+  const good = r.rows.filter((x) => !x.bad && !x.check?.is_dummy).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
   good.forEach((row) => addExecution({ id: row.primary_id, template: t, batch: sheet, row, status: 'IN_PROGRESS', submittedAt: nowIso(), completedAt: null, duration: null, extracted: null, conv: { callStatus: 'QUEUED', attempts: 0 } }));
   sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; sheets.push(sheet);
   const mine = R; if (good.length) await dispatchToEcho(t, sheet, good); R = mine;
   ok({ campaign_id: sheet.id, dialled: good.length });
 });
+async function dsStart(t, csv, filename) {
+  const form = { file: { filename, content: Buffer.from(csv, 'utf8') } }; const r = newCampaignRows(t, form);
+  const sheet = { id: hex24(), orgId: ORG, templateId: t.id, templateName: t.name, eventType: t.triggerEventTypes?.[0], sourceSystem: 'DATA_SOURCE', originalFilename: filename.replace(/\.csv$/, ''), fileUrl: null, uploadedBy: USER,
+    total: r.rows.length, triggered: 0, failed: 0, failedRows: r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })), createdAt: nowIso() };
+  const good = r.rows.filter((x) => !x.bad && !x.check?.is_dummy).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
+  good.forEach((row) => addExecution({ id: row.primary_id, template: t, batch: sheet, row, status: 'IN_PROGRESS', submittedAt: nowIso(), completedAt: null, duration: null, extracted: null, conv: { callStatus: 'QUEUED', attempts: 0 } }));
+  sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; sheets.push(sheet);
+  const mine = R; if (good.length) await dispatchToEcho(t, sheet, good); R = mine;
+  return { campaign_id: sheet.id, dialled: good.length };
+}
+// ── Agent data sources: connect a system, pick rows, group lines into calls, schedule runs (demo data) ──
+const dsView = (a) => { const inputs = ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)]; const setup = getSetup(a.id, inputs) || defaultSetup(inputs);
+  return { agent: a.id, label: a.name, inputs, outputs: (a.requiredFields || []).map((f) => f.fieldKey), setup, saved: hasSetup(a.id), runs: runsOf(a.id), next_runs: dsNextRuns(setup.schedule),
+    connector_name: (CONNECTORS.find((c) => c.key === setup.connector) || {}).name || '', webhook_url: webhookUrl('https://hooks.clarix.example', a.id), filter_ops: FILTER_OPS, columns: SOURCE_COLUMNS() }; };
+on('GET', '/api/v1/reports/calling/data-sources/catalog', (ctx) => ok({ connectors: CONNECTORS }));
+on('GET', '/api/v1/reports/calling/data-sources/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); a ? ok(dsView(a)) : fail(404, 'Agent not found'); });
+on('PUT', '/api/v1/reports/calling/data-sources/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); saveSetup(a.id, ctx.body || {}); ok(dsView(a)); });
+on('POST', '/api/v1/reports/calling/data-sources/test', (ctx) => ok(testConnection(ctx.body || {})));
+on('POST', '/api/v1/reports/calling/data-sources/:agent/preview', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found');
+  const cfg = ctx.body || {}; const b = buildCalls(a.id, cfg, ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)]); ok({ ...b, total_calls: b.calls.length, calls: b.calls.slice(0, 6), write_back: writeBackPreview(cfg, b.calls), next_runs: dsNextRuns(cfg.schedule) }); });
+on('POST', '/api/v1/reports/calling/data-sources/:agent/run', async (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found');
+  const cfg = getSetup(a.id, ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)]); if (!cfg?.connector) return fail(400, 'Connect a data source first');
+  const b = buildCalls(a.id, cfg, ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)]); if (!b.calls.length) { addRun(a.id, { by: ctx.body?.by || 'Run now', read: b.read, after_filters: b.after_filters, calls: 0, status: 'Nothing to call' }); return ok({ campaign_id: null, dialled: 0, ...b, calls: [] }); }
+  const name = `${(CONNECTORS.find((c) => c.key === cfg.connector) || {}).name || 'Source'} run ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}.csv`;
+  const r = await dsStart(a, callsCsv(['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)], b.calls), name); markCalled(a.id, b.calls);
+  addRun(a.id, { by: ctx.body?.by || 'Run now', read: b.read, after_filters: b.after_filters, calls: b.calls.length, campaign_id: r.campaign_id, status: 'Started' });
+  ok({ ...r, read: b.read, after_filters: b.after_filters, calls: b.calls.length }); });
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
 // Next steps on the call page: the retry plan and WhatsApp / email messages (the demo records them, it does not send).
 on('GET', '/api/v1/reports/calling/call/:id/steps', ({ p }) => { const row = callingRows().find((r) => r.id === p.id); row ? ok(callSteps(row)) : fail(404, 'Call not found'); });

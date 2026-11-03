@@ -484,6 +484,19 @@ export function validDate(v) {
  */
 export function checkUploadRow(ctx) {
   const out = { ...ctx }; const fixes = [], warnings = []; let error = null;
+  const nameVal = String(ctx?.contact_name || ctx?.supplier_name || ctx?.name || '').trim();
+  const phoneDigits = String(ctx?.contact_phone || ctx?.phone || '').replace(/\D/g, '').slice(-10);
+  const is_dummy = /^\[?sample|dummy row|example supplier/i.test(nameVal) || phoneDigits === '9999900000';
+  if (is_dummy) {
+    return {
+      ctx: out,
+      fixes: [],
+      warnings: [],
+      error: null,
+      is_dummy: true,
+      best_practice: 'Sample dummy row for format reference — no call will be placed. You can remove it before uploading or leave it as-is.',
+    };
+  }
   for (const [k, raw] of Object.entries(ctx || {})) {
     if (raw == null || typeof raw === 'object') continue;
     let v = String(raw);
@@ -499,7 +512,48 @@ export function checkUploadRow(ctx) {
     if (isDateKey(k) && v !== '' && !error) { const bad = v.split(LIST_SPLIT).find((p) => p && !validDate(p)); if (bad) error = { kind: 'bad_date', field: k, note: `${k} is not a valid date ("${bad}")` }; }
     out[k] = v;
   }
-  return { ctx: out, fixes, warnings, error };
+  let best_practice = 'Row passes all format checks.';
+  if (error?.kind === 'bad_date') best_practice = `Best practice: Use DD/MM/YYYY with a real calendar date between 2000 and 2100 (e.g. 28/10/2026) in ${error.field}.`;
+  else if (warnings.some((w) => w.kind === 'po_twice')) best_practice = 'Best practice: List each PO number once per row; duplicate POs are automatically deduplicated on the call.';
+  else if (fixes.some((f) => f.kind === 'empty_entry' || f.kind === 'entities')) best_practice = 'Best practice: Put commas only between values (no trailing comma) and paste plain text (Ctrl+Shift+V).';
+  else if (fixes.some((f) => f.kind === 'repeated_counts')) best_practice = 'Best practice: Repeated item counts like "1, 1" across multiple POs are valid and accepted.';
+  return { ctx: out, fixes, warnings, error, is_dummy: false, best_practice };
+}
+/** Builds a sample dummy row for an agent's template columns (never dialled, removable on screen). */
+export function buildDummyRow(inputs = []) {
+  const sample = {
+    contact_name: '[SAMPLE DUMMY ROW — DO NOT CALL]',
+    contact_phone: '9999900000',
+    contact_email: 'sample.vendor@example.com',
+    plant_name: 'Moglix - Hindustan Zinc Account Udaipur',
+    po_count: '2',
+    po_numbers: '2040001, 2040002',
+    item_count: '1, 1',
+    item_details: 'BEARING SKF 6205, VALVE PN16 DN20',
+    po_date: '28/10/2026',
+    target_dispatch_date: '15/11/2026',
+    supplier_id: '100001',
+  };
+  return Object.fromEntries(inputs.map((k) => [k, sample[k] ?? (isDateKey(k) ? '28/10/2026' : /phone|mobile/i.test(k) ? '9999900000' : /count|qty/i.test(k) ? '1' : `Sample ${k}`)]));
+}
+/** On-screen sheet rows: status, the issue, and what to do. Dummy rows are never dialled. */
+export function presentSheet(items) {
+  const sheet_rows = (items || []).map((it) => {
+    const check = it.check || {};
+    const dummy = !!(it.is_dummy || check.is_dummy);
+    let status = 'ok';
+    let issue = '';
+    if (dummy) { status = 'dummy'; issue = 'Sample dummy row — not called. Remove it with one click, or leave it.'; }
+    else if (it.bad) { status = 'bad'; issue = String(it.bad); }
+    else if (it.test) { status = 'test'; issue = 'Internal test number — counted separately, not dialled as a supplier.'; }
+    else if (check.warnings?.length) { status = 'warn'; issue = check.warnings.map((w) => w.note).join('; '); }
+    else if (check.fixes?.length) { status = 'fixed'; issue = check.fixes.map((f) => f.note).join('; '); }
+    const practice = check.best_practice
+      || (status === 'bad' && /phone|number/i.test(issue) ? 'Best practice: use the supplier contact\'s 10-digit mobile, digits only.' : '')
+      || (status === 'bad' ? 'Best practice: fix this value, or continue. This row will not be called.' : 'Row passes all format checks.');
+    return { row: it.row, is_dummy: dummy, cells: it.cells || {}, status, issue, best_practice: practice };
+  });
+  return { sheet_rows };
 }
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /**
@@ -532,9 +586,35 @@ export function agentTips(agentLabel, inputs) {
   return { title: `Before you fill ${agentLabel}'s template`, lines: tips, source: 'From this agent\'s template (demo stand-in for the AI note).' };
 }
 
-// ── Retry rules per agent (ideas doc 2.3) ─────────────────────────────────────
+// ── Retry rules per agent & Branded Caller ID (ideas doc 2.2–2.6) ────────────
 export const RETRY_SCHEDULES = [{ key: 'linear', label: 'Linear' }, { key: 'increasing', label: 'Linear increasing' }, { key: 'doubling', label: 'Doubling' }];
-export const defaultRetryRule = () => ({ schedule: 'increasing', base_minutes: 30, retries: 5, from: '10:00', to: '18:00', skip_sunday: true, avoid_lunch: true });
+export const BRANDING_PROVIDERS = [
+  { key: 'truecaller', label: 'Truecaller Verified Business', badge: 'Green Verified Badge + Logo' },
+  { key: 'cnam', label: 'Operator CNAM / TRAI CNAP', badge: 'Network Caller Name Display' },
+  { key: 'hiya', label: 'Hiya Connect / First Orion (STIR/SHAKEN)', badge: 'Carrier Branded Call + Reason' },
+  { key: 'google_apple', label: 'Google Verified Calls & Apple BusinessCaller ID', badge: 'OS Dialer Brand + Call Reason' },
+];
+export const defaultRetryRule = () => ({
+  schedule: 'increasing',
+  base_minutes: 30,
+  retries: 5,
+  from: '10:00',
+  to: '18:00',
+  skip_sunday: true,
+  avoid_saturday: true,
+  avoid_lunch: true,
+  prefer_prime_slots: true,
+  retry_silent: true,
+  retry_system_issue: true,
+  retry_cut_short: true,
+  voicemail_drop: true,
+  dnd_unblock_after: 2,
+  callback_cta: true,
+  caller_id: '+91 80 4718 2290',
+  branded_name: 'Moglix Procurement',
+  call_reason: 'Purchase Order Follow-up',
+  branding_providers: ['truecaller', 'cnam', 'hiya', 'google_apple'],
+});
 /** agent key -> rule. Unset agents use the default. */
 export const retryRules = new Map();
 export const retryRuleOf = (agent) => ({ ...defaultRetryRule(), ...(retryRules.get(agent) || {}) });
@@ -542,6 +622,49 @@ export const retryRuleOf = (agent) => ({ ...defaultRetryRule(), ...(retryRules.g
 export function retryGaps(rule) {
   const b = Math.max(1, Number(rule.base_minutes) || 30); const n = Math.min(10, Math.max(0, Number(rule.retries) || 0));
   return Array.from({ length: n }, (_, i) => (rule.schedule === 'linear' ? b : rule.schedule === 'doubling' ? b * 2 ** i : b * (i + 1)));
+}
+/** Builds a downloadable .vcf contact card for the workspace's branded caller ID. */
+export function buildVcard(rule = defaultRetryRule()) {
+  const name = rule.branded_name || 'Moglix Procurement';
+  const tel = rule.caller_id || DEMO_CALLER_ID;
+  return [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    `FN:${name}`,
+    `ORG:${name};Supply Chain & Procurement`,
+    `TEL;TYPE=WORK,VOICE:${tel}`,
+    'EMAIL;TYPE=WORK:procurement@moglix.com',
+    `NOTE:Official ${name} Line (Truecaller Business & Operator CNAM Verified) — Save & unblock for PO updates.`,
+    'END:VCARD',
+  ].join('\r\n');
+}
+/** Keeps a saved retry rule inside the product's limits, including branded caller ID. */
+export function cleanRetryRule(b) {
+  const d = defaultRetryRule(); const r = { ...d, ...(b || {}) };
+  const keys = BRANDING_PROVIDERS.map((p) => p.key);
+  const providers = Array.isArray(r.branding_providers) ? [...new Set(r.branding_providers.filter((k) => keys.includes(k)))] : d.branding_providers;
+  const on = (v, fallback) => (v === undefined || v === null ? fallback : !!v);
+  return {
+    schedule: RETRY_SCHEDULES.some((s) => s.key === r.schedule) ? r.schedule : d.schedule,
+    base_minutes: Math.min(1440, Math.max(1, Number(r.base_minutes) || d.base_minutes)),
+    retries: Math.min(10, Math.max(0, Number(r.retries) || 0)),
+    from: /^\d{2}:\d{2}$/.test(r.from) ? r.from : d.from,
+    to: /^\d{2}:\d{2}$/.test(r.to) ? r.to : d.to,
+    skip_sunday: !!r.skip_sunday,
+    avoid_saturday: on(r.avoid_saturday, d.avoid_saturday),
+    avoid_lunch: !!r.avoid_lunch,
+    prefer_prime_slots: on(r.prefer_prime_slots, d.prefer_prime_slots),
+    retry_silent: on(r.retry_silent, d.retry_silent),
+    retry_system_issue: on(r.retry_system_issue, d.retry_system_issue),
+    retry_cut_short: on(r.retry_cut_short, d.retry_cut_short),
+    voicemail_drop: on(r.voicemail_drop, d.voicemail_drop),
+    dnd_unblock_after: Math.min(5, Math.max(1, Number(r.dnd_unblock_after) || d.dnd_unblock_after)),
+    callback_cta: on(r.callback_cta, d.callback_cta),
+    caller_id: String(r.caller_id || d.caller_id).slice(0, 24),
+    branded_name: String(r.branded_name || d.branded_name).slice(0, 60),
+    call_reason: String(r.call_reason || d.call_reason).slice(0, 80),
+    branding_providers: providers.length ? providers : d.branding_providers,
+  };
 }
 // ── Calling rules per country: when a number may be called at all ────────────
 // Presets are a starting point drawn from each country's telemarketing rules; the workspace edits them in Settings.
@@ -609,15 +732,20 @@ export function fitSlot(ms, rule, country) {
   for (let guard = 0; guard < 40; guard += 1) {
     const local = new Date(ms + off); const mins = local.getUTCHours() * 60 + local.getUTCMinutes();
     const dayStart = ms - mins * 60000 - local.getUTCSeconds() * 1000 - local.getUTCMilliseconds(); const next = dayStart + 86400000;
-    const ymd = local.toISOString().slice(0, 10); const d = c.days[local.getUTCDay()];
-    const restDay = !d.on || (rule.skip_sunday && local.getUTCDay() === 0);
-    if (restDay) { moved.add(!d.on ? `not a calling day in ${c.name}` : 'no calls on Sunday (agent rule)'); ms = next; continue; }
+    const ymd = local.toISOString().slice(0, 10); const wd = local.getUTCDay(); const d = c.days[wd];
+    if (!d.on || (rule.skip_sunday && wd === 0)) { moved.add(!d.on ? `not a calling day in ${c.name}` : 'no calls on Sunday (agent rule)'); ms = next; continue; }
+    if (rule.avoid_saturday && wd === 6) { moved.add('avoid Saturday (agent rule)'); ms = next; continue; }
     if (hol.has(ymd)) { moved.add(`holiday: ${c.holidays.find((h) => h.date === ymd).name}`); ms = next; continue; }
     const open = Math.max(hm(d.from), hm(rule.from || '00:00')), close = Math.min(hm(d.to), hm(rule.to || '23:59'));
     if (open >= close) { moved.add('no overlap between the country\'s and the agent\'s hours'); ms = next; continue; }
     if (mins < open) { if (mins > 0 || guard > 0) moved.add('before calling hours'); ms = dayStart + open * 60000; continue; }
     if (mins >= close) { moved.add('after calling hours'); ms = next; continue; }
-    if (rule.avoid_lunch && mins >= 780 && mins < 840 && close > 840) { moved.add('lunch hour (agent rule)'); ms = dayStart + 840 * 60000; continue; }
+    if (rule.avoid_lunch && mins >= 780 && mins < 840 && close > 840) { moved.add('avoid 1–2 pm lunch'); ms = dayStart + 840 * 60000; continue; }
+    if (rule.prefer_prime_slots) {
+      if (mins < 600 && close > 600) { moved.add('preferred slot 10 am–12 pm'); ms = dayStart + 600 * 60000; continue; }
+      if (mins >= 720 && mins < 840 && close > 840) { moved.add('preferred slot 2 pm–5 pm (avoids 1–2 pm)'); ms = dayStart + 840 * 60000; continue; }
+      if (mins >= 1020) { moved.add('preferred slot 10 am–12 pm next working day'); ms = next; continue; }
+    }
     if (moved.has('after calling hours')) moved.delete('before calling hours');
     return { at: ms, moved: [...moved] };
   }
@@ -657,50 +785,143 @@ export const DEMO_CALLER_ID = '+91 80 4718 2290';
 /** Messages sent from call pages: row id -> [{ channel, key, text, at, by }]. The demo does not really send them. */
 export const sentMessages = new Map();
 const poOf = (r) => { const i = r.inputs || {}; const k = Object.keys(i).find(isPoKey) || Object.keys(i).find((x) => /order/i.test(x)); return k ? i[k] : ''; };
+const poDetailsText = (r) => {
+  const i = r.inputs || {};
+  const po = poOf(r) || '2044120';
+  const items = i.item_details || i.items || 'Mechanical / Electrical PO items';
+  const count = i.item_count || i.po_count || '1';
+  const dispatch = i.target_dispatch_date || i.po_date || '';
+  const plant = i.plant_name ? ` (${i.plant_name})` : '';
+  return `PO ${po}${plant} · ${count} item(s): ${items}${dispatch ? ` · Target dispatch: ${dispatch}` : ''}`;
+};
 const firstName = (r) => String(r.caller_name || '').trim().split(/\s+/)[0] || 'there';
 /** Which statuses get another call, and from when. */
-function retryFor(r) {
+function retryFor(r, rule = defaultRetryRule()) {
   const s = r.call_status, why = r.status_reason;
-  if (['Not picked', 'Voicemail', 'No reply', 'System issue'].includes(s)) return { label: s === 'Voicemail' ? 'Voicemail: call again the next working day, same time' : 'Not reached: call again', next_day: s === 'Voicemail' };
-  if (s === 'DND') return { label: 'DND: two more tries, then ask the supplier to unblock the number', cap: 2 };
-  if (s === 'Answered' && ['Agent not given time to speak', 'Left before answering'].includes(why)) return { label: 'Cut short: call again with a shorter opening (name, Moglix, PO number)' };
+  if (s === 'Not picked') return { label: 'No answer: retry on schedule in preferred 10–12 / 2–5 pm slots (avoids 1–2 pm & Saturdays), plus WhatsApp & email with callback CTA' };
+  if (s === 'Voicemail') return { label: 'Voicemail detected: left spoken message with all PO details + sent WhatsApp & email follow-up; retry next working day in prime slot', next_day: true };
+  if (s === 'No reply' && rule.retry_silent !== false) return { label: 'Silent (No reply): 4s audio check ("Hello, can you hear me?") -> 10s hang-up -> automatically enters retry flow', fast_gap: 15 };
+  if (s === 'System issue' && rule.retry_system_issue !== false) return { label: 'System issue: ops alerted with Call ID & SIP code -> automatically enters priority retry flow', fast_gap: 10 };
+  if (s === 'DND') return { label: `DND / blocked: after ${rule.dnd_unblock_after || 2} DND results, send WhatsApp & email with vCard ("${rule.branded_name || 'Moglix Procurement'}") and "Tap to get a call now" CTA`, cap: Number(rule.dnd_unblock_after) || 2 };
+  if (s === 'Answered' && (why === 'Agent not given time to speak' || why === 'Left before answering') && rule.retry_cut_short !== false) {
+    return { label: 'Agent not given time to speak (<15s): goes to retry flow with fast-hook opening ("Hi [Name], Saniya from Moglix about PO [No]: can you accept it today?")' };
+  }
   if (s === 'Answered' && why === 'Success: Partial') return { label: 'Partial: call again for full confirmation if the supplier does not confirm on WhatsApp', cap: 1 };
-  if (s === 'Answered' && why === 'Success: Callback requested') return { label: 'Callback: call at the agreed time (2 hours later if none was saved)', callback: true };
+  if (s === 'Answered' && why === 'Success: Callback requested') return { label: 'Callback: call at the agreed time (2 hours later in prime slot if none was saved)', callback: true };
   return null;
 }
-/** Suggested messages for a call, by its status. Each: { key, channel, title, text }. */
-export function messageSuggestions(r, nextAt) {
-  const po = poOf(r); const ref = po ? `PO ${po}` : 'your pending Moglix PO'; const hi = `Hi ${firstName(r)}`; const at = nextAt ? new Date(nextAt).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : 'later today';
+/** Suggested messages for a call, by its status. Each: { key, channel, title, text, attach_vcard, callback_cta }. */
+export function messageSuggestions(r, nextAt, rule = defaultRetryRule()) {
+  const po = poOf(r); const ref = po ? `PO ${po}` : 'your pending Moglix PO'; const details = poDetailsText(r);
+  const brand = rule.branded_name || 'Moglix Procurement'; const did = rule.caller_id || DEMO_CALLER_ID;
+  const hi = `Hi ${firstName(r)}`; const at = nextAt ? new Date(nextAt).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : 'in the next 10–12 / 2–5 pm slot';
+  const ctaLink = `https://echo.moglix.com/callback/${encodeURIComponent(r.id || 'po')}`;
   const s = r.call_status, why = r.status_reason; const out = [];
-  const both = (key, title, wa, mail) => { out.push({ key, channel: 'whatsapp', title, text: wa }); out.push({ key, channel: 'email', title, text: mail }); };
-  if (s === 'DND') both('unblock', 'Ask to unblock and save the number', `${hi}, Moglix procurement calls you from ${DEMO_CALLER_ID} about ${ref}. Please save this number (contact card attached) and unblock it. Reply CALL to get a call now.`, `Subject: Please save our number: Moglix procurement\n\n${hi},\n\nWe call from ${DEMO_CALLER_ID} about ${ref}. Our calls are not reaching you; please save this number (contact card attached) and unblock it if it was blocked.\n\nOr reply to this email with your update.\n\nMoglix procurement`);
-  else if (s === 'Not picked' || s === 'No reply' || s === 'System issue') both('heads_up', 'Tell them when we will call', `${hi}, Saniya from Moglix tried to reach you about ${ref}. We will call again ${at} from ${DEMO_CALLER_ID} (please save it). Reply ACCEPT if the PO is accepted, or CALL for a call now.`, `Subject: ${ref}: we will call you ${at}\n\n${hi},\n\nWe tried to call you about ${ref}. We will call again ${at} from ${DEMO_CALLER_ID}; please save the number.\n\nIf the PO is already accepted, just reply "accepted".\n\nMoglix procurement`);
-  else if (s === 'Voicemail') both('voicemail', 'Same as the voicemail', `${hi}, we left you a voicemail about ${ref}. We will call again ${at}. Reply ACCEPT, or CALL to get a call now.`, `Subject: ${ref}: voicemail from Moglix\n\n${hi},\n\nWe left you a voicemail about ${ref} and will call again ${at}. Reply to this email with your update if that is easier.\n\nMoglix procurement`);
-  else if (why === 'Agent not given time to speak' || why === 'Left before answering') both('cut_short', 'Ask for the update by message', `${hi}, Moglix here about ${ref} (details attached). Can you accept it? Reply ACCEPT, NEED COPY, or a time that suits you for a 1-minute call.`, `Subject: ${ref}: can you accept it?\n\n${hi},\n\nWe called about ${ref}; the PO details are attached. Please reply with:\n- Accepted, and the dispatch date, or\n- what you need from us, or\n- a time for a 1-minute call.\n\nMoglix procurement`);
-  else if (why === 'Success: Follow-up required') both('follow_up', 'Send the PO and say the team will follow up', `${hi}, as discussed, here are the details of ${ref} (PDF attached) and the portal link. Our team will follow up by ${at}. Reply ACCEPTED once done.`, `Subject: ${ref}: details as discussed\n\n${hi},\n\nAs discussed on the call, the PO copy is attached and the portal link is below. Our team will follow up by ${at}.\n\nPortal: [supplier portal link]\n\nMoglix procurement`);
-  else if (why === 'Success: Callback requested') both('callback', 'Confirm the callback time', `${hi}, as you asked, we will call you back ${r.callback_at || at} about ${ref}. Reply with another time if that does not suit you.`, `Subject: ${ref}: we will call you back\n\n${hi},\n\nAs you asked, we will call you back ${r.callback_at || at} about ${ref}. Reply with another time if that does not suit you.\n\nMoglix procurement`);
-  else if (why === 'Success: Partial') both('confirm', 'Ask for full confirmation', `${hi}, please confirm what we noted for ${ref}: ${Object.entries(r.answers || {}).slice(0, 3).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v}`).join(', ') || 'acceptance and dispatch date'}. Reply YES, or send the right details.`, `Subject: ${ref}: please confirm\n\n${hi},\n\nPlease confirm what we noted on the call for ${ref}. Reply YES, or send the right details.\n\nMoglix procurement`);
-  else if (why === 'Success: Accepted') out.push({ key: 'thanks', channel: 'whatsapp', title: 'Thank and confirm', text: `${hi}, thanks for accepting ${ref}. We have noted it. Reply here for anything about this PO.` });
-  else if (why === 'Wrong number') out.push({ key: 'fix_contact', channel: 'email', title: 'Ask the uploader to fix the contact', text: `Subject: Wrong contact for ${ref}\n\nThe number ${r.phone} for ${r.caller_name || 'this supplier'} is wrong or no longer handles POs. Please update the supplier contact and re-upload the row.` });
+  const both = (key, title, wa, mail, extra = {}) => {
+    out.push({ key, channel: 'whatsapp', title, text: wa, ...extra });
+    out.push({ key, channel: 'email', title, text: mail, ...extra });
+  };
+  if (s === 'DND') {
+    both(
+      'unblock',
+      `Ask to unblock (after ${rule.dnd_unblock_after || 2} DND results) + vCard + Call Now CTA`,
+      `${hi}, Moglix calls you from ${did} (${brand} · Truecaller & CNAM Verified) about your POs (${details}). Please save this number (vCard attached) and unblock it. Tap to get a call now: ${ctaLink}`,
+      `Subject: Please save & unblock ${brand} (${did}) — ${ref}\n\n${hi},\n\nMoglix calls you from ${did} (${brand}) about your POs:\n• ${details}\n\nOur calls are being blocked by DND/spam filters. Please save the attached contact card (${brand}.vcf) and unblock ${did}.\n\n[Tap to get a call now]: ${ctaLink}\n\n${brand}`,
+      { attach_vcard: true, callback_cta: true }
+    );
+  } else if (s === 'Not picked' || s === 'No reply' || s === 'System issue') {
+    both(
+      'heads_up',
+      'PO details + next prime-slot call + Request a Callback CTA',
+      `${hi}, ${brand} tried to reach you from ${did} about ${details}. We will call again ${at} (or save ${did} via attached vCard). Reply ACCEPT if accepted, or tap to request a callback now: ${ctaLink}`,
+      `Subject: ${ref} — PO Details & Request a Callback (${brand})\n\n${hi},\n\nWe tried to reach you from ${did} (${brand}) regarding:\n• ${details}\n\nWe will call again ${at} (within 10 am–12 pm / 2 pm–5 pm prime hours).\n• Tap to request an immediate callback: ${ctaLink}\n• Or reply ACCEPT with your dispatch date.\n\n${brand}`,
+      { attach_vcard: true, callback_cta: true }
+    );
+  } else if (s === 'Voicemail') {
+    both(
+      'voicemail',
+      'Voicemail follow-up with all PO details + Callback CTA',
+      `${hi}, we just left a voicemail on your number from ${did} (${brand}) with full details for ${details}. We will follow up ${at}. Reply ACCEPT, or tap to get a call now: ${ctaLink}`,
+      `Subject: Voicemail & Full PO Details — ${ref} (${brand})\n\n${hi},\n\nWe reached your voicemail and left a message regarding:\n• ${details}\n• Caller ID: ${did} (${brand})\n\nPlease review and accept on the portal, reply to this email, or tap to trigger a callback now: ${ctaLink}\n\n${brand}`,
+      { attach_vcard: true, callback_cta: true }
+    );
+  } else if (why === 'Agent not given time to speak' || why === 'Left before answering') {
+    both(
+      'cut_short',
+      'Fast-hook follow-up with PO details + 1-min Callback CTA',
+      `${hi}, ${brand} here about ${details}. Our call was cut short — we will retry ${at} with a quick 30-second check. Reply ACCEPT, or tap to get a call now: ${ctaLink}`,
+      `Subject: Quick confirmation needed for ${ref} (${brand})\n\n${hi},\n\nWe called from ${did} (${brand}) regarding:\n• ${details}\n\nOur call ended before we could share the PO number. Please reply ACCEPTED with your dispatch date, or tap for a 1-minute callback now: ${ctaLink}\n\n${brand}`,
+      { attach_vcard: true, callback_cta: true }
+    );
+  } else if (why === 'Success: Follow-up required') {
+    both(
+      'follow_up',
+      'Send the PO details and confirm team follow-up',
+      `${hi}, as discussed, here are the full details of ${details} (PDF attached) and the portal link. Our team will follow up by ${at}. Reply ACCEPTED once done.`,
+      `Subject: ${ref}: PO details as discussed\n\n${hi},\n\nAs discussed on the call, here are the details:\n• ${details}\n\nThe PO copy is attached and our team will follow up by ${at}.\n\n${brand}`
+    );
+  } else if (why === 'Success: Callback requested') {
+    both(
+      'callback',
+      'Confirm the booked callback time',
+      `${hi}, as requested, ${brand} (${did}) will call you back ${r.callback_at || at} about ${details}. Tap to call now instead: ${ctaLink}`,
+      `Subject: ${ref}: Callback scheduled for ${r.callback_at || at}\n\n${hi},\n\nAs requested, we will call you back ${r.callback_at || at} from ${did} (${brand}) regarding:\n• ${details}\n\n${brand}`,
+      { callback_cta: true }
+    );
+  } else if (why === 'Success: Partial') {
+    both(
+      'confirm',
+      'Ask for full confirmation',
+      `${hi}, please confirm what we noted for ${details}: ${Object.entries(r.answers || {}).slice(0, 3).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v}`).join(', ') || 'acceptance and dispatch date'}. Reply YES, or send the right details.`,
+      `Subject: ${ref}: please confirm\n\n${hi},\n\nPlease confirm what we noted on the call for ${details}. Reply YES, or send the right details.\n\n${brand}`
+    );
+  } else if (why === 'Success: Accepted') {
+    out.push({ key: 'thanks', channel: 'whatsapp', title: 'Thank and confirm', text: `${hi}, thanks for accepting ${details}. We have noted it. Reply here for anything about this PO.` });
+  } else if (why === 'Wrong number') {
+    out.push({ key: 'fix_contact', channel: 'email', title: 'Ask the uploader to fix the contact', text: `Subject: Wrong contact for ${ref}\n\nThe number ${r.phone} for ${r.caller_name || 'this supplier'} is wrong or no longer handles POs. Please update the supplier contact and re-upload the row.` });
+  }
   return out;
 }
 /** The call page's next steps: the retry plan from the agent's rule, the suggested messages and what was already sent. */
 export function callSteps(r) {
-  const rule = retryRuleOf(r.agent_key || r.agent); const rt = retryFor(r); const country = countryOf(r.phone); const c = countryRule(country);
+  const rule = retryRuleOf(r.agent_key || r.agent); const rt = retryFor(r, rule); const country = countryOf(r.phone); const c = countryRule(country);
   let plan = [];
   if (rt) {
     const from = rt.callback ? (Date.parse(r.callback_at || '') ? new Date(Date.parse(r.callback_at)).toISOString() : new Date(Date.parse(r.call_date || '') + 2 * 3600000 || Date.now()).toISOString()) : r.call_date || new Date().toISOString();
     const done = Math.min(Number(r.retries) || 0, rule.retries);
-    if (rt.callback) plan = [from];
-    else if (rt.next_day) plan = retryPlan({ ...rule, schedule: 'linear', base_minutes: 24 * 60, retries: 1 }, from, 0, country);
-    else plan = retryPlan(rule, from, done, country).slice(0, rt.cap || undefined);
     if (rt.callback) plan = [new Date(fitSlot(Date.parse(from), rule, country).at).toISOString()];
+    else if (rt.next_day) plan = retryPlan({ ...rule, schedule: 'linear', base_minutes: 24 * 60, retries: 1 }, from, 0, country);
+    else if (rt.fast_gap) plan = [new Date(fitSlot((Date.parse(from) || Date.now()) + rt.fast_gap * 60000, rule, country).at).toISOString(), ...retryPlan(rule, from, done + 1, country)];
+    else plan = retryPlan(rule, from, done, country).slice(0, rt.cap || undefined);
   }
   const today = c.days[new Date(Date.now() + c.offset_min * 60000).getUTCDay()];
-  return { rule, schedules: RETRY_SCHEDULES, retry: rt ? { label: rt.label, plan, left: plan.length } : null,
+  const details = poDetailsText(r);
+  const voicemail_script = r.call_status === 'Voicemail'
+    ? `"Hello ${firstName(r)}, this is ${r.agent || 'Saniya'} calling from ${rule.branded_name || 'Moglix Procurement'} on ${rule.caller_id || DEMO_CALLER_ID} regarding ${details}. We have also sent all PO details on WhatsApp and email. Please accept the PO on the portal or tap the callback link to speak with us right away. Thank you."`
+    : null;
+  const fast_hook_script = r.status_reason === 'Agent not given time to speak' || r.status_reason === 'Left before answering'
+    ? `"Hi ${firstName(r)}, ${r.agent || 'Saniya'} from ${rule.branded_name || 'Moglix Procurement'} about ${details}: can you accept it on the portal today?"`
+    : null;
+  return {
+    rule,
+    schedules: RETRY_SCHEDULES,
+    branding_providers: BRANDING_PROVIDERS,
+    branded_caller: {
+      number: rule.caller_id || DEMO_CALLER_ID,
+      name: rule.branded_name || 'Moglix Procurement',
+      call_reason: rule.call_reason || 'Purchase Order Follow-up',
+      providers: BRANDING_PROVIDERS.filter((p) => (rule.branding_providers || ['truecaller', 'cnam', 'hiya', 'google_apple']).includes(p.key)),
+    },
+    vcard: buildVcard(rule),
+    voicemail_script,
+    fast_hook_script,
+    retry: rt ? { label: rt.label, plan, left: plan.length } : null,
     country: { code: c.code, name: c.name, tz_label: c.tz_label, hours_today: today.on ? `${today.from}–${today.to}` : 'no calls today', register: c.register.name,
       on_register: c.register.check && onRegister(r.phone), register_action: c.register.action },
-    messages: messageSuggestions(r, plan[0]), sent: sentMessages.get(r.id) || [], caller_id: DEMO_CALLER_ID };
+    messages: messageSuggestions(r, plan[0], rule),
+    sent: sentMessages.get(r.id) || [],
+    caller_id: rule.caller_id || DEMO_CALLER_ID,
+  };
 }
 export function sendMessage(r, { channel, key, text }, by) {
   const list = sentMessages.get(r.id) || []; list.push({ channel: channel === 'email' ? 'email' : 'whatsapp', key: key || '', text: String(text || '').slice(0, 2000), at: new Date().toISOString(), by, to: channel === 'email' ? r.email || '(no email on file)' : r.phone });

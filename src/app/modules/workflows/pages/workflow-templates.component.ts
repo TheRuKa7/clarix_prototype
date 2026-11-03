@@ -24,12 +24,12 @@ import {
 import { WorkflowTemplateService } from '../services/workflow-template.service';
 import { WorkflowTemplateFormComponent } from './workflow-template-form.component';
 import { firstValueFrom } from 'rxjs';
-import { AgentMetricsComponent, AgentMetricsSource } from '../../dashboard/components/shared-screens/shared-screens';
+import { AgentDataSourceComponent, AgentMetricsComponent, AgentMetricsSource, DataSourceSource } from '../../dashboard/components/shared-screens/shared-screens';
 import { ReportService } from '../../dashboard/services/report.service';
 
 @Component({
   selector: 'app-workflow-templates',
-  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent],
+  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent, AgentDataSourceComponent],
   templateUrl: './workflow-templates.component.html',
   styleUrl: './workflow-templates.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,6 +44,13 @@ export class WorkflowTemplatesComponent implements OnInit, OnDestroy {
   protected readonly metricsFor = signal<{ id: string; name: string } | null>(null);
   protected readonly metricsSource: AgentMetricsSource = {
     load: () => firstValueFrom(this.reports.reportAgentStats()), save: (a, st) => firstValueFrom(this.reports.saveReportAgentStats(a, st)),
+  };
+  /** The agent whose data source drawer is open: the system that feeds its scheduled campaigns. */
+  protected readonly sourceFor = signal<{ id: string; name: string } | null>(null);
+  protected readonly dataSource: DataSourceSource = {
+    catalog: () => firstValueFrom(this.reports.dsCatalog()), load: (a) => firstValueFrom(this.reports.dsLoad(a)), save: (a, s) => firstValueFrom(this.reports.dsSave(a, s)),
+    test: (c) => firstValueFrom(this.reports.dsTest(c)), preview: (a, s) => firstValueFrom(this.reports.dsPreview(a, s)), run: (a) => firstValueFrom(this.reports.dsRun(a)),
+    openCampaign: (id) => { this.sourceFor.set(null); this.router.navigate(['/workflows/campaigns', id]); },
   };
   private readonly destroy$ = new Subject<void>();
 

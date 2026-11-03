@@ -17,14 +17,18 @@ export interface CallDetail {
   timeline: { at: string; type: string; status: string; detail: string }[]; prev_id: string | null; next_id: string | null; position: number; of: number; outcome_options: string[];
 }
 /** A message the page suggests for this call, by its status. */
-export interface StepMessage { key: string; channel: 'whatsapp' | 'email'; title: string; text: string }
+export interface StepMessage { key: string; channel: 'whatsapp' | 'email'; title: string; text: string; attach_vcard?: boolean; callback_cta?: boolean }
 /** What happens next for a call: when it is called again and what to send. Messages are recorded by the demo, not sent. */
 export interface CallSteps {
-  rule: { schedule: string; base_minutes: number; retries: number; from: string; to: string; skip_sunday: boolean; avoid_lunch: boolean };
+  rule: { schedule: string; base_minutes: number; retries: number; from: string; to: string; skip_sunday: boolean; avoid_lunch: boolean; avoid_saturday?: boolean; prefer_prime_slots?: boolean; branded_name?: string };
   retry: { label: string; plan: string[]; left: number } | null;
   messages: StepMessage[];
   sent: { channel: 'whatsapp' | 'email'; key: string; text: string; at: string; by: string; to: string }[];
   caller_id: string;
+  branded_caller?: { number: string; name: string; call_reason: string; providers: { key: string; label: string; badge: string }[] };
+  vcard?: string;
+  voicemail_script?: string | null;
+  fast_hook_script?: string | null;
   /** The number's country and its calling rules (Settings › Calling rules). */
   country?: { code: string; name: string; tz_label: string; hours_today: string; register: string; on_register: boolean; register_action: 'block' | 'warn' };
 }
@@ -128,6 +132,15 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
                   <p class="cp-muted cp-country">{{ co.name }} rules: calls today {{ co.hours_today }} ({{ co.tz_label }}). Retries skip rest days and holidays.</p>
                   @if (co.on_register) { <p class="cp-note bad">This number is on the {{ co.register }}. {{ co.register_action === 'block' ? 'It is not called again.' : 'Calls are allowed only about their orders, never a sales pitch.' }}</p> }
                 }
+                @if (st.branded_caller; as b) {
+                  <div class="cp-brand">
+                    <b>{{ b.name }}</b> <span class="cp-muted">{{ b.number }} · {{ b.call_reason }}</span>
+                    <div class="cp-chips">@for (p of b.providers; track p.key) { <span class="cp-chip" [title]="p.badge">{{ p.label }}</span> }</div>
+                    @if (st.vcard) { <button type="button" class="cp-btn" (click)="downloadVcard(st)">Download contact card (.vcf)</button> }
+                  </div>
+                }
+                @if (st.voicemail_script) { <div class="cp-script"><b>Voicemail, about 15 seconds</b><p>{{ st.voicemail_script }}</p></div> }
+                @if (st.fast_hook_script) { <div class="cp-script"><b>Opening on the next call</b><p>{{ st.fast_hook_script }}</p></div> }
                 @if (st.retry; as rt) {
                   <div class="cp-retry">
                     <b>{{ rt.label }}</b>
@@ -222,6 +235,9 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
     .cp-turn.agent { background: var(--ds-info-bg, #f2f1fd); justify-self: end; }
     .cp-turn b { font-size: 11.5px; color: var(--cp-muted); font-weight: 600; }
     .cp-steps { border-color: color-mix(in srgb, var(--cp-accent, #4c4184) 35%, var(--cp-line)); }
+    .cp-script { display: grid; gap: 4px; font-size: 13px; background: var(--cp-soft); border-radius: 8px; padding: 8px 10px; }
+    .cp-script p { margin: 0; }
+    .cp-brand { display: grid; gap: 6px; font-size: 13px; }
     .cp-retry { display: grid; gap: 6px; font-size: 13px; }
     .cp-country { margin: 0; font-size: 12.5px; }
     .cp-times { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -312,7 +328,10 @@ export class CallPageComponent implements OnDestroy {
   }
   protected ruleText(st: CallSteps): string {
     const r = st.rule; const name = ({ linear: 'linear', increasing: 'linear increasing', doubling: 'doubling' } as Record<string, string>)[r.schedule] ?? r.schedule;
-    return `${r.retries} retries, ${name} from ${r.base_minutes} min, ${r.from}–${r.to}${r.skip_sunday ? ', no Sundays' : ''}${r.avoid_lunch ? ', not 1–2 pm' : ''}`;
+    return `${r.retries} retries, ${name} from ${r.base_minutes} min, ${r.from}–${r.to}${r.skip_sunday ? ', no Sundays' : ''}${r.avoid_saturday ? ', no Saturdays' : ''}${r.avoid_lunch ? ', not 1–2 pm' : ''}${r.prefer_prime_slots ? ', 10–12 and 2–5 preferred' : ''}`;
+  }
+  protected downloadVcard(st: CallSteps): void {
+    if (!st.vcard) return; this.save(new Blob([st.vcard], { type: 'text/vcard' }), `${(st.branded_caller?.name || 'caller').replace(/[^A-Za-z0-9]+/g, '_')}.vcf`);
   }
 
   protected startEdit(): void { const c = this.d(); if (!c) return; this.pick.set(c.status_reason); this.note.set(''); this.editing.set(true); }
