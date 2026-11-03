@@ -45,6 +45,7 @@ export interface CampaignColumns { inputs: { key: string; label: string }[]; ans
 /** A simple condition on one column, e.g. Duration longer than 90 (seconds) or Call date on or after 2026-10-25. */
 export interface ColCondition { op: string; a?: string; b?: string }
 export type ColFilter = string | string[] | ColCondition;
+export interface CopilotAnswer { text: string; bullets: string[]; actions: { label: string; kind: 'box' | 'rerun'; key?: string; name?: string }[]; based: string; calls?: { id: string; label: string }[]; suggestions?: string[] }
 export interface LogFilters { q: string; cols: Record<string, ColFilter> }
 const isCond = (v: ColFilter | undefined): v is ColCondition => !!v && typeof v === 'object' && !Array.isArray(v);
 /** True when a column filter actually filters. */
@@ -60,6 +61,8 @@ export interface CallingReportSource {
   /** The report; the call log's search and column filters, when given, scope it too. */
   report(scope: ReportScope, filters?: LogFilters): Promise<CallingReport>;
   calls(scope: ReportScope, box: string, skip: number, limit: number, filters?: LogFilters): Promise<{ rows: ReportCallRow[]; total: number }>;
+  /** Answers a question about the calls in view (same scope, box and filters), with numbers and next steps. */
+  ask?(scope: ReportScope, box: string, filters: LogFilters | undefined, q: string): Promise<CopilotAnswer>;
   /** Re-runs the answers of the calls in view (same scope, box and filters) under each agent's answer guardrail. */
   rerun?(scope: ReportScope, box: string, filters?: LogFilters): Promise<{ total: number; filled: number; cleared: number; unchanged: number; skipped_not_connected: number }>;
   exportXlsx(scope: ReportScope, box: string, filters?: LogFilters): Promise<Blob>;
@@ -150,6 +153,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         }
         <span class="cr-grow"></span>
         <span class="cr-meta">{{ campaign() ? 'Whole campaign · ' : '' }}{{ tzLabel() }}</span>
+        @if (source().ask) { <button type="button" class="cr-btn cr-ask" (click)="askOpen.set(!askOpen())" [attr.aria-expanded]="askOpen()">✦ Ask about these calls</button> }
         <div class="cr-drop">
           <button type="button" class="cr-btn" (click)="place($event, true, 220); shareOpen.set(!shareOpen())" [disabled]="!r()" [attr.aria-expanded]="shareOpen()">Share ▾</button>
           @if (shareOpen()) {
@@ -162,6 +166,25 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
         </div>
       </div>
 
+      @if (askOpen()) {
+        <aside class="cr-cop" role="dialog" aria-label="Ask about these calls">
+          <div class="cr-cop-head"><b>Ask about these calls</b><span class="cr-muted">Answers use the calls in view: {{ periodName() }}{{ box() ? ', ' + box()!.label : '' }}{{ logFiltered() ? ', filtered' : '' }}.</span>
+            <button type="button" class="cr-x" (click)="askOpen.set(false)" aria-label="Close">✕</button></div>
+          <div class="cr-cop-body">
+            @for (m of chat(); track $index) {
+              <p class="cr-q">{{ m.q }}</p>
+              @if (m.a; as a) {
+                <div class="cr-a"><p>{{ a.text }}</p>@if (a.bullets.length) { <ul>@for (b of a.bullets; track $index) { <li>{{ b }}</li> }</ul> }
+                  @if (a.calls?.length) { <div class="cr-cop-chips">@for (c of a.calls!; track c.id) { <button type="button" class="cr-link" (click)="openById(c.id)">{{ c.label }}</button> }</div> }
+                  @if (a.actions.length) { <div class="cr-cop-chips">@for (x of a.actions; track x.label) { <button type="button" class="cr-btn" (click)="doAction(x)">{{ x.label }}</button> }</div> }
+                  <small class="cr-muted">{{ a.based }}</small></div>
+              } @else { <p class="cr-muted">Reading the calls…</p> }
+            } @empty { <p class="cr-muted">Ask in plain words. It reads the calls in view and answers with numbers and a next step.</p> }
+          </div>
+          <div class="cr-cop-chips">@for (s of suggestions(); track s) { <button type="button" class="cr-chip-s" (click)="ask(s)">{{ s }}</button> }</div>
+          <form class="cr-cop-in" (submit)="$event.preventDefault(); ask(askQ())"><input [value]="askQ()" (input)="askQ.set($any($event.target).value)" placeholder="e.g. Why were calls not successful?" aria-label="Your question"><button type="submit" class="cr-btn cr-primary" [disabled]="!askQ().trim()">Ask</button></form>
+        </aside>
+      }
       @if (error()) { <p class="cr-note bad" role="alert">{{ error() }} <button type="button" class="cr-link" (click)="load()">Try again</button></p> }
 
       @if (r(); as rep) {
@@ -387,6 +410,18 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-pick:hover, .cr-pick:focus-visible, .cr-pick[aria-expanded=true] { opacity: 1; border-color: var(--cr-line); background: var(--cr-bg); }
     .cr-pick.on { opacity: 1; color: var(--cr-accent); border-color: color-mix(in srgb, var(--cr-accent) 40%, transparent); background: color-mix(in srgb, var(--cr-accent) 8%, var(--cr-bg)); }
     .cr-pick b { font-weight: 600; min-width: 14px; height: 14px; line-height: 14px; border-radius: 7px; padding: 0 3px; background: var(--cr-accent); color: #fff; font-size: 10px; }
+    .cr-ask { border-color: color-mix(in srgb, var(--cr-accent) 45%, var(--cr-line)); color: var(--cr-accent); }
+    .cr-cop { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); z-index: 950; background: var(--cr-bg); border-left: 1px solid var(--cr-line); box-shadow: -12px 0 32px -16px rgba(0, 0, 0, .35); display: grid; grid-template-rows: auto 1fr auto auto; gap: 10px; padding: 16px; box-sizing: border-box; font-size: 13.5px; }
+    .cr-cop-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; } .cr-cop-head .cr-muted { grid-column: 1; font-size: 12.5px; } .cr-cop-head .cr-x { grid-row: 1 / span 2; grid-column: 2; }
+    .cr-x { border: 0; background: none; color: var(--cr-muted); cursor: pointer; width: 32px; height: 32px; border-radius: 50%; font-size: 14px; }
+    .cr-cop-body { overflow: auto; display: grid; align-content: start; gap: 8px; }
+    .cr-q { margin: 0; justify-self: end; background: var(--cr-soft); border-radius: 12px 12px 2px 12px; padding: 7px 11px; max-width: 85%; }
+    .cr-a { display: grid; gap: 6px; border: 1px solid var(--cr-line); border-radius: 12px 12px 12px 2px; padding: 9px 12px; }
+    .cr-a p, .cr-a ul { margin: 0; } .cr-a ul { padding-left: 18px; display: grid; gap: 3px; }
+    .cr-cop-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cr-chip-s { border: 1px solid var(--cr-line); background: var(--cr-bg); color: var(--cr-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .cr-chip-s:hover { border-color: var(--cr-accent); color: var(--cr-accent); }
+    .cr-cop-in { display: flex; gap: 6px; } .cr-cop-in input { flex: 1; min-width: 0; border: 1px solid var(--cr-line); border-radius: 8px; padding: 8px 10px; font: inherit; background: var(--cr-bg); color: var(--cr-text); }
     .cr-rerun { display: grid; gap: 8px; padding: 12px; width: 320px; max-width: calc(100vw - 24px); font-size: 13px; white-space: normal; text-align: left; }
     .cr-ok { color: var(--cr-good); font-weight: 500; }
     .cr-pick-menu { font-weight: 400; text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 4px; padding: 8px; color: var(--cr-text); }
@@ -487,6 +522,21 @@ export class CallingReportComponent {
   protected readonly LOG_COLUMNS = LOG_COLUMNS;
   protected readonly search = signal('');
   protected readonly colFilters = signal<Record<string, ColFilter>>({});
+  protected readonly askOpen = signal(false);
+  protected readonly askQ = signal('');
+  protected readonly chat = signal<{ q: string; a: CopilotAnswer | null }[]>([]);
+  protected readonly suggestions = signal<string[]>(['Why do some answered calls have empty answers?', 'Why were calls not successful?', 'Who should we call back today?', 'Which agent does best?', 'When do suppliers pick up most?']);
+  protected async ask(q: string): Promise<void> {
+    const fn = this.source().ask; const t = q.trim(); if (!fn || !t) return; this.askQ.set('');
+    const i = this.chat().length; this.chat.set([...this.chat(), { q: t, a: null }]);
+    try { const a = await fn(this.scope(), this.box()?.key ?? 'uploaded', this.logFilters(), t); this.chat.set(this.chat().map((m, j) => (j === i ? { ...m, a } : m))); if (a.suggestions?.length) this.suggestions.set(a.suggestions.filter((s) => s !== t)); }
+    catch { this.chat.set(this.chat().map((m, j) => (j === i ? { ...m, a: { text: 'Could not answer that right now.', bullets: [], actions: [], based: '' } } : m))); }
+  }
+  protected async doAction(x: CopilotAnswer['actions'][number]): Promise<void> {
+    if (x.kind === 'box' && x.key) { this.open(x.key, x.name || x.key); this.askOpen.set(false); return; }
+    if (x.kind === 'rerun') { await this.rerun(); this.chat.set([...this.chat(), { q: 'Re-run answers on the calls in view', a: { text: this.rerunMsg(), bullets: [], actions: [], based: '' } }]); }
+  }
+  protected openById(id: string): void { this.source().openCall({ id } as ReportCallRow); }
   protected readonly rerunOpen = signal(false);
   protected readonly rerunBusy = signal(false);
   protected readonly rerunMsg = signal('');

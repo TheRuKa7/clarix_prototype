@@ -94,6 +94,15 @@ export class ReportService {
   saveAgentDraft(a: string, d: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/draft`, d)); }
   publishAgentDraft(a: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/publish`, {})); }
   splitAgentVersions(a: string, s: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/split`, s)); }
+  // Wave 3: live calls, telephony and slots, the copilot.
+  liveCalls(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/live`)); }
+  liveAct(id: string, action: string, body: any = {}): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/live/${encodeURIComponent(id)}/${action}`, body)); }
+  telephony(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/telephony`)); }
+  telTest(b: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/telephony/test`, b)); }
+  telConnect(b: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/telephony/connect`, b)); }
+  telDisconnect(key: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/telephony/${encodeURIComponent(key)}/disconnect`, {})); }
+  telSlots(b: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/telephony/slots`, b)); }
+  askCalls(sc: any, box: string, f: any, q: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/copilot`, { q }, { params: this.logParams(this.reportParams(sc).set('box', box), f) })); }
   callMemory(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call/${encodeURIComponent(id)}/memory`)); }
   callDiagnostics(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call/${encodeURIComponent(id)}/diagnostics`)); }
   callingRules(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/calling-rules`)); }

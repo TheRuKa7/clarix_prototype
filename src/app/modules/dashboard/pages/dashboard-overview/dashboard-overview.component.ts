@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { ReportLine, ReportRow, ReportService } from '../../services/report.service';
 import { GROUPS } from '../../utils/report-card';
 import { CallingReportComponent, CallingReportSource, ReportScope } from '../../components/calling-report/calling-report.component';
+import { LiveCallsComponent, LiveSource } from '../../components/shared-screens/shared-screens';
 
 const ALL_BYS = [{ key: 'agent', label: 'Agent' }, { key: 'campaign', label: 'Campaign' }, { key: 'day', label: 'Day' }];
 const EMPTY: ReportLine = { contacts: 0, dialled: 0, reached: 0, completed: 0, not_reached: 0, failed: 0, in_progress: 0, not_dialled: 0, follow_up: 0, talk_seconds: 0 };
@@ -17,7 +18,7 @@ const EMPTY: ReportLine = { contacts: 0, dialled: 0, reached: 0, completed: 0, n
 @Component({
   selector: 'app-dashboard-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, CallingReportComponent],
+  imports: [LucideAngularModule, CallingReportComponent, LiveCallsComponent],
   templateUrl: './dashboard-overview.component.html',
   styleUrl: './dashboard-overview.component.scss',
 })
@@ -25,11 +26,14 @@ export class DashboardOverviewComponent {
   private readonly reports = inject(ReportService);
   private readonly router = inject(Router);
   /** Where the calling report reads from. Every row opens its call (execution) page. */
+  /** Calls running now: watch, listen, take over, transfer. */
+  protected readonly liveSource: LiveSource = { list: () => firstValueFrom(this.reports.liveCalls()), act: (id, a, b) => firstValueFrom(this.reports.liveAct(id, a, b)), openCall: (id) => this.router.navigate(['/workflows/calls', id]) };
   protected readonly reportSource: CallingReportSource = {
     report: (sc, f) => firstValueFrom(this.reports.callingReport(sc, f)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(this.reports.callingReportExport(sc, box, f)),
     rerun: (sc, box, f) => firstValueFrom(this.reports.rerunCalls(sc, box, f)),
+    ask: (sc, box, f, q) => firstValueFrom(this.reports.askCalls(sc, box, f, q)),
     testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),
     saveTestNumbers: (n) => firstValueFrom(this.reports.saveReportTestNumbers(n)),
     openFollowUps: () => this.router.navigate(['/workflows/follow-ups']),

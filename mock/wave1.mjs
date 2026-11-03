@@ -107,15 +107,27 @@ export const defaultHandling = () => ({
   guardrail: { on: true, min_seconds: 5, need_speech: true },
   ivr: { on: true, action: 'press', hint: 'Purchase or accounts', digits: '', wait_seconds: 20 },
   memory: { on: true, days: 30 },
+  anytime: {
+    flex: true,
+    topics: [
+      { id: 't1', name: 'Call me later', says: 'busy, call later, in a meeting, driving', action: 'callback', note: 'Ask for a time, confirm it, end politely.' },
+      { id: 't2', name: 'Price or rate issue', says: 'rate, price, revise, cost went up', action: 'transfer', note: 'Do not negotiate. Offer to bring in the buyer now; if nobody is free, take a note for the buyer.' },
+      { id: 't3', name: "Don't call me", says: "don't call, stop calling, not interested", action: 'dnc', note: 'Confirm once, apologise, end the call. The number joins the do-not-call list.' },
+      { id: 't4', name: 'Who is this?', says: 'who are you, which company, is this a bot', action: 'answer', note: "Say you are the company's calling assistant for purchase orders, then go back to where you were." },
+      { id: 't5', name: 'Send it on WhatsApp', says: 'send details, WhatsApp me, email me', action: 'message', note: 'Send the PO details on WhatsApp now and carry on.' },
+    ],
+  },
   speech: { boost: ['Moglix', 'PO', 'GRN', '{{plant_name}}', '{{contact_name}}'], pronounce: [{ word: 'Moglix', say: 'Mog-lix' }, { word: 'PO', say: 'P O' }, { word: 'GRN', say: 'G R N' }, { word: 'Hindustan Zinc', say: 'Hin-doo-staan Zinc' }] },
 });
 export const handlingOf = (agent) => ({ ...defaultHandling(), ...(handling.get(agent) || {}) });
 export function saveHandling(agent, b = {}) {
-  const d = defaultHandling(); const g = b.guardrail || d.guardrail; const v = b.ivr || d.ivr; const s = b.speech || d.speech; const m = b.memory || d.memory;
+  const d = defaultHandling(); const g = b.guardrail || d.guardrail; const v = b.ivr || d.ivr; const s = b.speech || d.speech; const m = b.memory || d.memory; const at = b.anytime || d.anytime;
   const h = {
     guardrail: { on: g.on !== false, min_seconds: Math.min(60, Math.max(1, Number(g.min_seconds) || 5)), need_speech: g.need_speech !== false },
     ivr: { on: v.on !== false, action: ['press', 'wait', 'hangup'].includes(v.action) ? v.action : 'press', hint: String(v.hint || '').slice(0, 80), digits: String(v.digits || '').replace(/[^0-9*#,]/g, '').slice(0, 12), wait_seconds: Math.min(90, Math.max(5, Number(v.wait_seconds) || 20)) },
     memory: { on: m.on !== false, days: Math.min(365, Math.max(1, Number(m.days) || 30)) },
+    anytime: { flex: at.flex !== false, topics: (at.topics || []).filter((t) => String(t.name || '').trim()).slice(0, 20).map((t, i) => ({ id: String(t.id || `t${Date.now()}${i}`), name: String(t.name).trim().slice(0, 60), says: String(t.says || '').slice(0, 200),
+      action: ['answer', 'callback', 'transfer', 'message', 'dnc', 'note'].includes(t.action) ? t.action : 'answer', note: String(t.note || '').slice(0, 300) })) },
     speech: { boost: [...new Set((s.boost || []).map((w) => String(w).trim()).filter(Boolean))].slice(0, 100), pronounce: (s.pronounce || []).filter((p) => String(p.word || '').trim() && String(p.say || '').trim()).slice(0, 100).map((p) => ({ word: String(p.word).trim(), say: String(p.say).trim() })) },
   };
   handling.set(agent, h); return h;

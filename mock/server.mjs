@@ -19,6 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
+import { liveCalls, liveAction, BUYER_LIST, telephonyView, testCarrier, connectCarrier, disconnectCarrier, saveSlots, copilotAnswer, COPILOT_SUGGESTIONS } from './wave3.mjs';
 import { qaScorecard, saveQa, testsView, runTests, scenariosFromCalls, versionsView, saveDraft, publishDraft, setSplit, memoryOf } from './wave2.mjs';
 import { dncScan, dncView, dncAdd, dncRemove, dncSettings, onDnc, alertsView, saveAlerts, resumeCampaign, handlingOf, saveHandling, rerunAnswers, diagnosticsOf } from './wave1.mjs';
 import { CONNECTORS, testConnection, suggestMapping, buildCalls, markCalled, callsCsv, writeBackPreview, nextRuns as dsNextRuns, getSetup, saveSetup, defaultSetup, runsOf, addRun, webhookUrl, hasSetup, FILTER_OPS, SOURCE_COLUMNS } from './data-sources.mjs';
@@ -962,6 +963,16 @@ on('PUT', '/api/v1/reports/calling/versions/:agent/draft', (ctx) => { const a = 
 on('POST', '/api/v1/reports/calling/versions/:agent/publish', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); const r = publishDraft(ctx.p.agent, ME()); r.error ? fail(400, r.error) : ok(versionsView(callingRows(), ctx.p.agent, a.name)); });
 on('PUT', '/api/v1/reports/calling/versions/:agent/split', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); const r = setSplit(ctx.p.agent, ctx.body || {}); r.error ? fail(400, r.error) : ok(versionsView(callingRows(), ctx.p.agent, a.name)); });
 on('GET', '/api/v1/reports/calling/call/:id/memory', (ctx) => { const row = callingRows().find((r) => r.id === ctx.p.id); row ? ok(memoryOf(callingRows(), row, handlingOf(row.agent_key || row.agent).memory?.on !== false)) : fail(404, 'Call not found'); });
+
+// ── Wave 3: live calls, the telephony hub and slots, the copilot ──
+on('GET', '/api/v1/reports/calling/live', (ctx) => ok({ calls: liveCalls(callingRows()), buyers: BUYER_LIST }));
+on('POST', '/api/v1/reports/calling/live/:id/:action', (ctx) => { const r = liveAction(callingRows(), ctx.p.id, ctx.p.action, ctx.body || {}, ME()); r.error ? fail(400, r.error) : ok({ ...r, calls: liveCalls(callingRows()) }); });
+on('GET', '/api/v1/reports/calling/telephony', (ctx) => ok(telephonyView(callingRows())));
+on('POST', '/api/v1/reports/calling/telephony/test', (ctx) => ok(testCarrier(ctx.body || {})));
+on('POST', '/api/v1/reports/calling/telephony/connect', (ctx) => { const r = connectCarrier(ctx.body || {}); r.error ? fail(400, r.error) : ok(telephonyView(callingRows())); });
+on('POST', '/api/v1/reports/calling/telephony/:key/disconnect', (ctx) => { const r = disconnectCarrier(ctx.p.key); r.error ? fail(400, r.error) : ok(telephonyView(callingRows())); });
+on('PUT', '/api/v1/reports/calling/telephony/slots', (ctx) => { saveSlots(ctx.body || {}); ok(telephonyView(callingRows())); });
+on('POST', '/api/v1/reports/calling/copilot', (ctx) => { const q = ctx.q; const list = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(ctx.q)), q.get('box') || 'uploaded'), logFilters(q)); ok({ ...copilotAnswer(list, ctx.body?.q), suggestions: COPILOT_SUGGESTIONS }); });
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
 // Next steps on the call page: the retry plan and WhatsApp / email messages (the demo records them, it does not send).
 on('GET', '/api/v1/reports/calling/call/:id/steps', ({ p }) => { const row = callingRows().find((r) => r.id === p.id); row ? ok(callSteps(row)) : fail(404, 'Call not found'); });

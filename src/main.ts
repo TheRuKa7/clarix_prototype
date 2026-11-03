@@ -27,7 +27,10 @@ async function startDemoMock(): Promise<void> {
   // Single file build (mock/browser/build-single.mjs): the mock already answers inside the page.
   if (!environment.demo || (globalThis as any).__SINGLE_FILE__ || !('serviceWorker' in navigator)) return;
   saveDemoDownloads();
-  await navigator.serviceWorker.register(new URL('mock-sw.js', document.baseURI));
+  // The worker's URL carries this build's bundle hash, so a new deploy replaces an old worker straight away
+  // (the same URL would keep the old one answering until the browser's own update check).
+  const build = (document.querySelector('script[src*="main-"]') as HTMLScriptElement | null)?.src.match(/main-([A-Z0-9]+)\.js/i)?.[1] || 'dev';
+  await navigator.serviceWorker.register(new URL(`mock-sw.js?v=${build}`, document.baseURI));
   await navigator.serviceWorker.ready;
   if (!navigator.serviceWorker.controller) {
     await new Promise((done) => navigator.serviceWorker.addEventListener('controllerchange', done, { once: true }));

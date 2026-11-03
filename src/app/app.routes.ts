@@ -153,6 +153,11 @@ export const routes: Routes = [
         ]
       },
       {
+        path: 'admin/telephony',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixTelephonyPage),
+        title: 'Telephony | Clarix'
+      },
+      {
         path: 'admin/do-not-call',
         loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixDncPage),
         title: 'Do-not-call list | Clarix'

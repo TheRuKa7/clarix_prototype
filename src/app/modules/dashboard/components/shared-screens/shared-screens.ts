@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnDestroy, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CallingReportComponent, CallingReportSource, CampaignColumns, ReportCallRow } from '../calling-report/calling-report.component';
 
@@ -1565,8 +1565,11 @@ export interface CallHandling {
   guardrail: { on: boolean; min_seconds: number; need_speech: boolean };
   ivr: { on: boolean; action: 'press' | 'wait' | 'hangup'; hint: string; digits: string; wait_seconds: number };
   memory?: { on: boolean; days: number };
+  anytime?: { flex: boolean; topics: AnytimeTopic[] };
   speech: { boost: string[]; pronounce: { word: string; say: string }[] };
 }
+export interface AnytimeTopic { id: string; name: string; says: string; action: 'answer' | 'callback' | 'transfer' | 'message' | 'dnc' | 'note'; note: string }
+const ANYTIME_ACTIONS: [AnytimeTopic['action'], string][] = [['answer', 'Answer, then go back'], ['callback', 'Book a callback and end'], ['transfer', 'Offer a person (warm transfer)'], ['message', 'Send a WhatsApp and carry on'], ['dnc', 'End and add to do-not-call'], ['note', 'Take a note for the team']];
 export interface CallHandlingSource { load(agent: string): Promise<{ agent: string; label: string; inputs: string[]; handling: CallHandling }>; save(agent: string, h: CallHandling): Promise<{ agent: string; label: string; inputs: string[]; handling: CallHandling }> }
 @Component({
   selector: 'app-call-handling',
@@ -1587,6 +1590,9 @@ export interface CallHandlingSource { load(agent: string): Promise<{ agent: stri
     .ch-chip button { border: 0; background: none; color: var(--s-muted); cursor: pointer; min-width: 24px; min-height: 24px; border-radius: 50%; }
     .ch-add { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-muted); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
     .ch-pr { display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+    .ch-topic { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(160px, 1.2fr) minmax(170px, 1fr) auto; gap: 6px; align-items: center; border-bottom: 1px solid var(--s-line); padding-bottom: 8px; }
+    .ch-topic .ch-note { grid-column: 1 / -1; }
+    @media (max-width: 760px) { .ch-topic { grid-template-columns: 1fr 1fr; } }
     .ch-hear { background: var(--s-soft); border-radius: 8px; padding: 8px 10px; font-size: 13px; display: grid; gap: 4px; }
     .ch-off { opacity: .55; pointer-events: none; }
     .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
@@ -1616,6 +1622,20 @@ export interface CallHandlingSource { load(agent: string): Promise<{ agent: stri
             <label>Give up after (seconds)<input type="number" min="5" max="90" style="width: 80px" [value]="d().ivr.wait_seconds" (change)="i({ wait_seconds: +$any($event.target).value })"></label>
           </div>
           <p class="s-muted">Answering machines are handled under Calling flow › Voicemail.</p>
+        </section>
+        <section class="ch-sec">
+          <h3>Any-time topics <label><input type="checkbox" [checked]="d().anytime?.flex !== false" (change)="at({ flex: $any($event.target).checked })"> Several answers at once</label></h3>
+          <p class="s-muted">Things a supplier may bring up at any point in the call. The agent handles the topic, then goes back to where it was. With "several answers at once", a supplier who says "accepted, dispatch Friday, but the rate is wrong" gets all three handled from one sentence.</p>
+          @for (t of d().anytime?.topics ?? []; track t.id; let k = $index) {
+            <div class="ch-topic">
+              <input [value]="t.name" (input)="topic(k, { name: $any($event.target).value })" aria-label="Topic" placeholder="Topic">
+              <input [value]="t.says" (input)="topic(k, { says: $any($event.target).value })" aria-label="When the supplier says" placeholder="When the supplier says…">
+              <select (change)="topic(k, { action: $any($event.target).value })" aria-label="What the agent does">@for (a of ACTIONS; track a[0]) { <option [value]="a[0]" [selected]="a[0] === t.action">{{ a[1] }}</option> }</select>
+              <button type="button" class="s-btn" (click)="untopic(k)" [attr.aria-label]="'Remove ' + t.name">Remove</button>
+              <input class="ch-note" [value]="t.note" (input)="topic(k, { note: $any($event.target).value })" aria-label="How" placeholder="How the agent handles it">
+            </div>
+          }
+          <div><button type="button" class="s-btn" (click)="addTopic()">+ Add a topic</button></div>
         </section>
         <section class="ch-sec">
           <h3>Contact memory <label><input type="checkbox" [checked]="d().memory?.on !== false" (change)="m({ on: $any($event.target).checked })"> On</label></h3>
@@ -1671,6 +1691,12 @@ export class CallHandlingComponent {
   private patch(part: Partial<CallHandling>): void { this.msg.set(''); this.d.set({ ...this.d(), ...part }); }
   protected g(part: Partial<CallHandling['guardrail']>): void { this.patch({ guardrail: { ...this.d().guardrail, ...part } }); }
   protected readonly MEMORY_VAR = '{{contact_memory}}';
+  protected readonly ACTIONS = ANYTIME_ACTIONS;
+  private any(): { flex: boolean; topics: AnytimeTopic[] } { return this.d().anytime ?? { flex: true, topics: [] }; }
+  protected at(part: Partial<{ flex: boolean; topics: AnytimeTopic[] }>): void { this.patch({ anytime: { ...this.any(), ...part } }); }
+  protected topic(k: number, part: Partial<AnytimeTopic>): void { this.at({ topics: this.any().topics.map((t, j) => (j === k ? { ...t, ...part } : t)) }); }
+  protected addTopic(): void { this.at({ topics: [...this.any().topics, { id: 'n' + Date.now(), name: '', says: '', action: 'answer', note: '' }] }); }
+  protected untopic(k: number): void { this.at({ topics: this.any().topics.filter((_, j) => j !== k) }); }
   protected m(part: Partial<{ on: boolean; days: number }>): void { this.patch({ memory: { on: true, days: 30, ...(this.d().memory || {}), ...part } }); }
   protected i(part: Partial<CallHandling['ivr']>): void { this.patch({ ivr: { ...this.d().ivr, ...part } }); }
   protected boost(w: string): void { const t = w.trim(); if (!t || this.d().speech.boost.includes(t)) return; this.patch({ speech: { ...this.d().speech, boost: [...this.d().speech.boost, t] } }); }
@@ -1907,4 +1933,189 @@ export class AgentQualityComponent {
   protected async setSplit(on: boolean, pct: number): Promise<void> {
     this.busy.set(true); try { this.setVersions(await this.source().split(this.agent(), { on, b_pct: pct })); this.say(on ? `${pct}% of new calls go to the draft.` : 'All calls use the live version.'); } catch (e) { this.say(errText(e, 'Could not save the split.'), true); } finally { this.busy.set(false); }
   }
+}
+
+// ── Live calls: watch a call as it happens, listen in, take over, or hand it to a person with a brief ──
+export interface LiveCall { id: string; po: string; caller: string; phone: string; campaign: string; agent: string; started_at: string; elapsed: number; state: 'ai' | 'human' | 'transferred' | 'ended';
+  mood: string; flag: string | null; transcript: { who: string; text: string; at: number }[]; transfer: { to: string; phone: string; brief: string; at: string } | null; listening: string | null }
+export interface LiveSource { list(): Promise<{ calls: LiveCall[]; buyers: { key: string; name: string; phone: string }[] }>; act(id: string, action: string, body?: Record<string, string>): Promise<{ ok: string; calls: LiveCall[] }>; openCall?(id: string): void }
+@Component({
+  selector: 'app-live-calls',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .lv { border: 1px solid var(--s-line); border-radius: 12px; background: var(--s-bg); }
+    .lv-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; font-size: 13.5px; }
+    .lv-dot { width: 9px; height: 9px; border-radius: 50%; background: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, .5); animation: lv-pulse 1.6s infinite; }
+    @keyframes lv-pulse { 70% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
+    @media (prefers-reduced-motion: reduce) { .lv-dot { animation: none; } }
+    .lv-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .lv-chip.on { border-color: var(--s-accent); color: var(--s-accent); font-weight: 600; }
+    .lv-chip.warn { border-color: #f59e0b; }
+    .lv-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 14px 14px; }
+    .lv-tr { display: grid; gap: 6px; max-height: 260px; overflow: auto; background: var(--s-soft); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+    .lv-tr p { margin: 0; } .lv-tr .Agent b { color: var(--s-accent); } .lv-tr .You b { color: #b45309; }
+    .lv-typing { color: var(--s-muted); font-style: italic; }
+    .lv-flag { border-left: 3px solid #f59e0b; background: color-mix(in srgb, #f59e0b 10%, var(--s-bg)); padding: 6px 10px; border-radius: 0 8px 8px 0; font-size: 13px; }
+    .lv-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .lv-tf { display: grid; gap: 6px; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+    .lv-tf select, .lv-tf textarea { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
+    .lv-ok { color: var(--s-good); font-size: 13px; } .lv-err { color: #b91c1c; font-size: 13px; }
+  `],
+  template: `
+    @if (calls().length) {
+      <section class="lv" aria-label="Live calls">
+        <div class="lv-bar"><i class="lv-dot" aria-hidden="true"></i><b>Live now: {{ running().length }} call{{ running().length === 1 ? '' : 's' }}</b>
+          @for (c of calls(); track c.id) { <button type="button" class="lv-chip" [class.on]="sel() === c.id" [class.warn]="!!c.flag" (click)="pick(c.id)" [attr.aria-pressed]="sel() === c.id">{{ c.caller }} · {{ mmss(c.elapsed) }}{{ c.state === 'human' ? ' · you' : c.state === 'transferred' ? ' · transferred' : c.state === 'ended' ? ' · ended' : '' }}</button> }
+          <span class="s-grow"></span>@if (sel()) { <button type="button" class="s-btn" (click)="sel.set('')">Close</button> }</div>
+        @if (current(); as c) {
+          <div class="lv-body">
+            <span class="s-muted">{{ c.agent }} · {{ c.campaign }} · {{ c.phone }} · PO {{ c.po }}</span>
+            @if (c.flag) { <div class="lv-flag"><b>Needs a person?</b> {{ c.flag }}</div> }
+            <div class="lv-tr" aria-live="polite">
+              @for (l of c.transcript; track $index) { <p [class]="l.who"><b>{{ l.who }}:</b> {{ l.text }}</p> }
+              @if (c.state === 'ai') { <p class="lv-typing">{{ c.transcript.length % 2 ? 'Supplier is speaking…' : 'Agent is speaking…' }}</p> }
+              @if (c.transfer; as tf) { <p class="lv-typing">Transferred to {{ tf.to }} ({{ tf.phone }}). Brief they heard: "{{ tf.brief }}"</p> }
+            </div>
+            @if (c.state === 'ai' || c.state === 'human') {
+              <div class="lv-acts">
+                <button type="button" class="s-btn" [class.s-primary]="!c.listening" (click)="act('listen')" [disabled]="!!c.listening">{{ c.listening ? 'Listening' : 'Listen' }}</button>
+                @if (c.state === 'ai') { <button type="button" class="s-btn" (click)="act('takeover')">Take over</button> }
+                <button type="button" class="s-btn" (click)="tfOpen.set(!tfOpen())" [attr.aria-expanded]="tfOpen()">Transfer…</button>
+                <button type="button" class="s-btn" (click)="act('dnc')" title="End the call and add the number to the do-not-call list">Don't call again</button>
+                <button type="button" class="s-btn s-danger" (click)="act('end')">End call</button>
+              </div>
+              @if (tfOpen()) {
+                <div class="lv-tf"><b>Warm transfer</b><span class="s-muted">The person hears this brief before the supplier joins, so nobody has to repeat themselves.</span>
+                  <label>To <select (change)="tfTo.set($any($event.target).value)">@for (b of buyers(); track b.key) { <option [value]="b.key" [selected]="b.key === tfTo()">{{ b.name }} · {{ b.phone }}</option> }</select></label>
+                  <textarea rows="3" [value]="brief(c)" (input)="tfBrief.set($any($event.target).value)" aria-label="Brief"></textarea>
+                  <div class="lv-acts"><span class="s-grow"></span><button type="button" class="s-btn" (click)="tfOpen.set(false)">Cancel</button><button type="button" class="s-btn s-primary" (click)="transfer(c)">Transfer now</button></div></div>
+              }
+            } @else if (source().openCall) { <div><button type="button" class="s-btn" (click)="source().openCall!(c.id)">Open the call</button></div> }
+            @if (msg()) { <span [class.lv-ok]="!bad()" [class.lv-err]="bad()" role="status">{{ msg() }}</span> }
+          </div>
+        }
+      </section>
+    }
+  `,
+})
+export class LiveCallsComponent implements OnDestroy {
+  readonly source = input.required<LiveSource>();
+  protected readonly calls = signal<LiveCall[]>([]); protected readonly buyers = signal<{ key: string; name: string; phone: string }[]>([]);
+  protected readonly sel = signal(''); protected readonly tfOpen = signal(false); protected readonly tfTo = signal('buyer1'); protected readonly tfBrief = signal('');
+  protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly running = computed(() => this.calls().filter((c) => c.state !== 'ended'));
+  protected readonly current = computed(() => this.calls().find((c) => c.id === this.sel()) ?? null);
+  private timer: ReturnType<typeof setInterval> | null = null;
+  constructor() { effect(() => { const s = this.source(); untracked(() => this.load(s)); }); this.timer = setInterval(() => { if (!document.hidden) this.load(this.source(), false); }, 3000); }
+  ngOnDestroy(): void { if (this.timer) clearInterval(this.timer); }
+  private async load(s: LiveSource, again = true): Promise<void> {
+    try { const r = await s.list(); this.calls.set(r.calls); this.buyers.set(r.buyers); }
+    catch { if (again) setTimeout(() => this.load(s, false), 1200); }
+  }
+  protected pick(id: string): void { this.sel.set(this.sel() === id ? '' : id); this.tfOpen.set(false); this.tfBrief.set(''); this.msg.set(''); }
+  protected mmss(s: number): string { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+  protected brief(c: LiveCall): string { return this.tfBrief() || `${c.caller}, PO ${c.po}: ${c.flag ? c.flag.replace(/\.$/, '') : 'needs a person'}.`; }
+  protected async act(action: string, body?: Record<string, string>): Promise<void> {
+    const id = this.sel(); if (!id) return;
+    try { const r = await this.source().act(id, action, body); this.calls.set(r.calls); this.msg.set(r.ok); this.bad.set(false); this.tfOpen.set(false); }
+    catch (e) { this.msg.set(errText(e, 'That did not work.')); this.bad.set(true); }
+  }
+  protected transfer(c: LiveCall): void { this.act('transfer', { to: this.tfTo(), brief: this.brief(c) }); }
+}
+
+// ── Telephony hub: carriers, caller IDs, and concurrency slots per campaign ──
+export interface TelephonyView {
+  carriers: { key: string; name: string; status: string; channels: number; numbers: string[]; since: string }[];
+  catalog: { key: string; name: string; region: string; fields: { key: string; label: string; type: string }[] }[];
+  rotate: boolean; total: number; assigned: number; free: number; numbers: { number: string; carrier: string }[];
+  running: { campaign_id: string; campaign: string; agent: string; slots: number; in_use: number; queued: number; minutes_left: number }[];
+}
+export interface TelephonySource { load(): Promise<TelephonyView>; test(b: { carrier: string; fields: Record<string, string> }): Promise<{ ok: boolean; steps: { label: string; ok: boolean; detail: string }[] }>;
+  connect(b: { carrier: string; fields: Record<string, string> }): Promise<TelephonyView>; disconnect(key: string): Promise<TelephonyView>; saveSlots(b: { rotate: boolean; slots: Record<string, number> }): Promise<TelephonyView> }
+@Component({
+  selector: 'app-telephony-hub',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .th { display: grid; gap: 14px; }
+    .th input, .th select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .th-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+    .th-card { border: 1px solid var(--s-line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; font-size: 13px; }
+    .th-card b { font-size: 15px; } .th-ok { color: var(--s-good); font-weight: 600; }
+    .th-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
+    .th-tile { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+    .th-tile small { display: block; color: var(--s-muted); font-size: 12px; }
+    .th-tile.on { border: 2px solid var(--s-accent); padding: 7px 11px; }
+    .th-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .th-form label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
+    .th-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+    .th-steps li.bad { color: #b91c1c; }
+    .th-meter { height: 10px; border-radius: 5px; background: var(--s-soft); overflow: hidden; display: flex; } .th-meter i { background: var(--s-accent); } .th-meter u { background: color-mix(in srgb, var(--s-accent) 35%, transparent); }
+    .th-tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .th-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+    .th-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+    .th-tbl input { width: 70px; }
+    .th-scroll { overflow-x: auto; }
+    .th-msg { font-size: 13px; color: var(--s-good); } .th-msg.bad { color: #b91c1c; }
+  `],
+  template: `
+    <div class="th">
+      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Telephony</h2>
+        <p class="s-muted">The carriers your calls go out on, the numbers suppliers see, and how many calls each campaign may run at once.</p></div>
+      @if (v(); as view) {
+        <b>Connected carriers</b>
+        <div class="th-cards">@for (c of view.carriers; track c.key) {
+          <div class="th-card"><b>{{ c.name }}</b><span class="th-ok">● Connected</span><span>{{ c.channels }} calls at once · {{ c.numbers.length }} number{{ c.numbers.length === 1 ? '' : 's' }}</span><span class="s-muted">since {{ when(c.since) }}</span>
+            <div><button type="button" class="s-btn" (click)="disconnect(c.key)">Disconnect</button></div></div>
+        } @empty { <p class="s-note">No carrier connected: calls cannot go out.</p> }</div>
+        <details class="th-add" [open]="addOpen()" (toggle)="addOpen.set($any($event.target).open)"><summary><b>+ Connect a carrier</b> <span class="s-muted">bring your own Ozonetel, Exotel, Tata Tele, Plivo, Twilio or SIP trunk</span></summary>
+          <div class="th-tiles">@for (c of view.catalog; track c.key) { <button type="button" class="th-tile" [class.on]="pickC() === c.key" (click)="pickC.set(c.key); fields.set({}); test.set(null)">{{ c.name }}<small>{{ c.region }}</small></button> }</div>
+          @if (carrier(); as c) {
+            <div class="th-form">@for (f of c.fields; track f.key) { <label>{{ f.label }}<input [type]="f.type === 'secret' ? 'password' : 'text'" autocomplete="off" (input)="setF(f.key, $any($event.target).value)"></label> }
+              <button type="button" class="s-btn" (click)="runTest()" [disabled]="busy()">Test</button>
+              <button type="button" class="s-btn s-primary" (click)="connect()" [disabled]="busy() || !test()?.ok">Connect</button></div>
+            @if (test(); as t) { <ul class="th-steps">@for (s of t.steps; track s.label) { <li [class.bad]="!s.ok">{{ s.ok ? '✓' : '✕' }} <b>{{ s.label }}</b> · {{ s.detail }}</li> }</ul> }
+          }
+        </details>
+        <b>Numbers suppliers see</b>
+        <div class="th-tiles">@for (n of view.numbers; track n.number) { <span class="th-tile">{{ n.number }}<small>{{ n.carrier }}</small></span> }</div>
+        <label class="th-form" style="align-items: center"><input type="checkbox" style="width: 20px; height: 20px" [checked]="rotate()" (change)="rotate.set($any($event.target).checked)"> Rotate numbers across calls, so no single number gets flagged as spam</label>
+        <b>Slots: calls at the same time</b>
+        <div class="th-meter" role="img" [attr.aria-label]="view.assigned + ' of ' + view.total + ' slots given to campaigns'"><i [style.width.%]="share(view.assigned, view.total)"></i></div>
+        <span class="s-muted">{{ view.total }} slots from your carriers · {{ view.assigned }} given to running campaigns · {{ view.free }} free. A campaign never takes more than its slots, so one big sheet cannot hold up the others.</span>
+        <div class="th-scroll"><table class="th-tbl"><thead><tr><th>Running campaign</th><th>Slots</th><th>In use</th><th>Waiting</th><th>Done in about</th></tr></thead><tbody>
+          @for (r of view.running; track r.campaign_id) { <tr><td>{{ r.campaign }}<br><span class="s-muted">{{ r.agent }}</span></td>
+            <td><input type="number" min="1" max="200" [value]="slotOf(r)" (change)="setSlot(r.campaign_id, +$any($event.target).value)" [attr.aria-label]="'Slots for ' + r.campaign"></td>
+            <td>{{ r.in_use }}</td><td>{{ r.queued }}</td><td>{{ mins(r.queued, slotOf(r)) }}</td></tr> }
+          @empty { <tr><td colspan="5" class="s-muted">No campaign is running.</td></tr> }
+        </tbody></table></div>
+        <div class="th-form"><span class="s-grow"></span>@if (msg()) { <span class="th-msg" [class.bad]="bad()" role="status">{{ msg() }}</span> }<button type="button" class="s-btn s-primary" (click)="save()" [disabled]="busy()">Save numbers and slots</button></div>
+      } @else { <p class="s-empty">{{ msg() || 'Loading telephony…' }}</p> }
+    </div>
+  `,
+})
+export class TelephonyHubComponent {
+  readonly source = input.required<TelephonySource>();
+  readonly page = input(false);
+  protected readonly v = signal<TelephonyView | null>(null);
+  protected readonly addOpen = signal(false); protected readonly pickC = signal(''); protected readonly fields = signal<Record<string, string>>({});
+  protected readonly test = signal<{ ok: boolean; steps: { label: string; ok: boolean; detail: string }[] } | null>(null);
+  protected readonly rotate = signal(true); protected readonly slots = signal<Record<string, number>>({});
+  protected readonly busy = signal(false); protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly carrier = computed(() => this.v()?.catalog.find((c) => c.key === this.pickC()) ?? null);
+  constructor() { effect(() => { const s = this.source(); untracked(() => this.load(s)); }); }
+  private set(v: TelephonyView): void { this.v.set(v); this.rotate.set(v.rotate); this.slots.set({}); }
+  private async load(s = this.source(), again = true): Promise<void> { try { this.set(await s.load()); } catch { if (again) setTimeout(() => this.load(s, false), 1200); else { this.msg.set('Could not load telephony.'); this.bad.set(true); } } }
+  private say(m: string, bad = false): void { this.msg.set(m); this.bad.set(bad); }
+  protected setF(k: string, v: string): void { this.fields.set({ ...this.fields(), [k]: v }); this.test.set(null); }
+  protected async runTest(): Promise<void> { this.busy.set(true); try { this.test.set(await this.source().test({ carrier: this.pickC(), fields: this.fields() })); } finally { this.busy.set(false); } }
+  protected async connect(): Promise<void> { this.busy.set(true); try { this.set(await this.source().connect({ carrier: this.pickC(), fields: this.fields() })); this.say(`${this.carrier()?.name} connected.`); this.addOpen.set(false); this.pickC.set(''); this.test.set(null); } catch (e) { this.say(errText(e, 'Could not connect.'), true); } finally { this.busy.set(false); } }
+  protected async disconnect(key: string): Promise<void> { if (!confirm('Disconnect this carrier? Calls stop going out on it.')) return; try { this.set(await this.source().disconnect(key)); this.say('Disconnected.'); } catch (e) { this.say(errText(e, 'Could not disconnect.'), true); } }
+  protected slotOf(r: { campaign_id: string; slots: number }): number { return this.slots()[r.campaign_id] ?? r.slots; }
+  protected setSlot(id: string, n: number): void { this.slots.set({ ...this.slots(), [id]: n }); }
+  protected mins(queued: number, slots: number): string { const m = Math.ceil((queued * 2.5) / Math.max(1, slots)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; }
+  protected share(n: number, of: number): number { return of ? Math.min(100, (100 * n) / of) : 0; }
+  protected async save(): Promise<void> { this.busy.set(true); try { this.set(await this.source().saveSlots({ rotate: this.rotate(), slots: this.slots() })); this.say('Saved.'); } catch { this.say('Could not save.', true); } finally { this.busy.set(false); } }
+  protected when(iso: string): string { return new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' }); }
 }

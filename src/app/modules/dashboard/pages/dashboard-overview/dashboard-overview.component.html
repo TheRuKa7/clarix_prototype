@@ -8,6 +8,7 @@
 
 
   <!-- The calling report (Calling-Report-Logic.md v1): the same component and numbers as Echo. Every number on this page comes from it. -->
+  <app-live-calls [source]="liveSource"></app-live-calls>
   <app-calling-report [source]="reportSource" workspace="Moglix" (scopeChange)="onReportScope($event)"></app-calling-report>
 
 </div>

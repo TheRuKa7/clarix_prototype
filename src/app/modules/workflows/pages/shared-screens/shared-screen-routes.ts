@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ReportService } from '../../../dashboard/services/report.service';
 import { CallingReportComponent, CallingReportSource } from '../../../dashboard/components/calling-report/calling-report.component';
-import { AlertsComponent, AlertsSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
 
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
@@ -12,6 +12,7 @@ function reportSource(r: ReportService, router: Router): CallingReportSource {
     calls: (sc, box, skip, limit, f) => firstValueFrom(r.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(r.callingReportExport(sc, box, f)),
     rerun: (sc, box, f) => firstValueFrom(r.rerunCalls(sc, box, f)),
+    ask: (sc, box, f, q) => firstValueFrom(r.askCalls(sc, box, f, q)),
     values: (sc, box, f, col, q) => firstValueFrom(r.reportColumnValues(sc, box, f, col, q)),
     openCall: (row) => router.navigate(['/workflows/calls', row.id]),
   };
@@ -86,5 +87,15 @@ export class ClarixAlertsPage {
   readonly source: AlertsSource = {
     load: () => firstValueFrom(this.r.alerts()), save: (x) => firstValueFrom(this.r.saveAlerts(x)), resume: (id) => firstValueFrom(this.r.resumeReportCampaign(id)),
     openCampaign: (id) => this.router.navigate(['/workflows/campaigns', id]),
+  };
+}
+
+@Component({ selector: 'app-clarix-telephony', standalone: true, imports: [TelephonyHubComponent], template: `<div class="rx-page"><app-telephony-hub [source]="source" [page]="true"></app-telephony-hub></div>` })
+export class ClarixTelephonyPage {
+  private r = inject(ReportService);
+  /** Carriers, caller IDs and concurrency slots. */
+  readonly source: TelephonySource = {
+    load: () => firstValueFrom(this.r.telephony()), test: (b) => firstValueFrom(this.r.telTest(b)), connect: (b) => firstValueFrom(this.r.telConnect(b)),
+    disconnect: (k) => firstValueFrom(this.r.telDisconnect(k)), saveSlots: (b) => firstValueFrom(this.r.telSlots(b)),
   };
 }
