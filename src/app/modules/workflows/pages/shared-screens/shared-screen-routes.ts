@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ReportService } from '../../../dashboard/services/report.service';
 import { CallingReportComponent, CallingReportSource } from '../../../dashboard/components/calling-report/calling-report.component';
-import { CallingRulesComponent, CallingRulesSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { AlertsComponent, AlertsSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
 
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
@@ -11,6 +11,7 @@ function reportSource(r: ReportService, router: Router): CallingReportSource {
     report: (sc, f) => firstValueFrom(r.callingReport(sc, f)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(r.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(r.callingReportExport(sc, box, f)),
+    rerun: (sc, box, f) => firstValueFrom(r.rerunCalls(sc, box, f)),
     values: (sc, box, f, col, q) => firstValueFrom(r.reportColumnValues(sc, box, f, col, q)),
     openCall: (row) => router.navigate(['/workflows/calls', row.id]),
   };
@@ -18,7 +19,7 @@ function reportSource(r: ReportService, router: Router): CallingReportSource {
 const ALL = () => ({ period: 'all' as const, from: new Date(0).toISOString(), to: new Date().toISOString(), days: 0, agents: [], includeTests: false });
 function campaignsSource(r: ReportService, router: Router): CampaignsSource {
   return {
-    list: (p) => firstValueFrom(r.reportCampaigns(p)), get: (id) => firstValueFrom(r.reportCampaign(id)), stop: (id) => firstValueFrom(r.stopReportCampaign(id)),
+    list: (p) => firstValueFrom(r.reportCampaigns(p)), get: (id) => firstValueFrom(r.reportCampaign(id)), stop: (id) => firstValueFrom(r.stopReportCampaign(id)), resume: (id) => firstValueFrom(r.resumeReportCampaign(id)),
     results: (id) => firstValueFrom(r.callingReportExport({ ...ALL(), campaign: id } as any, 'uploaded')),
     open: (c) => router.navigate(['/workflows/campaigns', c.campaign_id]), newCampaign: () => router.navigate(['/workflows/campaigns/new']),
     report: reportSource(r, router), listPath: '/workflows/campaigns',
@@ -65,5 +66,25 @@ export class ClarixCallingRulesPage {
   readonly source: CallingRulesSource = {
     list: () => firstValueFrom(this.r.callingRules()), save: (c, x) => firstValueFrom(this.r.saveCallingRule(c, x)), reset: (c) => firstValueFrom(this.r.resetCallingRule(c)),
     preview: (x, c, h) => firstValueFrom(this.r.retryPreview(x, c, h)),
+  };
+}
+
+@Component({ selector: 'app-clarix-dnc', standalone: true, imports: [DncListComponent], template: `<div class="rx-page"><app-dnc-list [source]="source" [page]="true"></app-dnc-list></div>` })
+export class ClarixDncPage {
+  private r = inject(ReportService); private router = inject(Router);
+  /** The workspace do-not-call list. */
+  readonly source: DncSource = {
+    load: (q) => firstValueFrom(this.r.dncLoad(q)), add: (e) => firstValueFrom(this.r.dncAdd(e)), remove: (p, why) => firstValueFrom(this.r.dncRemove(p, why)),
+    setAuto: (on) => firstValueFrom(this.r.dncAuto(on)), openCall: (id) => this.router.navigate(['/workflows/calls', id]),
+  };
+}
+
+@Component({ selector: 'app-clarix-alerts', standalone: true, imports: [AlertsComponent], template: `<div class="rx-page"><app-alerts [source]="source" [page]="true"></app-alerts></div>` })
+export class ClarixAlertsPage {
+  private r = inject(ReportService); private router = inject(Router);
+  /** Alerts that tell the owner and pause a campaign that is going wrong. */
+  readonly source: AlertsSource = {
+    load: () => firstValueFrom(this.r.alerts()), save: (x) => firstValueFrom(this.r.saveAlerts(x)), resume: (id) => firstValueFrom(this.r.resumeReportCampaign(id)),
+    openCampaign: (id) => this.router.navigate(['/workflows/campaigns', id]),
   };
 }

@@ -2,6 +2,8 @@
 // One status per uploaded row, decided once when the call ends, and every dashboard number worked out from
 // those stored statuses. The Echo and Clarix mocks share this file: keep the two copies identical.
 
+import { dncScan, onDnc, checkAlerts, pausedOf } from './wave1.mjs';
+
 export const DEFINITIONS_VERSION = 'v1 · 30 Oct 2026';
 /** A picked-up call shorter than this is "Agent not given time to speak" (a workspace setting). */
 export const SHORT_CALL_SECONDS = 15;
@@ -317,12 +319,15 @@ export function logFilters(q) { let cols = {}; try { cols = JSON.parse(q.get('fi
 export function campaignSummaries(rows) {
   const by = new Map();
   for (const r of rows) { if (!r.campaign_id || r.campaign_id === 'console') continue; (by.get(r.campaign_id) || by.set(r.campaign_id, []).get(r.campaign_id)).push(r); }
+  dncScan(rows);
+  checkAlerts(new Map([...by.entries()].map(([id, mine]) => [id, { name: mine[0].campaign, rows: mine, running: mine.some(BOX.in_progress) }])));
   return [...by.entries()].map(([id, mine]) => {
     const n = (k) => mine.filter(BOX[k]).length; const an = n('answered'), su = n('success'), open = n('in_progress'), stopped = n('stopped');
     const first = mine.reduce((m, r) => (!m || (r.uploaded_at && r.uploaded_at < m) ? r.uploaded_at : m), null);
-    const status = open ? 'Running' : n('planned') === 0 ? 'Failed' : stopped ? 'Stopped' : 'Completed';
+    const hold = open ? pausedOf(id) : null;
+    const status = hold ? 'Paused' : open ? 'Running' : n('planned') === 0 ? 'Failed' : stopped ? 'Stopped' : 'Completed';
     return { campaign_id: id, campaign: mine[0].campaign, agent: mine[0].agent, agent_key: mine[0].agent_key, uploaded_by: mine[0].uploaded_by || '', created_at: first,
-      uploaded: mine.length, planned: n('planned'), picked_up: n('picked_up'), answered: an, success: su, success_rate: pct(su, an), not_finished: open, bad_data: n('bad_data'), status };
+      uploaded: mine.length, planned: n('planned'), picked_up: n('picked_up'), answered: an, success: su, success_rate: pct(su, an), not_finished: open, bad_data: n('bad_data'), status, paused: hold };
   }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 /** "po_numbers" -> "PO numbers": a sheet or answer key as a column header. */
@@ -347,7 +352,7 @@ export function flatValues(o) {
 export function filterCampaigns(list, { from = null, to = null, state = 'all', q = '' } = {}) {
   const lo = from ? Date.parse(from) : -Infinity, hi = to ? Date.parse(to) : Infinity; const term = String(q).trim().toLowerCase();
   return list.filter((c) => { const t = Date.parse(c.created_at || ''); return (!Number.isFinite(t) || (t >= lo && t <= hi))
-    && (state === 'all' || (state === 'running' ? c.status === 'Running' : c.status !== 'Running'))
+    && (state === 'all' || (state === 'running' ? ['Running', 'Paused'].includes(c.status) : !['Running', 'Paused'].includes(c.status)))
     && (!term || [c.campaign, c.agent, c.uploaded_by].some((v) => String(v || '').toLowerCase().includes(term))); });
 }
 
@@ -614,7 +619,29 @@ export const defaultRetryRule = () => ({
   branded_name: 'Moglix Procurement',
   call_reason: 'Purchase Order Follow-up',
   branding_providers: ['truecaller', 'cnam', 'hiya', 'google_apple'],
+  stop_on_goal: true,
+  by_result: defaultByResult(),
 });
+/** What to do after each call result: retry (how many times, which gap, which message) or stop. gap null = the schedule's gaps. */
+export const RESULT_KEYS = [
+  { key: 'no_answer', label: 'No answer', match: (r) => r.call_status === 'Not picked' },
+  { key: 'voicemail', label: 'Voicemail', match: (r) => r.call_status === 'Voicemail' },
+  { key: 'silent', label: 'Silent line', match: (r) => r.call_status === 'No reply' },
+  { key: 'system', label: 'System issue', match: (r) => r.call_status === 'System issue' },
+  { key: 'dnd', label: 'DND / blocked', match: (r) => r.call_status === 'DND' },
+  { key: 'cut_short', label: 'Hung up early', match: (r) => r.call_status === 'Answered' && /not given time|left before/i.test(r.status_reason || '') },
+  { key: 'partial', label: 'Partial answer', match: (r) => r.status_reason === 'Success: Partial' },
+  { key: 'callback', label: 'Callback asked', match: (r) => r.status_reason === 'Success: Callback requested' },
+];
+export function defaultByResult() {
+  return {
+    no_answer: { act: 'retry', tries: 5, gap: null, message: 'whatsapp' }, voicemail: { act: 'retry', tries: 2, gap: 1440, message: 'both' },
+    silent: { act: 'retry', tries: 3, gap: 15, message: 'none' }, system: { act: 'retry', tries: 3, gap: 10, message: 'none' },
+    dnd: { act: 'retry', tries: 2, gap: null, message: 'both' }, cut_short: { act: 'retry', tries: 2, gap: null, message: 'whatsapp' },
+    partial: { act: 'retry', tries: 1, gap: 240, message: 'whatsapp' }, callback: { act: 'callback', tries: 1, gap: null, message: 'none' },
+  };
+}
+export const resultKeyOf = (r) => RESULT_KEYS.find((k) => k.match(r))?.key || null;
 /** agent key -> rule. Unset agents use the default. */
 export const retryRules = new Map();
 export const retryRuleOf = (agent) => ({ ...defaultRetryRule(), ...(retryRules.get(agent) || {}) });
@@ -664,6 +691,12 @@ export function cleanRetryRule(b) {
     branded_name: String(r.branded_name || d.branded_name).slice(0, 60),
     call_reason: String(r.call_reason || d.call_reason).slice(0, 80),
     branding_providers: providers.length ? providers : d.branding_providers,
+    stop_on_goal: on(r.stop_on_goal, d.stop_on_goal),
+    by_result: Object.fromEntries(RESULT_KEYS.map(({ key }) => {
+      const x = { ...d.by_result[key], ...((r.by_result || {})[key] || {}) };
+      return [key, { act: ['retry', 'stop', 'callback'].includes(x.act) ? x.act : 'retry', tries: Math.min(10, Math.max(0, Number(x.tries) || 0)),
+        gap: x.gap == null || x.gap === '' ? null : Math.min(2880, Math.max(5, Number(x.gap) || 30)), message: ['none', 'whatsapp', 'both'].includes(x.message) ? x.message : 'none' }];
+    })),
   };
 }
 // ── Calling rules per country: when a number may be called at all ────────────
@@ -884,7 +917,8 @@ export function messageSuggestions(r, nextAt, rule = defaultRetryRule()) {
 }
 /** The call page's next steps: the retry plan from the agent's rule, the suggested messages and what was already sent. */
 export function callSteps(r) {
-  const rule = retryRuleOf(r.agent_key || r.agent); const rt = retryFor(r, rule); const country = countryOf(r.phone); const c = countryRule(country);
+  const rule = retryRuleOf(r.agent_key || r.agent); let rt = retryFor(r, rule); const country = countryOf(r.phone); const c = countryRule(country);
+  const rk = resultKeyOf(r); const br = rk ? (rule.by_result || defaultByResult())[rk] : null; const dnc = onDnc(r.phone);
   let plan = [];
   if (rt) {
     const from = rt.callback ? (Date.parse(r.callback_at || '') ? new Date(Date.parse(r.callback_at)).toISOString() : new Date(Date.parse(r.call_date || '') + 2 * 3600000 || Date.now()).toISOString()) : r.call_date || new Date().toISOString();
@@ -894,6 +928,13 @@ export function callSteps(r) {
     else if (rt.fast_gap) plan = [new Date(fitSlot((Date.parse(from) || Date.now()) + rt.fast_gap * 60000, rule, country).at).toISOString(), ...retryPlan(rule, from, done + 1, country)];
     else plan = retryPlan(rule, from, done, country).slice(0, rt.cap || undefined);
   }
+  if (rt && br && !rt.callback) {
+    const done = Number(r.retries) || 0;
+    if (br.act === 'stop') { plan = []; rt = { label: `${RESULT_KEYS.find((k) => k.key === rk).label}: no more calls (the agent's rule for this result)` }; }
+    else if (br.gap) plan = retryPlan({ ...rule, schedule: 'linear', base_minutes: br.gap, retries: br.tries }, r.call_date || new Date().toISOString(), Math.min(done, br.tries), country);
+    else plan = plan.slice(0, Math.max(0, br.tries - done));
+  }
+  if (dnc) { plan = []; rt = { label: `On your do-not-call list (${dnc.reason}): no more calls` }; }
   const today = c.days[new Date(Date.now() + c.offset_min * 60000).getUTCDay()];
   const details = poDetailsText(r);
   const voicemail_script = r.call_status === 'Voicemail'
@@ -916,6 +957,8 @@ export function callSteps(r) {
     voicemail_script,
     fast_hook_script,
     retry: rt ? { label: rt.label, plan, left: plan.length } : null,
+    result_rule: br && rk ? { key: rk, label: RESULT_KEYS.find((k) => k.key === rk).label, ...br } : null,
+    dnc,
     country: { code: c.code, name: c.name, tz_label: c.tz_label, hours_today: today.on ? `${today.from}–${today.to}` : 'no calls today', register: c.register.name,
       on_register: c.register.check && onRegister(r.phone), register_action: c.register.action },
     messages: messageSuggestions(r, plan[0], rule),

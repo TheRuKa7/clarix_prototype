@@ -2,6 +2,8 @@
 // then each run reads rows, filters them, groups lines into calls and starts a campaign. Demo data only:
 // nothing here reaches a real system. See docs/Agent-Data-Sources-Journey-2026-11-03.md.
 
+import { onDnc } from './wave1.mjs';
+
 const F = (key, label, type = 'text', extra = {}) => ({ key, label, type, ...extra });
 /** The connector catalog: what each asks for, and the object it reads. */
 export const CONNECTORS = [
@@ -139,7 +141,8 @@ export function buildCalls(agent, config = {}, inputs = []) {
   const map = new Map((config.mapping || []).filter((m) => m.column).map((m) => [m.input, m.column]));
   const phoneCol = map.get('contact_phone');
   const noPhone = phoneCol ? fresh.filter((r) => String(r[phoneCol] ?? '').replace(/\D/g, '').length < 10) : fresh;
-  const callable = fresh.filter((r) => !noPhone.includes(r));
+  const onList = fresh.filter((r) => !noPhone.includes(r) && phoneCol && onDnc(r[phoneCol]));
+  const callable = fresh.filter((r) => !noPhone.includes(r) && !onList.includes(r));
   const g = config.group || { mode: 'row' };
   const order = g.order || ''; const sorted = order ? [...callable].sort((a, b) => String(a[order]).localeCompare(String(b[order]), undefined, { numeric: true })) : callable;
   const groups = [];
@@ -160,7 +163,7 @@ export function buildCalls(agent, config = {}, inputs = []) {
     if (inputs.includes('line_count') || g.mode === 'group') vals.line_count = String(gr.rows.length);
     return { key: gr.key, part: gr.part, parts: gr.parts, lines: gr.rows.length, phone: phoneCol ? String(gr.rows[0][phoneCol]) : '', inputs: vals, row_keys: gr.rows.map((r) => r[dd.key || 'po_line_id']) };
   });
-  return { read: all.length, after_filters: kept.length, skipped_recent: skippedRecent, no_phone: noPhone.length, calls };
+  return { read: all.length, after_filters: kept.length, skipped_recent: skippedRecent, no_phone: noPhone.length, do_not_call: onList.length, calls };
 }
 export function markCalled(agent, calls, keyField) { const seen = calledFor(agent); const at = new Date().toISOString(); for (const c of calls) for (const k of c.row_keys) seen.set(String(k), at); }
 /** The calls as a CSV the existing upload path reads: the agent's inputs as headers. */

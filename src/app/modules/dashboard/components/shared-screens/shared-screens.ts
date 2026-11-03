@@ -9,7 +9,9 @@ import { CallingReportComponent, CallingReportSource, CampaignColumns, ReportCal
 
 export interface CampaignLine {
   campaign_id: string; campaign: string; agent: string; agent_key: string; uploaded_by: string; created_at: string | null; uploaded: number; planned: number; picked_up: number;
-  answered: number; success: number; success_rate: number | null; not_finished: number; bad_data: number; status: 'Running' | 'Completed' | 'Stopped' | 'Failed';
+  answered: number; success: number; success_rate: number | null; not_finished: number; bad_data: number; status: 'Running' | 'Paused' | 'Completed' | 'Stopped' | 'Failed';
+  /** Set when an alert paused the campaign: why and when. */
+  paused?: { reason: string; at: string; rule_id: string } | null;
   /** The agent's custom stats for this campaign: total in the sheet, covered on answered calls, accepted. */
   stats?: { field: string; label: string; total: number; covered: number; accepted: number }[];
   /** One campaign only: its sheet's columns and the agent's answers, for its table. */
@@ -19,6 +21,8 @@ export interface CampaignsSource {
   list(p: { from: string | null; to: string | null; state: string; q: string; skip: number; limit: number }): Promise<{ rows: CampaignLine[]; total: number; running: number }>;
   get(id: string): Promise<CampaignLine>;
   stop(id: string): Promise<{ stopped: number }>;
+  /** Resumes a campaign an alert paused. */
+  resume?(id: string): Promise<unknown>;
   /** Every row of the campaign with its call status (the 14-column export). */
   results(id: string): Promise<Blob>;
   open(c: CampaignLine): void;
@@ -60,7 +64,18 @@ export interface RetryRule {
   branded_name?: string;
   call_reason?: string;
   branding_providers?: string[];
+  /** Stop calling a supplier once any of their rows reaches the goal. */
+  stop_on_goal?: boolean;
+  /** What to do after each call result. gap null = the schedule's own gaps. */
+  by_result?: Record<string, ResultRule>;
 }
+export interface ResultRule { act: 'retry' | 'stop' | 'callback'; tries: number; gap: number | null; message: 'none' | 'whatsapp' | 'both' }
+export const RESULT_ROWS: { key: string; label: string; hint: string }[] = [
+  { key: 'no_answer', label: 'No answer', hint: 'Rang out' }, { key: 'voicemail', label: 'Voicemail', hint: 'An answering machine picked up' },
+  { key: 'silent', label: 'Silent line', hint: 'Connected, nobody spoke' }, { key: 'system', label: 'System issue', hint: 'The line or our side failed' },
+  { key: 'dnd', label: 'DND / blocked', hint: 'The number blocks unknown callers' }, { key: 'cut_short', label: 'Hung up early', hint: 'Under 15 s, agent not heard' },
+  { key: 'partial', label: 'Partial answer', hint: 'Some POs confirmed' }, { key: 'callback', label: 'Callback asked', hint: 'The supplier named a time' },
+];
 export const BRANDING_PROVIDER_LIST: { key: string; label: string; sub: string }[] = [
   { key: 'truecaller', label: 'Truecaller Verified Business', sub: 'Green verified badge + brand logo on Android/iOS' },
   { key: 'cnam', label: 'Operator CNAM / TRAI CNAP', sub: 'Carrier-level caller name display ("Moglix Procurement")' },
@@ -188,7 +203,7 @@ const CSS = `
   td.s-wrap { white-space: normal; min-width: 260px; max-width: 420px; color: var(--s-muted); font-size: 12.5px; }
   .s-actions .s-btn { padding: 4px 10px; font-size: 12.5px; }
 `;
-const STATUS_COLOR: Record<string, string> = { Running: '#d97706', Completed: '#16a34a', Stopped: '#a8a29e', Failed: '#dc2626' };
+const STATUS_COLOR: Record<string, string> = { Paused: '#dc2626', Running: '#d97706', Completed: '#16a34a', Stopped: '#a8a29e', Failed: '#dc2626' };
 const pctText = (x: number | null | undefined) => (x == null ? '—' : `${Math.round(x * 100)}%`);
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '—');
 function save(blob: Blob, name: string): void { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
@@ -289,6 +304,8 @@ export class CampaignsListComponent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CallingReportComponent],
   styles: [CSS + `
+    .cp-paused { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border: 1px solid #fca5a5; background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; }
+    .cp-paused b { color: #b91c1c; }
     .cp-progress { gap: 8px; }
     .cp-line { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
     .cp-line b { font-size: 15px; }
@@ -311,6 +328,10 @@ export class CampaignsListComponent {
           <button type="button" class="s-btn" (click)="results(camp)">Results (.xlsx)</button>
           @if (camp.status === 'Running') { <button type="button" class="s-btn s-danger" (click)="stop(camp)">Stop calls</button> }
         </div>
+        @if (camp.paused; as pz) {
+          <div class="cp-paused" role="alert"><b>Paused by an alert</b><span>{{ pz.reason }} · {{ when(pz.at) }}. Calls still waiting are held; nothing is lost.</span>
+            @if (source().resume) { <button type="button" class="s-btn s-primary" (click)="resume(camp)">Resume calls</button> }</div>
+        }
         @if (note()) { <p class="s-note">{{ note() }}</p> }
         <!-- Where the campaign stands, before any detail: rows done, still dialling, not dialled, and the result so far. -->
         <div class="s-card s-pad cp-progress">
@@ -349,6 +370,7 @@ export class CampaignPageComponent {
   protected color(s: string): string { return STATUS_COLOR[s] || '#a8a29e'; }
   protected back(): void { this.router.navigate([this.source().listPath]); }
   protected async results(c: CampaignLine): Promise<void> { save(await this.source().results(c.campaign_id), `${c.campaign.replace(/\.\w+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_')}_results.xlsx`); }
+  protected async resume(c: CampaignLine): Promise<void> { await this.source().resume?.(c.campaign_id); this.note.set('Calls resumed. The alert will trip again only on new calls.'); this.load(c.campaign_id); }
   protected async stop(c: CampaignLine): Promise<void> {
     if (!confirm(`Stop the calls still waiting in ${c.campaign}?`)) return;
     const r = await this.source().stop(c.campaign_id); this.note.set(`${r.stopped} call${r.stopped === 1 ? '' : 's'} stopped.`); this.load(c.campaign_id);
@@ -409,6 +431,12 @@ export class CampaignPageComponent {
     .s input[type=file], :host input[type=file] { font: inherit; font-size: 13px; color: var(--s-muted); }
     :host input[type=file]::file-selector-button { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 6px 12px; margin-right: 10px; font: inherit; font-size: 13px; cursor: pointer; }
     .nc-more summary .s-muted { font-weight: 400; font-size: 12.5px; }
+    .nc-res { border-collapse: collapse; font-size: 13px; width: 100%; }
+    .nc-res th { text-align: left; font-weight: 500; color: var(--s-muted); font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--s-line); }
+    .nc-res td { padding: 5px 6px; border-bottom: 1px solid var(--s-line); }
+    .nc-res td small { display: block; color: var(--s-muted); font-size: 12px; }
+    .nc-res input { width: 76px; } .nc-res select, .nc-res input { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
+    .nc-res input:disabled { opacity: .45; }
     .nc-pill.bad { color: #b91c1c; } .nc-pill.warn, .nc-pill.fixed { color: #a16207; } .nc-pill.ok { color: var(--s-good); } .nc-pill.dummy, .nc-pill.test { color: var(--s-muted); }
     .nc-hint td { color: var(--s-muted); font-size: 12px; }
     .nc-brand { display: grid; gap: 8px; border-top: 1px solid var(--s-line); padding-top: 8px; }
@@ -470,7 +498,7 @@ export class CampaignPageComponent {
                           <td class="nc-st"><span class="nc-pill" [class]="'nc-pill ' + r.status">{{ statusWord(r.status) }}</span>@if (r.is_dummy) { <button type="button" class="s-btn nc-rm" (click)="removeRow(i)" aria-label="Remove the sample row">Remove</button> }</td>
                           @for (c of columns(); track c.key) { <td><input [value]="r.cells[c.key] || ''" (change)="editCell(i, c.key, $any($event.target).value)" [attr.aria-label]="c.label + ', ' + (r.is_dummy ? 'sample row' : 'row ' + r.row)"></td> }
                         </tr>
-                        @if (r.issue && !r.is_dummy) { <tr class="nc-hint"><td [attr.colspan]="columns().length + 2"><b>{{ r.issue }}</b> {{ r.best_practice }}</td></tr> }
+                        @if (r.issue && !r.is_dummy) { <tr class="nc-hint"><td [attr.colspan]="columns().length + 2"><b>{{ r.issue }}</b> {{ r.issue.startsWith('On your do-not-call') ? 'Remove the row, or take the number off the list in the do-not-call settings.' : r.best_practice }}</td></tr> }
                       }
                     </tbody>
                   </table>
@@ -524,6 +552,22 @@ export class CampaignPageComponent {
                   <label><input type="checkbox" [checked]="ru.callback_cta !== false" (change)="setRule({ callback_cta: $any($event.target).checked })"> Callback link in messages</label>
                   <label>Unblock request after <input type="number" min="1" max="5" [value]="ru.dnd_unblock_after ?? 2" (change)="setRule({ dnd_unblock_after: +$any($event.target).value })" aria-label="DND results before the unblock request"> DND results</label>
                 </div>
+              </details>
+              <details class="nc-more">
+                <summary>By call result <span class="s-muted">{{ resultSummary(ru) }}</span></summary>
+                <span class="s-muted">Each result can have its own number of tries, gap and message. A blank gap uses the schedule above.</span>
+                <div class="s-scroll"><table class="nc-res">
+                  <thead><tr><th>After</th><th>Then</th><th>Tries</th><th>Gap (min)</th><th>Message</th></tr></thead>
+                  <tbody>@for (rr of RESULTS; track rr.key) { @if (resOf(ru, rr.key); as x) {
+                    <tr><td><b>{{ rr.label }}</b><small>{{ rr.hint }}</small></td>
+                      <td><select (change)="setRes(rr.key, { act: $any($event.target).value })" [attr.aria-label]="'After ' + rr.label">
+                        @if (rr.key === 'callback') { <option value="callback" [selected]="x.act === 'callback'">Call at the agreed time</option> }
+                        <option value="retry" [selected]="x.act === 'retry'">Try again</option><option value="stop" [selected]="x.act === 'stop'">Stop calling</option></select></td>
+                      <td><input type="number" min="0" max="10" [value]="x.tries" [disabled]="x.act === 'stop'" (change)="setRes(rr.key, { tries: +$any($event.target).value })" [attr.aria-label]="'Tries after ' + rr.label"></td>
+                      <td><input type="number" min="5" max="2880" [value]="x.gap ?? ''" placeholder="schedule" [disabled]="x.act !== 'retry'" (change)="setRes(rr.key, { gap: $any($event.target).value === '' ? null : +$any($event.target).value })" [attr.aria-label]="'Gap after ' + rr.label"></td>
+                      <td><select (change)="setRes(rr.key, { message: $any($event.target).value })" [attr.aria-label]="'Message after ' + rr.label"><option value="none" [selected]="x.message === 'none'">None</option><option value="whatsapp" [selected]="x.message === 'whatsapp'">WhatsApp</option><option value="both" [selected]="x.message === 'both'">WhatsApp and email</option></select></td></tr>
+                  } }</tbody></table></div>
+                <label><input type="checkbox" [checked]="ru.stop_on_goal !== false" (change)="setRule({ stop_on_goal: $any($event.target).checked })"> Stop calling a supplier once any of their rows reaches the goal</label>
               </details>
               <details class="nc-more nc-brand">
                 <summary>Branded caller ID <span class="s-muted">{{ ru.branded_name ? ru.branded_name + (ru.caller_id ? ' · ' + ru.caller_id : '') : 'Not set' }}</span></summary>
@@ -583,6 +627,19 @@ export class NewCampaignComponent {
   protected readonly noteSent = signal(false);
   protected readonly SCHEDULES = RETRY_SCHEDULES;
   protected readonly BRANDS = BRANDING_PROVIDER_LIST;
+  protected readonly RESULTS = RESULT_ROWS;
+  private readonly DEFAULT_RESULTS: Record<string, ResultRule> = {
+    no_answer: { act: 'retry', tries: 5, gap: null, message: 'whatsapp' }, voicemail: { act: 'retry', tries: 2, gap: 1440, message: 'both' }, silent: { act: 'retry', tries: 3, gap: 15, message: 'none' },
+    system: { act: 'retry', tries: 3, gap: 10, message: 'none' }, dnd: { act: 'retry', tries: 2, gap: null, message: 'both' }, cut_short: { act: 'retry', tries: 2, gap: null, message: 'whatsapp' },
+    partial: { act: 'retry', tries: 1, gap: 240, message: 'whatsapp' }, callback: { act: 'callback', tries: 1, gap: null, message: 'none' },
+  };
+  protected resOf(ru: RetryRule, k: string): ResultRule { return { ...this.DEFAULT_RESULTS[k], ...(ru.by_result?.[k] || {}) }; }
+  protected setRes(k: string, part: Partial<ResultRule>): void { const ru = this.rule(); if (!ru) return; this.setRule({ by_result: { ...(ru.by_result || {}), [k]: { ...this.resOf(ru, k), ...part } } }); }
+  /** "No answer: 5 tries · Voicemail: 2 next day · DND: stop…" in a few words. */
+  protected resultSummary(ru: RetryRule): string {
+    const stops = RESULT_ROWS.filter((r) => this.resOf(ru, r.key).act === 'stop').map((r) => r.label.toLowerCase());
+    return `${RESULT_ROWS.length - stops.length} results retried${stops.length ? ' · stop after ' + stops.join(', ') : ''}${ru.stop_on_goal !== false ? ' · stops once the goal is reached' : ''}`;
+  }
   protected readonly columns = signal<{ key: string; label: string }[]>([]);
   protected readonly sheet = signal<EditableSheetRow[]>([]);
   private sheetDirty = false;
@@ -974,7 +1031,7 @@ export interface DsSetup {
 export interface DsView { agent: string; label: string; connector_name?: string; inputs: string[]; outputs: string[]; setup: DsSetup; saved: boolean; webhook_url: string; filter_ops: [string, string][];
   columns: { key: string; label: string; type: string; sample: string }[]; runs: { at: string; by: string; read: number; after_filters: number; calls: number; campaign_id?: string; status: string }[]; next_runs: { at: string; label: string }[] }
 export interface DsTest { ok: boolean; steps: { key: string; label: string; ok: boolean; detail: string }[]; columns?: DsView['columns']; sample?: Record<string, unknown>[] }
-export interface DsPreview { read: number; after_filters: number; skipped_recent: number; no_phone: number; total_calls: number; calls: { key: string; part: number; parts: number; lines: number; phone: string; inputs: Record<string, string> }[];
+export interface DsPreview { read: number; after_filters: number; skipped_recent: number; no_phone: number; do_not_call?: number; total_calls: number; calls: { key: string; part: number; parts: number; lines: number; phone: string; inputs: Record<string, string> }[];
   write_back: { key: string; set: Record<string, string> }[]; next_runs: { at: string; label: string }[] }
 export interface DataSourceSource {
   catalog(): Promise<{ connectors: DsConnector[] }>;
@@ -1067,6 +1124,7 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
           <div class="ds-sum" aria-live="polite"><span><b>{{ p.read }}</b> rows read</span><span class="ar">→</span><span><b>{{ p.after_filters }}</b> match</span>
             @if (p.skipped_recent) { <span class="ar">→</span><span><b>{{ p.skipped_recent }}</b> called recently, skipped</span> }
             @if (p.no_phone) { <span class="ar">→</span><span><b>{{ p.no_phone }}</b> without a phone</span> }
+            @if (p.do_not_call) { <span class="ar">→</span><span><b>{{ p.do_not_call }}</b> on the do-not-call list</span> }
             <span class="ar">→</span><span><b>{{ p.total_calls }}</b> call{{ p.total_calls === 1 ? '' : 's' }}</span></div>
         }
 
@@ -1314,5 +1372,307 @@ export class AgentDataSourceComponent {
       this.msg.set(r.calls ? `Run started: ${r.calls} call${r.calls === 1 ? '' : 's'} from ${r.after_filters} matching rows.` : 'Nothing to call right now: no row matches, or all were called recently.');
       const v = await this.source().load(this.agent()); this.view.set(v); this.step.set(5); this.refresh();
     } catch (e) { this.msg.set((e as { error?: { message?: string }; message?: string })?.error?.message || 'Could not start the run.'); this.msgBad.set(true); } finally { this.busy.set(false); }
+  }
+}
+
+// ── Do-not-call list: one per workspace; uploads, data source runs and retries skip these numbers ──
+export interface DncEntry { phone: string; name: string; reason: string; source: 'auto' | 'manual'; at: string; by: string; call_id: string | null; removed_at?: string; removed_by?: string; removed_reason?: string }
+export interface DncView { list: DncEntry[]; removed: DncEntry[]; settings: { auto: boolean; phrases: string[] } }
+export interface DncSource { load(q: string): Promise<DncView>; add(e: { phone: string; name: string; reason: string }): Promise<DncView>; remove(phone: string, reason: string): Promise<DncView>; setAuto(on: boolean): Promise<DncView>; openCall?(id: string): void }
+@Component({
+  selector: 'app-dnc-list',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .w1 { display: grid; gap: 14px; }
+    .w1 input, .w1 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .w1-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+    .w1-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
+    .w1-switch { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+    .w1-switch input { width: 20px; height: 20px; accent-color: var(--s-accent); }
+    .w1-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .w1-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+    .w1-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--s-line); vertical-align: top; }
+    .w1-tag { font-size: 11.5px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+    .w1-tag.auto { color: var(--s-accent); border-color: color-mix(in srgb, var(--s-accent) 40%, transparent); }
+    .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
+    .w1-scroll { overflow-x: auto; }
+    .w1-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
+  `],
+  template: `
+    <div class="w1">
+      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Do-not-call list</h2>
+        <p class="s-muted">Numbers nobody in this workspace calls again: uploads stop them, data source runs skip them and no retry is planned. The country registers (NCPR, DNC Registry…) are checked as well, in Calling rules.</p></div>
+      @if (v(); as view) {
+        <label class="w1-switch"><input type="checkbox" [checked]="view.settings.auto" (change)="setAuto($any($event.target).checked)"> Add a number when the person asks not to be called</label>
+        <span class="s-muted">The agent confirms once, closes the call politely and the number joins the list. Listens for: {{ view.settings.phrases.join(', ') }}.</span>
+        <form class="w1-row" (submit)="$event.preventDefault(); add()">
+          <label>Number<input [value]="phone()" (input)="phone.set($any($event.target).value)" placeholder="10-digit mobile" inputmode="tel"></label>
+          <label>Name (optional)<input [value]="name()" (input)="name.set($any($event.target).value)"></label>
+          <label style="flex: 1 1 220px">Why<input [value]="reason()" (input)="reason.set($any($event.target).value)" placeholder="e.g. Asked by email to stop calls"></label>
+          <button type="submit" class="s-btn s-primary" [disabled]="busy()">Add to the list</button>
+        </form>
+        @if (msg()) { <span [class.w1-err]="bad()" [class.w1-ok]="!bad()" role="status">{{ msg() }}</span> }
+        <div class="w1-row"><label style="flex: 1 1 260px">Search<input type="search" [value]="q()" (input)="search($any($event.target).value)" placeholder="Number, name or reason"></label><span class="s-muted">{{ view.list.length }} number{{ view.list.length === 1 ? '' : 's' }}</span></div>
+        <div class="w1-scroll"><table class="w1-tbl">
+          <thead><tr><th>Number</th><th>Why</th><th>Added</th><th></th></tr></thead>
+          <tbody>@for (d of view.list; track d.phone) {
+            <tr><td><b>{{ d.phone }}</b>@if (d.name) { <br><span class="s-muted">{{ d.name }}</span> }</td>
+              <td>{{ d.reason }} <span class="w1-tag" [class.auto]="d.source === 'auto'">{{ d.source === 'auto' ? 'Asked on a call' : 'Added by a person' }}</span>
+                @if (d.call_id && source().openCall) { <br><button type="button" class="w1-link" (click)="source().openCall!(d.call_id!)">Open the call</button> }</td>
+              <td>{{ when(d.at) }}<br><span class="s-muted">{{ d.by }}</span></td>
+              <td>@if (removing() === d.phone) {
+                  <div class="w1-row"><input [value]="why()" (input)="why.set($any($event.target).value)" placeholder="Why calls are allowed again" aria-label="Why calls are allowed again">
+                    <button type="button" class="s-btn s-primary" (click)="remove(d.phone)" [disabled]="!why().trim()">Remove</button><button type="button" class="s-btn" (click)="removing.set('')">Cancel</button></div>
+                } @else { <button type="button" class="s-btn" (click)="removing.set(d.phone); why.set('')">Remove…</button> }</td></tr>
+          } @empty { <tr><td colspan="4" class="s-muted">No numbers{{ q() ? ' match' : ' yet' }}.</td></tr> }</tbody>
+        </table></div>
+        @if (view.removed.length) {
+          <details><summary class="s-muted">Removed recently ({{ view.removed.length }})</summary>
+            <ul>@for (d of view.removed; track d.phone + d.removed_at) { <li>{{ d.phone }}: removed {{ when(d.removed_at!) }} by {{ d.removed_by }}: "{{ d.removed_reason }}"</li> }</ul></details>
+        }
+      } @else { <p class="s-empty">{{ msg() || 'Loading the list…' }}</p> }
+    </div>
+  `,
+})
+export class DncListComponent {
+  readonly source = input.required<DncSource>();
+  readonly page = input(false);
+  protected readonly v = signal<DncView | null>(null);
+  protected readonly q = signal(''); protected readonly phone = signal(''); protected readonly name = signal(''); protected readonly reason = signal('');
+  protected readonly removing = signal(''); protected readonly why = signal('');
+  protected readonly busy = signal(false); protected readonly msg = signal(''); protected readonly bad = signal(false);
+  private t: ReturnType<typeof setTimeout> | null = null;
+  constructor() { effect(() => { const s = this.source(); untracked(() => this.load(s)); }); }
+  private async load(s = this.source(), again = true): Promise<void> { try { this.v.set(await s.load(this.q())); this.msg.set(''); } catch { if (again) setTimeout(() => this.load(s, false), 1200); else this.say('Could not load the list.', true); } }
+  private say(m: string, bad = false): void { this.msg.set(m); this.bad.set(bad); }
+  protected search(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => this.load(), 200); }
+  protected async add(): Promise<void> {
+    this.busy.set(true);
+    try { this.v.set(await this.source().add({ phone: this.phone(), name: this.name(), reason: this.reason() })); this.say(`Added ${this.phone().replace(/\D/g, '').slice(-10)}.`); this.phone.set(''); this.name.set(''); this.reason.set(''); }
+    catch (e) { this.say(errText(e, 'Could not add the number.'), true); } finally { this.busy.set(false); }
+  }
+  protected async remove(phone: string): Promise<void> {
+    try { this.v.set(await this.source().remove(phone, this.why())); this.removing.set(''); this.say(`${phone} can be called again.`); } catch (e) { this.say(errText(e, 'Could not remove it.'), true); }
+  }
+  protected async setAuto(on: boolean): Promise<void> { try { this.v.set(await this.source().setAuto(on)); this.say(on ? 'Numbers are added when a person asks.' : 'Only people add numbers now.'); } catch { this.say('Could not save.', true); } }
+  protected when(iso: string): string { return iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'; }
+}
+/** The server's message from a failed request, else a fallback. */
+function errText(e: unknown, fallback: string): string { const x = e as { error?: { message?: string; error?: { message?: string } }; message?: string }; return x?.error?.message || x?.error?.error?.message || fallback; }
+
+// ── Alerts: watch running campaigns, tell the owner, and pause a campaign that is going wrong ──
+export interface AlertRule { id: string; on: boolean; metric: string; threshold: number; window: number; action: 'notify' | 'pause'; channels: string[] }
+export interface AlertsView { rules: AlertRule[]; metrics: { key: string; label: string; unit: string; dir: 'above' | 'below'; hint: string }[]; credits: number;
+  live?: { campaign_id: string; campaign: string; dialled: number; failure_rate: number | null; connect_rate: number | null; system_issues: number | null }[];
+  events: { key: string; at: string; campaign_id: string; campaign: string; message: string; action: string; channels: string[]; cleared: boolean }[]; paused: { campaign_id: string; reason: string; at: string }[] }
+export interface AlertsSource { load(): Promise<AlertsView>; save(rules: AlertRule[]): Promise<AlertsView>; resume(campaignId: string): Promise<unknown>; openCampaign?(id: string): void }
+@Component({
+  selector: 'app-alerts',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .w1 { display: grid; gap: 14px; }
+    .w1 input, .w1 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .al-rule { display: grid; grid-template-columns: auto minmax(150px, 1.2fr) auto minmax(90px, .6fr) minmax(110px, .8fr) minmax(170px, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+    .al-rule.off { opacity: .6; }
+    .al-rule input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--s-accent); }
+    .al-ch { display: inline-flex; gap: 10px; } .al-ch label { display: inline-flex; gap: 5px; align-items: center; }
+    .al-ev { display: grid; gap: 6px; }
+    .al-live { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .al-live th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 5px 8px; border-bottom: 1px solid var(--s-line); }
+    .al-live td { padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+    .al-p { color: #b91c1c; } .w1-scroll { overflow-x: auto; }
+    .al-e { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; border-left: 3px solid #dc2626; padding: 6px 10px; background: var(--s-soft); border-radius: 0 8px 8px 0; font-size: 13px; }
+    .al-e.done { border-left-color: var(--s-line); opacity: .75; }
+    .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
+    @media (max-width: 900px) { .al-rule { grid-template-columns: auto 1fr 1fr; } }
+  `],
+  template: `
+    <div class="w1">
+      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Alerts</h2>
+        <p class="s-muted">Watch every running campaign. When a rule trips, the campaign owner is told and, if the rule says so, the campaign pauses before a bad line or an empty balance burns the whole sheet.</p></div>
+      @if (v(); as view) {
+        @for (r of draft(); track r.id; let i = $index) {
+          <div class="al-rule" [class.off]="!r.on">
+            <input type="checkbox" [checked]="r.on" (change)="set(i, { on: $any($event.target).checked })" [attr.aria-label]="'Rule ' + (i + 1) + ' on'">
+            <select (change)="set(i, { metric: $any($event.target).value })" [attr.aria-label]="'What rule ' + (i + 1) + ' watches'">@for (m of view.metrics; track m.key) { <option [value]="m.key" [selected]="m.key === r.metric">{{ m.label }}</option> }</select>
+            <span>{{ metric(r).dir === 'below' ? 'below' : 'above' }}</span>
+            <input type="number" min="0" [value]="r.threshold" (change)="set(i, { threshold: +$any($event.target).value })" [attr.aria-label]="'Limit for rule ' + (i + 1)">
+            @if (r.metric !== 'credits') { <label class="s-muted">over last <input type="number" min="10" max="200" style="width: 64px" [value]="r.window" (change)="set(i, { window: +$any($event.target).value })" aria-label="Calls to look at"> calls</label> } @else { <span class="s-muted">now: {{ view.credits.toLocaleString('en-IN') }}</span> }
+            <select (change)="set(i, { action: $any($event.target).value })" [attr.aria-label]="'What rule ' + (i + 1) + ' does'"><option value="notify" [selected]="r.action === 'notify'">Tell the owner</option><option value="pause" [selected]="r.action === 'pause'">Tell the owner and pause</option></select>
+            <span class="al-ch"><label><input type="checkbox" [checked]="r.channels.includes('email')" (change)="channel(i, 'email', $any($event.target).checked)"> Email</label><label><input type="checkbox" [checked]="r.channels.includes('slack')" (change)="channel(i, 'slack', $any($event.target).checked)"> Slack</label>
+              <button type="button" class="s-btn" (click)="removeRule(i)" [attr.aria-label]="'Remove rule ' + (i + 1)">Remove</button></span>
+          </div>
+        }
+        <div class="w1-row" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
+          <button type="button" class="s-btn" (click)="addRule()">+ Add a rule</button><span style="flex: 1"></span>
+          @if (msg()) { <span [class.w1-err]="bad()" [class.w1-ok]="!bad()" role="status">{{ msg() }}</span> }
+          <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button>
+          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save rules' }}</button>
+        </div>
+        @if (view.live?.length) {
+          <b>Running now</b>
+          <div class="w1-scroll"><table class="al-live"><thead><tr><th>Campaign</th><th>Calls dialled</th><th>Failure rate</th><th>Connect rate</th><th>System issues</th><th></th></tr></thead><tbody>
+            @for (l of view.live!; track l.campaign_id) { <tr><td>{{ l.campaign }}</td><td>{{ l.dialled }}</td><td>{{ l.failure_rate ?? '—' }}{{ l.failure_rate == null ? '' : '%' }}</td><td>{{ l.connect_rate ?? '—' }}{{ l.connect_rate == null ? '' : '%' }}</td><td>{{ l.system_issues ?? '—' }}</td>
+              <td>@if (isPaused(l.campaign_id)) { <b class="al-p">Paused</b> }</td></tr> }
+          </tbody></table></div>
+          <span class="s-muted">Over each campaign's last 20 dialled calls; "—" until it has 5. Rules are checked again when you save them.</span>
+        }
+        <b>What happened</b>
+        <div class="al-ev">
+          @for (e of view.events; track e.key + e.at) {
+            <div class="al-e" [class.done]="e.cleared"><b>{{ e.campaign }}</b><span>{{ e.message }}</span><span class="s-muted">{{ e.action }}{{ e.channels.length ? ' (' + e.channels.join(', ') + ')' : '' }} · {{ when(e.at) }}</span>
+              @if (!e.cleared && isPaused(e.campaign_id)) { <button type="button" class="s-btn s-primary" (click)="resume(e.campaign_id)">Resume calls</button> }
+              @if (source().openCampaign) { <button type="button" class="s-btn" (click)="source().openCampaign!(e.campaign_id)">Open campaign</button> }
+              @if (e.cleared) { <span class="s-muted">Resumed</span> }</div>
+          } @empty { <p class="s-note">No alert has fired. Running campaigns are checked each time their numbers update.</p> }
+        </div>
+      } @else { <p class="s-empty">{{ msg() || 'Loading the alerts…' }}</p> }
+    </div>
+  `,
+})
+export class AlertsComponent {
+  readonly source = input.required<AlertsSource>();
+  readonly page = input(false);
+  protected readonly v = signal<AlertsView | null>(null);
+  protected readonly draft = signal<AlertRule[]>([]);
+  protected readonly busy = signal(false); protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly dirty = computed(() => JSON.stringify(this.draft()) !== JSON.stringify(this.v()?.rules ?? []));
+  constructor() { effect(() => { const s = this.source(); untracked(() => this.load(s)); }); }
+  private async load(s = this.source(), again = true): Promise<void> { try { const v = await s.load(); this.v.set(v); this.draft.set(structuredClone(v.rules)); } catch { if (again) setTimeout(() => this.load(s, false), 1200); else { this.msg.set('Could not load the alerts.'); this.bad.set(true); } } }
+  protected metric(r: AlertRule) { return this.v()?.metrics.find((m) => m.key === r.metric) ?? { key: r.metric, label: r.metric, unit: '', dir: 'above' as const, hint: '' }; }
+  protected set(i: number, part: Partial<AlertRule>): void { this.msg.set(''); this.draft.set(this.draft().map((r, j) => (j === i ? { ...r, ...part } : r))); }
+  protected channel(i: number, ch: string, on: boolean): void { const c = new Set(this.draft()[i].channels); if (on) c.add(ch); else c.delete(ch); this.set(i, { channels: [...c] }); }
+  protected addRule(): void { this.draft.set([...this.draft(), { id: 'new' + Date.now(), on: true, metric: 'failure_rate', threshold: 50, window: 20, action: 'notify', channels: ['email'] }]); }
+  protected removeRule(i: number): void { this.draft.set(this.draft().filter((_, j) => j !== i)); }
+  protected undo(): void { this.draft.set(structuredClone(this.v()?.rules ?? [])); }
+  protected isPaused(id: string): boolean { return !!this.v()?.paused.some((p) => p.campaign_id === id); }
+  protected async save(): Promise<void> {
+    this.busy.set(true);
+    try { const v = await this.source().save(this.draft()); this.v.set(v); this.draft.set(structuredClone(v.rules)); this.msg.set('Saved.'); this.bad.set(false); } catch { this.msg.set('Could not save.'); this.bad.set(true); } finally { this.busy.set(false); }
+  }
+  protected async resume(id: string): Promise<void> { try { await this.source().resume(id); await this.load(); this.msg.set('Calls resumed.'); this.bad.set(false); } catch { this.msg.set('Could not resume.'); this.bad.set(true); } }
+  protected when(iso: string): string { return new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }); }
+}
+
+// ── Call handling per agent: answer guardrail, phone menus (IVR), words to listen for, pronunciation ──
+export interface CallHandling {
+  guardrail: { on: boolean; min_seconds: number; need_speech: boolean };
+  ivr: { on: boolean; action: 'press' | 'wait' | 'hangup'; hint: string; digits: string; wait_seconds: number };
+  speech: { boost: string[]; pronounce: { word: string; say: string }[] };
+}
+export interface CallHandlingSource { load(agent: string): Promise<{ agent: string; label: string; inputs: string[]; handling: CallHandling }>; save(agent: string, h: CallHandling): Promise<{ agent: string; label: string; inputs: string[]; handling: CallHandling }> }
+@Component({
+  selector: 'app-call-handling',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .w1 { display: grid; gap: 16px; }
+    .w1 input, .w1 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .ch-sec { border: 1px solid var(--s-line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+    .ch-sec h3 { margin: 0; font-size: 15px; display: flex; gap: 10px; align-items: center; }
+    .ch-sec h3 label { margin-left: auto; font-size: 13px; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+    .ch-sec input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--s-accent); }
+    .ch-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; font-size: 13px; }
+    .ch-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
+    .ch-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ch-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--s-line); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
+    .ch-chip.var { border-style: dashed; color: var(--s-accent); }
+    .ch-chip button { border: 0; background: none; color: var(--s-muted); cursor: pointer; min-width: 24px; min-height: 24px; border-radius: 50%; }
+    .ch-add { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-muted); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .ch-pr { display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+    .ch-hear { background: var(--s-soft); border-radius: 8px; padding: 8px 10px; font-size: 13px; display: grid; gap: 4px; }
+    .ch-off { opacity: .55; pointer-events: none; }
+    .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
+  `],
+  template: `
+    <div class="w1">
+      <div><b>Call handling</b><p class="s-muted">How {{ v()?.label || 'this agent' }} copes with short calls, phone menus and hard words. These apply to every campaign of the agent.</p></div>
+      @if (v(); as view) {
+        <section class="ch-sec">
+          <h3>Answer guardrail <label><input type="checkbox" [checked]="d().guardrail.on" (change)="g({ on: $any($event.target).checked })"> On</label></h3>
+          <p class="s-muted">No answers are saved from a call that never really happened, so reports do not fill with empty or made-up answers.</p>
+          <div class="ch-row" [class.ch-off]="!d().guardrail.on">
+            <label>Skip calls shorter than (seconds)<input type="number" min="1" max="60" [value]="d().guardrail.min_seconds" (change)="g({ min_seconds: +$any($event.target).value })"></label>
+            <label style="display: inline-flex; gap: 6px; align-items: center; color: var(--s-text)"><input type="checkbox" [checked]="d().guardrail.need_speech" (change)="g({ need_speech: $any($event.target).checked })"> Skip calls where the caller never spoke</label>
+          </div>
+          <p class="s-muted">Changed the answers or this rule? Use "Re-run answers" above a call log to apply it to past calls without calling again.</p>
+        </section>
+        <section class="ch-sec">
+          <h3>Phone menus (IVR) <label><input type="checkbox" [checked]="d().ivr.on" (change)="i({ on: $any($event.target).checked })"> Detect</label></h3>
+          <p class="s-muted">Company numbers often answer with "Press 1 for sales…". The agent stays quiet, listens to the menu and reaches the right person.</p>
+          <div class="ch-row" [class.ch-off]="!d().ivr.on">
+            <label>When a menu answers<select (change)="i({ action: $any($event.target).value })"><option value="press" [selected]="d().ivr.action === 'press'">Press the key for the department</option><option value="wait" [selected]="d().ivr.action === 'wait'">Wait for a person</option><option value="hangup" [selected]="d().ivr.action === 'hangup'">Hang up and retry later</option></select></label>
+            @if (d().ivr.action === 'press') {
+              <label>Department to reach<input [value]="d().ivr.hint" (input)="i({ hint: $any($event.target).value })" placeholder="Purchase or accounts"></label>
+              <label>Or always press<input style="width: 90px" [value]="d().ivr.digits" (input)="i({ digits: $any($event.target).value })" placeholder="e.g. 2,1"></label>
+            }
+            <label>Give up after (seconds)<input type="number" min="5" max="90" style="width: 80px" [value]="d().ivr.wait_seconds" (change)="i({ wait_seconds: +$any($event.target).value })"></label>
+          </div>
+          <p class="s-muted">Answering machines are handled under Calling flow › Voicemail.</p>
+        </section>
+        <section class="ch-sec">
+          <h3>Words to listen for</h3>
+          <p class="s-muted">Names, plants, SKUs and codes the agent must hear right. A sheet column in braces, such as {{ VAR_EXAMPLE }}, uses each row's own value.</p>
+          <div class="ch-chips">
+            @for (w of d().speech.boost; track w) { <span class="ch-chip" [class.var]="isVar(w)">{{ w }}<button type="button" (click)="unboost(w)" [attr.aria-label]="'Remove ' + w">✕</button></span> }
+          </div>
+          <form class="ch-row" (submit)="$event.preventDefault(); boost(word()); word.set('')"><label>Add a word<input [value]="word()" (input)="word.set($any($event.target).value)" placeholder="e.g. Hindustan Zinc"></label><button type="submit" class="s-btn" [disabled]="!word().trim()">Add</button></form>
+          <div class="ch-chips"><span class="s-muted">From the sheet:</span>@for (k of unusedVars(); track k) { <button type="button" class="ch-add" (click)="addVar(k)">+ {{ k }}</button> }</div>
+        </section>
+        <section class="ch-sec">
+          <h3>Pronunciation</h3>
+          <p class="s-muted">How the agent says brands, acronyms and Indian names. Spell it the way it sounds.</p>
+          @for (p of d().speech.pronounce; track $index; let k = $index) {
+            <div class="ch-pr"><input [value]="p.word" (input)="pr(k, { word: $any($event.target).value })" aria-label="Word"><span class="s-muted">say</span><input [value]="p.say" (input)="pr(k, { say: $any($event.target).value })" aria-label="Say it as"><button type="button" class="s-btn" (click)="unpr(k)">Remove</button></div>
+          }
+          <div><button type="button" class="s-btn" (click)="addPr()">+ Add a word</button></div>
+          <div class="ch-hear"><label style="display: grid; gap: 4px; font-size: 12px; color: var(--s-muted)">Try a sentence<input [value]="sample()" (input)="sample.set($any($event.target).value)"></label>
+            <span>Spoken as: <i>{{ spoken() }}</i></span>
+            <div><button type="button" class="s-btn" (click)="hear()">▶ Hear it</button> <span class="s-muted">Uses your browser's voice as a stand-in for the agent's.</span></div></div>
+        </section>
+        <div class="ch-row" style="justify-content: flex-end">
+          @if (msg()) { <span [class.w1-err]="bad()" [class.w1-ok]="!bad()" role="status">{{ msg() }}</span> }
+          <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button>
+          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save call handling' }}</button>
+        </div>
+      } @else { <p class="s-empty">{{ msg() || 'Loading…' }}</p> }
+    </div>
+  `,
+})
+export class CallHandlingComponent {
+  readonly source = input.required<CallHandlingSource>();
+  readonly agent = input.required<string>();
+  protected readonly v = signal<{ agent: string; label: string; inputs: string[]; handling: CallHandling } | null>(null);
+  protected readonly d = signal<CallHandling>({} as CallHandling);
+  protected readonly word = signal('');
+  protected readonly VAR_EXAMPLE = '{{plant_name}}';
+  protected varOf(k: string): string { return '{{' + k + '}}'; }
+  protected isVar(w: string): boolean { return w.startsWith('{{'); }
+  protected addVar(k: string): void { this.boost(this.varOf(k)); }
+  protected readonly sample = signal('Hello, this is Saniya from Moglix about PO 4500120000 and the GRN for Hindustan Zinc.');
+  protected readonly busy = signal(false); protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly dirty = computed(() => JSON.stringify(this.d()) !== JSON.stringify(this.v()?.handling ?? {}));
+  protected readonly unusedVars = computed(() => (this.v()?.inputs ?? []).filter((k) => !/email|phone/.test(k) && !this.d().speech?.boost.includes(this.varOf(k))).slice(0, 8));
+  protected readonly spoken = computed(() => (this.d().speech?.pronounce ?? []).reduce((t, p) => (p.word.trim() ? t.replace(new RegExp(`\\b${p.word.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), p.say) : t), this.sample()));
+  constructor() { effect(() => { const a = this.agent(); const s = this.source(); untracked(() => this.load(s, a)); }); }
+  private async load(s: CallHandlingSource, a: string, again = true): Promise<void> { try { const v = await s.load(a); this.v.set(v); this.d.set(structuredClone(v.handling)); } catch { if (again) setTimeout(() => this.load(s, a, false), 1200); else { this.msg.set('Could not load call handling.'); this.bad.set(true); } } }
+  private patch(part: Partial<CallHandling>): void { this.msg.set(''); this.d.set({ ...this.d(), ...part }); }
+  protected g(part: Partial<CallHandling['guardrail']>): void { this.patch({ guardrail: { ...this.d().guardrail, ...part } }); }
+  protected i(part: Partial<CallHandling['ivr']>): void { this.patch({ ivr: { ...this.d().ivr, ...part } }); }
+  protected boost(w: string): void { const t = w.trim(); if (!t || this.d().speech.boost.includes(t)) return; this.patch({ speech: { ...this.d().speech, boost: [...this.d().speech.boost, t] } }); }
+  protected unboost(w: string): void { this.patch({ speech: { ...this.d().speech, boost: this.d().speech.boost.filter((x) => x !== w) } }); }
+  protected pr(k: number, part: Partial<{ word: string; say: string }>): void { this.patch({ speech: { ...this.d().speech, pronounce: this.d().speech.pronounce.map((p, j) => (j === k ? { ...p, ...part } : p)) } }); }
+  protected addPr(): void { this.patch({ speech: { ...this.d().speech, pronounce: [...this.d().speech.pronounce, { word: '', say: '' }] } }); }
+  protected unpr(k: number): void { this.patch({ speech: { ...this.d().speech, pronounce: this.d().speech.pronounce.filter((_, j) => j !== k) } }); }
+  protected undo(): void { this.d.set(structuredClone(this.v()?.handling ?? ({} as CallHandling))); }
+  protected hear(): void {
+    try { const synth = window.speechSynthesis; if (!synth) { this.msg.set('This browser cannot speak.'); return; } synth.cancel(); const u = new SpeechSynthesisUtterance(this.spoken()); u.lang = 'en-IN'; u.rate = 0.95; synth.speak(u); }
+    catch { this.msg.set('This browser cannot speak.'); }
+  }
+  protected async save(): Promise<void> {
+    this.busy.set(true);
+    try { const v = await this.source().save(this.agent(), this.d()); this.v.set(v); this.d.set(structuredClone(v.handling)); this.msg.set('Saved.'); this.bad.set(false); } catch { this.msg.set('Could not save.'); this.bad.set(true); } finally { this.busy.set(false); }
   }
 }

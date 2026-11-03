@@ -19,6 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
+import { dncScan, dncView, dncAdd, dncRemove, dncSettings, onDnc, alertsView, saveAlerts, resumeCampaign, handlingOf, saveHandling, rerunAnswers, diagnosticsOf } from './wave1.mjs';
 import { CONNECTORS, testConnection, suggestMapping, buildCalls, markCalled, callsCsv, writeBackPreview, nextRuns as dsNextRuns, getSetup, saveSetup, defaultSetup, runsOf, addRun, webhookUrl, hasSetup, FILTER_OPS, SOURCE_COLUMNS } from './data-sources.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
   statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns,
@@ -843,7 +844,8 @@ function newCampaignRows(t, form) {
     if (check.is_dummy) return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, raw_phone: get('contact_phone'), email: get('contact_email'), context, bad: null, check };
     const missing = (t.contextMappings || []).filter((m) => m.required && !context[m.fieldName]).map((m) => m.fieldName);
     const bad = phone.length !== 10 ? `contact_phone "${get('contact_phone')}" is not a valid number` : missing.length ? `Missing ${missing.join(', ')}` : check.error ? check.error.note : seen.has(phone) ? 'Same phone number as an earlier row' : null; seen.add(phone);
-    const reg = bad ? null : registerCheck(get('contact_phone')).hit; const blocked = reg?.action === 'block' ? reg.note : null;
+    const reg = bad ? null : registerCheck(get('contact_phone')).hit; const dn = bad ? null : onDnc(get('contact_phone'));
+    const blocked = dn ? `On your do-not-call list: ${dn.reason}` : reg?.action === 'block' ? reg.note : null;
     if (reg && !blocked) check.warnings.push({ kind: 'register', field: 'contact_phone', note: reg.note });
     if (blocked) return { row: i + 2, name: get('contact_name') || `Row ${i + 2}`, phone, raw_phone: get('contact_phone'), email: get('contact_email'), context, bad: blocked, check: { ...check, error: { kind: 'register', field: 'contact_phone', note: blocked } } };
     if (bad && !check.error) check.error = { kind: phone.length !== 10 ? 'phone' : 'other', field: '', note: bad };
@@ -933,6 +935,20 @@ on('POST', '/api/v1/reports/calling/data-sources/:agent/run', async (ctx) => { c
   const r = await dsStart(a, callsCsv(['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)], b.calls), name); markCalled(a.id, b.calls);
   addRun(a.id, { by: ctx.body?.by || 'Run now', read: b.read, after_filters: b.after_filters, calls: b.calls.length, campaign_id: r.campaign_id, status: 'Started' });
   ok({ ...r, read: b.read, after_filters: b.after_filters, calls: b.calls.length }); });
+const ME = () => USER;
+// ── Wave 1: do-not-call list, alerts and pausing, call handling, re-running answers, call diagnostics ──
+on('GET', '/api/v1/reports/calling/dnc', (ctx) => { dncScan(callingRows()); ok(dncView(ctx.q.get("q") || "")); });
+on('POST', '/api/v1/reports/calling/dnc', (ctx) => { const r = dncAdd(ctx.body || {}, ME()); r.error ? fail(400, r.error) : ok(dncView("")); });
+on('POST', '/api/v1/reports/calling/dnc/remove', (ctx) => { const r = dncRemove(ctx.body?.phone, ctx.body?.reason, ME()); r.error ? fail(400, r.error) : ok(dncView("")); });
+on('PUT', '/api/v1/reports/calling/dnc/settings', (ctx) => { dncSettings.auto = ctx.body?.auto !== false; ok(dncView("")); });
+on('GET', '/api/v1/reports/calling/alerts', (ctx) => { campaignSummaries(callingRows()); ok(alertsView()); });
+on('PUT', '/api/v1/reports/calling/alerts', (ctx) => { saveAlerts(ctx.body?.rules); campaignSummaries(callingRows()); ok(alertsView()); });
+on('POST', '/api/v1/reports/calling/campaigns/:id/resume', (ctx) => { const mine = callingRows().filter((r) => r.campaign_id === ctx.p.id && r.call_status && !['Bad data', 'Internal test call', 'In progress'].includes(r.call_status));
+  resumeCampaign(ctx.p.id, mine.length) ? ok({ resumed: true }) : fail(400, 'This campaign is not paused'); });
+on('GET', '/api/v1/reports/calling/call-handling/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); a ? ok({ agent: ctx.p.agent, label: a.name, inputs: ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)], handling: handlingOf(ctx.p.agent) }) : fail(404, 'Agent not found'); });
+on('PUT', '/api/v1/reports/calling/call-handling/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); saveHandling(ctx.p.agent, ctx.body || {}); ok({ agent: ctx.p.agent, label: a.name, inputs: ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)], handling: handlingOf(ctx.p.agent) }); });
+on('POST', '/api/v1/reports/calling/calls/rerun', (ctx) => { const q = ctx.q; const list = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(ctx.q)), q.get('box') || 'uploaded'), logFilters(q)); ok(rerunAnswers(list, ME())); });
+on('GET', '/api/v1/reports/calling/call/:id/diagnostics', (ctx) => { const d = callDetail(ctx.p.id); const row = callingRows().find((r) => r.id === ctx.p.id); d ? ok(diagnosticsOf({ ...d, agent_key: row?.agent_key })) : fail(404, 'Call not found'); });
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
 // Next steps on the call page: the retry plan and WhatsApp / email messages (the demo records them, it does not send).
 on('GET', '/api/v1/reports/calling/call/:id/steps', ({ p }) => { const row = callingRows().find((r) => r.id === p.id); row ? ok(callSteps(row)) : fail(404, 'Call not found'); });

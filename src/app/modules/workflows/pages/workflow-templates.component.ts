@@ -24,12 +24,12 @@ import {
 import { WorkflowTemplateService } from '../services/workflow-template.service';
 import { WorkflowTemplateFormComponent } from './workflow-template-form.component';
 import { firstValueFrom } from 'rxjs';
-import { AgentDataSourceComponent, AgentMetricsComponent, AgentMetricsSource, DataSourceSource } from '../../dashboard/components/shared-screens/shared-screens';
+import { AgentDataSourceComponent, AgentMetricsComponent, AgentMetricsSource, CallHandlingComponent, CallHandlingSource, DataSourceSource } from '../../dashboard/components/shared-screens/shared-screens';
 import { ReportService } from '../../dashboard/services/report.service';
 
 @Component({
   selector: 'app-workflow-templates',
-  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent, AgentDataSourceComponent],
+  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent, AgentDataSourceComponent, CallHandlingComponent],
   templateUrl: './workflow-templates.component.html',
   styleUrl: './workflow-templates.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +52,9 @@ export class WorkflowTemplatesComponent implements OnInit, OnDestroy {
     test: (c) => firstValueFrom(this.reports.dsTest(c)), preview: (a, s) => firstValueFrom(this.reports.dsPreview(a, s)), run: (a) => firstValueFrom(this.reports.dsRun(a)),
     openCampaign: (id) => { this.sourceFor.set(null); this.router.navigate(['/workflows/campaigns', id]); },
   };
+  /** The agent whose call handling drawer is open: guardrail, phone menus, speech. */
+  protected readonly handlingFor = signal<{ id: string; name: string } | null>(null);
+  protected readonly handlingSource: CallHandlingSource = { load: (a) => firstValueFrom(this.reports.callHandling(a)), save: (a, h) => firstValueFrom(this.reports.saveCallHandling(a, h)) };
   private readonly destroy$ = new Subject<void>();
 
   /** When set (via ?templateId= from Execution Reports), the list is narrowed to this one template. */

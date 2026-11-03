@@ -153,6 +153,16 @@ export const routes: Routes = [
         ]
       },
       {
+        path: 'admin/do-not-call',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixDncPage),
+        title: 'Do-not-call list | Clarix'
+      },
+      {
+        path: 'admin/alerts',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixAlertsPage),
+        title: 'Alerts | Clarix'
+      },
+      {
         path: 'admin/calling-rules',
         loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixCallingRulesPage),
         title: 'Calling rules | Clarix'

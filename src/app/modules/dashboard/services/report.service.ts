@@ -73,6 +73,18 @@ export class ReportService {
   dsTest(conn: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/data-sources/test`, conn)); }
   dsPreview(agent: string, setup: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/data-sources/${encodeURIComponent(agent)}/preview`, setup)); }
   dsRun(agent: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/data-sources/${encodeURIComponent(agent)}/run`, { by: 'Run now' })); }
+  // Wave 1: do-not-call list, alerts, call handling, re-running answers, diagnostics.
+  dncLoad(q = ''): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/dnc`, { params: { q } })); }
+  dncAdd(e: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/dnc`, e)); }
+  dncRemove(phone: string, reason: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/dnc/remove`, { phone, reason })); }
+  dncAuto(auto: boolean): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/dnc/settings`, { auto })); }
+  alerts(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/alerts`)); }
+  saveAlerts(rules: any[]): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/alerts`, { rules })); }
+  resumeReportCampaign(id: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/campaigns/${encodeURIComponent(id)}/resume`, {})); }
+  callHandling(agent: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call-handling/${encodeURIComponent(agent)}`)); }
+  saveCallHandling(agent: string, h: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/call-handling/${encodeURIComponent(agent)}`, h)); }
+  rerunCalls(sc: any, box: string, f?: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/calls/rerun`, {}, { params: this.logParams(this.reportParams(sc).set('box', box), f) })); }
+  callDiagnostics(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call/${encodeURIComponent(id)}/diagnostics`)); }
   callingRules(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/calling-rules`)); }
   saveCallingRule(code: string, rule: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/calling-rules/${encodeURIComponent(code)}`, rule)); }
   resetCallingRule(code: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/calling-rules/${encodeURIComponent(code)}/reset`, {})); }

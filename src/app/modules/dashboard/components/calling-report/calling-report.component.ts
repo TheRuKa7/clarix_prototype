@@ -60,6 +60,8 @@ export interface CallingReportSource {
   /** The report; the call log's search and column filters, when given, scope it too. */
   report(scope: ReportScope, filters?: LogFilters): Promise<CallingReport>;
   calls(scope: ReportScope, box: string, skip: number, limit: number, filters?: LogFilters): Promise<{ rows: ReportCallRow[]; total: number }>;
+  /** Re-runs the answers of the calls in view (same scope, box and filters) under each agent's answer guardrail. */
+  rerun?(scope: ReportScope, box: string, filters?: LogFilters): Promise<{ total: number; filled: number; cleared: number; unchanged: number; skipped_not_connected: number }>;
   exportXlsx(scope: ReportScope, box: string, filters?: LogFilters): Promise<Blob>;
   /** Opens the call page for a row (phase 2 makes this the one call page everywhere). */
   openCall(row: ReportCallRow): void;
@@ -216,6 +218,20 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             @if (logFiltered()) { <span class="cr-fchip on">{{ activeFilterCount() }} filter{{ activeFilterCount() === 1 ? '' : 's' }}<button type="button" (click)="clearLogFilters()" aria-label="Clear the search and column filters" title="Clear filters">✕</button></span> }
             <span class="cr-grow"></span>
             @if (source().openCallLogs && mode() === 'dashboard') { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
+            @if (source().rerun && drillTotal()) {
+              <div class="cr-drop">
+                <button type="button" class="cr-btn" [attr.aria-expanded]="rerunOpen()" (click)="place($event, true, 320); rerunOpen.set(!rerunOpen()); rerunMsg.set('')" title="Work out the answers again from the transcripts, without calling">Re-run answers</button>
+                @if (rerunOpen()) {
+                  <div class="cr-menu cr-rerun" role="dialog" aria-label="Re-run answers" [style]="menuStyle()">
+                    <b>Re-run answers for {{ num(drillTotal()) }} call{{ drillTotal() === 1 ? '' : 's' }}?</b>
+                    <span class="cr-muted">The answers are worked out again from each transcript with the agent's current answers and guardrail. Nobody is called. Calls that did not connect are skipped.</span>
+                    @if (rerunMsg()) { <span class="cr-ok" role="status">{{ rerunMsg() }}</span> }
+                    <div class="cr-pick-foot"><button type="button" class="cr-link" (click)="rerunOpen.set(false)">Close</button><span class="cr-grow"></span>
+                      <button type="button" class="cr-btn cr-primary" [disabled]="rerunBusy()" (click)="rerun()">{{ rerunBusy() ? 'Re-running…' : 'Re-run' }}</button></div>
+                  </div>
+                }
+              </div>
+            }
             <button type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
           </div>
           @if (campaign()) { <p class="cr-hint">One line per row of the uploaded sheet: what was uploaded, how its call ended and what the agent captured. Open a line for the call and its recording.</p> }
@@ -371,6 +387,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-pick:hover, .cr-pick:focus-visible, .cr-pick[aria-expanded=true] { opacity: 1; border-color: var(--cr-line); background: var(--cr-bg); }
     .cr-pick.on { opacity: 1; color: var(--cr-accent); border-color: color-mix(in srgb, var(--cr-accent) 40%, transparent); background: color-mix(in srgb, var(--cr-accent) 8%, var(--cr-bg)); }
     .cr-pick b { font-weight: 600; min-width: 14px; height: 14px; line-height: 14px; border-radius: 7px; padding: 0 3px; background: var(--cr-accent); color: #fff; font-size: 10px; }
+    .cr-rerun { display: grid; gap: 8px; padding: 12px; width: 320px; max-width: calc(100vw - 24px); font-size: 13px; white-space: normal; text-align: left; }
+    .cr-ok { color: var(--cr-good); font-weight: 500; }
     .cr-pick-menu { font-weight: 400; text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 4px; padding: 8px; color: var(--cr-text); }
     .cr-cond { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--cr-line); }
     .cr-cond select, .cr-cond input { border: 1px solid var(--cr-line); border-radius: 6px; padding: 5px 6px; font: inherit; font-size: 12px; background: var(--cr-bg); color: var(--cr-text); min-width: 0; }
@@ -469,6 +487,16 @@ export class CallingReportComponent {
   protected readonly LOG_COLUMNS = LOG_COLUMNS;
   protected readonly search = signal('');
   protected readonly colFilters = signal<Record<string, ColFilter>>({});
+  protected readonly rerunOpen = signal(false);
+  protected readonly rerunBusy = signal(false);
+  protected readonly rerunMsg = signal('');
+  protected async rerun(): Promise<void> {
+    const fn = this.source().rerun; if (!fn) return; this.rerunBusy.set(true);
+    try {
+      const r = await fn(this.scope(), this.box()?.key ?? 'uploaded', this.logFilters());
+      this.rerunMsg.set(`Done: ${r.filled} filled, ${r.cleared} cleared by the guardrail (too short), ${r.unchanged} unchanged, ${r.skipped_not_connected} not connected.`);
+    } catch { this.rerunMsg.set('Could not re-run the answers.'); } finally { this.rerunBusy.set(false); }
+  }
   /** The open column menu's condition: operator and one or two values. */
   protected readonly condOp = signal('');
   protected readonly condA = signal('');
@@ -723,7 +751,7 @@ export class CallingReportComponent {
   protected howText(u: { how?: string; column?: string }): string {
     const c = (u.column || '').replace(/_/g, ' '); return u.how === 'entries' ? `entries in ${c}` : u.how === 'rows' ? `rows with ${c}` : `sum of ${c}`;
   }
-  private closeMenus(): void { this.periodOpen.set(false); this.countOpen.set(false); this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false); }
+  private closeMenus(): void { this.periodOpen.set(false); this.countOpen.set(false); this.agentsOpen.set(false); this.shareOpen.set(false); this.testsOpen.set(false); this.pickOpen.set(''); this.statsOpen.set(false); this.rerunOpen.set(false); }
   private readonly follow = () => { if (this.shareOpen() || this.statsOpen() || this.pickOpen() || this.periodOpen() || this.countOpen()) this.reposition(); };
 
   /** Menus close on a click anywhere else; Escape closes a menu, then the list. */

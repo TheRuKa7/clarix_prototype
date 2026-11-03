@@ -29,6 +29,7 @@ export class DashboardOverviewComponent {
     report: (sc, f) => firstValueFrom(this.reports.callingReport(sc, f)),
     calls: (sc, box, skip, limit, f) => firstValueFrom(this.reports.callingReportCalls(sc, box, skip, limit, f)),
     exportXlsx: (sc, box, f) => firstValueFrom(this.reports.callingReportExport(sc, box, f)),
+    rerun: (sc, box, f) => firstValueFrom(this.reports.rerunCalls(sc, box, f)),
     testNumbers: () => firstValueFrom(this.reports.reportTestNumbers()),
     saveTestNumbers: (n) => firstValueFrom(this.reports.saveReportTestNumbers(n)),
     openFollowUps: () => this.router.navigate(['/workflows/follow-ups']),

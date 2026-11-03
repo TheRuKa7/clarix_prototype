@@ -16,6 +16,16 @@ export interface CallDetail {
   has_audio: boolean; audio_path: string | null; dials: { n: number; at: string; ring_seconds: number | null; talk_seconds: number | null; result: string; provider: string }[];
   timeline: { at: string; type: string; status: string; detail: string }[]; prev_id: string | null; next_id: string | null; position: number; of: number; outcome_options: string[];
 }
+/** Diagnostics for one call, for the technical reader. */
+export interface CallDiagnostics {
+  summary: { p50_ms: number | null; p90_ms: number | null; turns: number; interruptions: number; slow_turns: number };
+  turns: { n: number; text: string; listen_ms: number; think_ms: number; speak_ms: number; total_ms: number; interrupted: boolean }[];
+  tools: { name: string; at: string; args: Record<string, unknown>; status: number; ms: number; result: string }[];
+  ivr: { at: string; detected: string; action: string; after_ms: number } | null;
+  ended: { code: string; text: string }; guardrail: string; rerun: { at: string; by: string; result: string } | null;
+  dials: { n: number; at: string; ring_seconds: number | null; talk_seconds: number | null; result: string; provider: string; sip: number }[];
+  dnc: { reason: string; at: string } | null;
+}
 /** A message the page suggests for this call, by its status. */
 export interface StepMessage { key: string; channel: 'whatsapp' | 'email'; title: string; text: string; attach_vcard?: boolean; callback_cta?: boolean }
 /** What happens next for a call: when it is called again and what to send. Messages are recorded by the demo, not sent. */
@@ -27,6 +37,8 @@ export interface CallSteps {
   caller_id: string;
   branded_caller?: { number: string; name: string; call_reason: string; providers: { key: string; label: string; badge: string }[] };
   vcard?: string;
+  dnc?: { reason: string; at: string } | null;
+  result_rule?: { key: string; label: string; act: 'retry' | 'stop' | 'callback'; tries: number; gap: number | null; message: 'none' | 'whatsapp' | 'both' } | null;
   voicemail_script?: string | null;
   fast_hook_script?: string | null;
   /** The number's country and its calling rules (Settings › Calling rules). */
@@ -36,6 +48,8 @@ export interface CallPageSource {
   detail(id: string): Promise<CallDetail>;
   /** Next steps: the retry plan and messages; sending one returns the steps again. */
   steps?(id: string): Promise<CallSteps>;
+  /** Technical detail for one call: latency per turn, tool calls, phone menu, why it ended. */
+  diagnostics?(id: string): Promise<CallDiagnostics>;
   sendMessage?(id: string, m: { channel: string; key: string; text: string }): Promise<CallSteps>;
   audio(path: string): Promise<Blob>;
   changeOutcome(id: string, statusReason: string, note: string): Promise<CallDetail>;
@@ -123,11 +137,46 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
                 <div class="cp-rows">@for (e of c.timeline; track $index) { <div class="cp-row"><span class="cp-muted">{{ when(e.at) }}</span><span>{{ plainEvent(e.type) }}</span><span class="cp-muted">{{ plainStatus(e.status) }}{{ e.detail ? ' · ' + e.detail : '' }}</span></div> }</div>
               </section>
             }
+            @if (source().diagnostics) {
+              <section class="cp-card cp-diag">
+                <div class="cp-card-head"><h2>Diagnostics</h2><span class="cp-muted">latency, tools, phone menu, why it ended</span><span class="cp-grow"></span>
+                  <button type="button" class="cp-btn" [attr.aria-expanded]="diagOpen()" (click)="toggleDiag(c.id)">{{ diagOpen() ? 'Hide' : 'Show' }}</button></div>
+                @if (diagOpen()) {
+                  @if (diag(); as dg) {
+                    <div class="cp-kv"><span>Ended</span><b>{{ dg.ended.text }} <code>{{ dg.ended.code }}</code></b>
+                      <span>Answers</span><b>{{ dg.guardrail }}</b>
+                      @if (dg.rerun) { <span>Re-run</span><b>{{ when(dg.rerun.at) }} by {{ dg.rerun.by }}: {{ dg.rerun.result }}</b> }
+                      @if (dg.dnc) { <span>Do-not-call</span><b>{{ dg.dnc.reason }}</b> }</div>
+                    @if (dg.ivr; as iv) { <p class="cp-note">Phone menu at {{ iv.at }}: {{ iv.detected }}. {{ iv.action }} after {{ (iv.after_ms / 1000).toFixed(1) }} s.</p> }
+                    @if (dg.turns.length) {
+                      <div class="cp-lat"><span>Response time <b>p50 {{ dg.summary.p50_ms }} ms</b></span><span><b>p90 {{ dg.summary.p90_ms }} ms</b></span><span>{{ dg.summary.turns }} agent turns</span>
+                        <span [class.cp-warn]="dg.summary.interruptions">{{ dg.summary.interruptions }} interrupted</span><span [class.cp-warn]="dg.summary.slow_turns">{{ dg.summary.slow_turns }} slow (over 1.2 s)</span></div>
+                      <div class="cp-scroll"><table class="cp-tbl"><thead><tr><th>#</th><th>Agent said</th><th>Listen</th><th>Think</th><th>Speak</th><th>Total</th></tr></thead><tbody>
+                        @for (t of dg.turns; track t.n) { <tr [class.cp-slow]="t.total_ms > 1200"><td>{{ t.n }}</td><td class="cp-cut" [title]="t.text">{{ t.text }}@if (t.interrupted) { <small> · interrupted</small> }</td><td>{{ t.listen_ms }}</td><td>{{ t.think_ms }}</td><td>{{ t.speak_ms }}</td><td><b>{{ t.total_ms }}</b></td></tr> }
+                      </tbody></table></div>
+                      <p class="cp-muted">Milliseconds from the caller stopping to the agent's first sound: listening (speech to text), thinking (the model) and speaking (text to speech).</p>
+                    }
+                    @if (dg.tools.length) {
+                      <b class="cp-sub">Tool calls</b>
+                      @for (tc of dg.tools; track tc.name + tc.at) { <div class="cp-tool"><code>{{ tc.name }}({{ args(tc.args) }})</code><span [class.cp-ok]="tc.status < 300" [class.cp-warn]="tc.status >= 300">{{ tc.status }}</span><span class="cp-muted">{{ tc.ms }} ms · at {{ tc.at }}</span><span>{{ tc.result }}</span></div> }
+                    }
+                    @if (dg.dials.length) {
+                      <b class="cp-sub">Dials</b>
+                      <div class="cp-scroll"><table class="cp-tbl"><thead><tr><th>#</th><th>When</th><th>Ring</th><th>Talk</th><th>Result</th><th>Line</th></tr></thead><tbody>
+                        @for (dl of dg.dials; track dl.n) { <tr><td>{{ dl.n }}</td><td>{{ when(dl.at) }}</td><td>{{ dl.ring_seconds ?? '—' }}s</td><td>{{ dl.talk_seconds ?? '—' }}s</td><td>{{ dl.result }}</td><td>{{ dl.provider }} · SIP {{ dl.sip }}</td></tr> }
+                      </tbody></table></div>
+                    }
+                  } @else { <p class="cp-muted">Loading the diagnostics…</p> }
+                }
+              </section>
+            }
           </div>
           <div class="cp-col">
             @if (steps(); as st) {
               <section class="cp-card cp-steps">
                 <h2>Next steps</h2>
+                @if (st.dnc; as dn) { <p class="cp-note bad">On your do-not-call list: {{ dn.reason }}. No more calls or retries.</p> }
+                @if (st.result_rule; as rr) { <p class="cp-muted">After "{{ rr.label }}" this agent {{ rr.act === 'stop' ? 'stops calling' : rr.act === 'callback' ? 'calls at the agreed time' : 'tries ' + rr.tries + ' more time' + (rr.tries === 1 ? '' : 's') + (rr.gap ? ', ' + rr.gap + ' min apart' : ' on its schedule') }}{{ rr.message === 'none' ? '' : rr.message === 'both' ? ', with WhatsApp and email' : ', with a WhatsApp' }}.</p> }
                 @if (st.country; as co) {
                   <p class="cp-muted cp-country">{{ co.name }} rules: calls today {{ co.hours_today }} ({{ co.tz_label }}). Retries skip rest days and holidays.</p>
                   @if (co.on_register) { <p class="cp-note bad">This number is on the {{ co.register }}. {{ co.register_action === 'block' ? 'It is not called again.' : 'Calls are allowed only about their orders, never a sales pitch.' }}</p> }
@@ -228,6 +277,17 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
     .cp-card h2 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--cp-muted); font-weight: 600; }
     .cp-card p { margin: 0; font-size: 13.5px; line-height: 1.5; }
     .cp-card-head { display: flex; align-items: center; gap: 8px; }
+    .cp-lat { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+    .cp-warn { color: #b45309; font-weight: 600; } .cp-ok { color: #15803d; font-weight: 600; }
+    .cp-scroll { overflow-x: auto; }
+    .cp-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .cp-tbl th { text-align: left; font-weight: 500; color: var(--cp-muted); padding: 4px 6px; border-bottom: 1px solid var(--cp-line); }
+    .cp-tbl td { padding: 4px 6px; border-bottom: 1px solid var(--cp-line); }
+    .cp-tbl tr.cp-slow td { background: color-mix(in srgb, #f59e0b 10%, transparent); }
+    .cp-cut { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cp-tool { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 12.5px; border-bottom: 1px solid var(--cp-line); padding: 4px 0; }
+    .cp-tool code, .cp-kv code { font-size: 12px; background: var(--cp-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+    .cp-sub { font-size: 13px; }
     .cp-edit { grid-template-columns: auto 1fr 1.4fr auto auto; align-items: center; }
     .cp-edit select, .cp-edit input { border: 1px solid var(--cp-line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--cp-bg); color: var(--cp-text); }
     .cp-turns { display: grid; gap: 8px; max-height: 520px; overflow: auto; }
@@ -275,6 +335,13 @@ export class CallPageComponent implements OnDestroy {
   protected readonly note = signal('');
   protected readonly copied = signal(false);
   protected readonly steps = signal<CallSteps | null>(null);
+  protected readonly diagOpen = signal(false);
+  protected readonly diag = signal<CallDiagnostics | null>(null);
+  protected toggleDiag(id: string): void {
+    this.diagOpen.set(!this.diagOpen()); if (!this.diagOpen() || this.diag()) return;
+    this.source().diagnostics?.(id).then((d) => this.diag.set(d)).catch(() => this.diagOpen.set(false));
+  }
+  protected args(a: Record<string, unknown>): string { return Object.entries(a).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', '); }
   protected readonly channel = signal<'whatsapp' | 'email'>('whatsapp');
   protected readonly sending = signal(false);
   private readonly drafts = signal<Record<string, string>>({});
@@ -301,6 +368,7 @@ export class CallPageComponent implements OnDestroy {
     try {
       const c = await this.source().detail(id); if (my !== this.seq) return; this.d.set(c);
       this.steps.set(null); this.drafts.set({});
+      this.diag.set(null); this.diagOpen.set(false);
       this.source().steps?.(id).then((st) => { if (my !== this.seq) return; this.steps.set(st); if (!st.messages.some((m) => m.channel === this.channel())) this.channel.set(st.messages[0]?.channel ?? 'whatsapp'); }).catch(() => {});
       if (c.has_audio && c.audio_path) this.source().audio(c.audio_path).then((b) => { if (my === this.seq) this.audioUrl.set(URL.createObjectURL(b)); }).catch(() => {});
     } catch { if (my === this.seq) this.error.set('Could not load this call.'); }
