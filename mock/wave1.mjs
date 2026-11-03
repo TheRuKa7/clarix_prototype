@@ -106,14 +106,16 @@ const handling = new Map();
 export const defaultHandling = () => ({
   guardrail: { on: true, min_seconds: 5, need_speech: true },
   ivr: { on: true, action: 'press', hint: 'Purchase or accounts', digits: '', wait_seconds: 20 },
+  memory: { on: true, days: 30 },
   speech: { boost: ['Moglix', 'PO', 'GRN', '{{plant_name}}', '{{contact_name}}'], pronounce: [{ word: 'Moglix', say: 'Mog-lix' }, { word: 'PO', say: 'P O' }, { word: 'GRN', say: 'G R N' }, { word: 'Hindustan Zinc', say: 'Hin-doo-staan Zinc' }] },
 });
 export const handlingOf = (agent) => ({ ...defaultHandling(), ...(handling.get(agent) || {}) });
 export function saveHandling(agent, b = {}) {
-  const d = defaultHandling(); const g = b.guardrail || d.guardrail; const v = b.ivr || d.ivr; const s = b.speech || d.speech;
+  const d = defaultHandling(); const g = b.guardrail || d.guardrail; const v = b.ivr || d.ivr; const s = b.speech || d.speech; const m = b.memory || d.memory;
   const h = {
     guardrail: { on: g.on !== false, min_seconds: Math.min(60, Math.max(1, Number(g.min_seconds) || 5)), need_speech: g.need_speech !== false },
     ivr: { on: v.on !== false, action: ['press', 'wait', 'hangup'].includes(v.action) ? v.action : 'press', hint: String(v.hint || '').slice(0, 80), digits: String(v.digits || '').replace(/[^0-9*#,]/g, '').slice(0, 12), wait_seconds: Math.min(90, Math.max(5, Number(v.wait_seconds) || 20)) },
+    memory: { on: m.on !== false, days: Math.min(365, Math.max(1, Number(m.days) || 30)) },
     speech: { boost: [...new Set((s.boost || []).map((w) => String(w).trim()).filter(Boolean))].slice(0, 100), pronounce: (s.pronounce || []).filter((p) => String(p.word || '').trim() && String(p.say || '').trim()).slice(0, 100).map((p) => ({ word: String(p.word).trim(), say: String(p.say).trim() })) },
   };
   handling.set(agent, h); return h;

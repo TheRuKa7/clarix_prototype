@@ -19,6 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
+import { qaScorecard, saveQa, testsView, runTests, scenariosFromCalls, versionsView, saveDraft, publishDraft, setSplit, memoryOf } from './wave2.mjs';
 import { dncScan, dncView, dncAdd, dncRemove, dncSettings, onDnc, alertsView, saveAlerts, resumeCampaign, handlingOf, saveHandling, rerunAnswers, diagnosticsOf } from './wave1.mjs';
 import { CONNECTORS, testConnection, suggestMapping, buildCalls, markCalled, callsCsv, writeBackPreview, nextRuns as dsNextRuns, getSetup, saveSetup, defaultSetup, runsOf, addRun, webhookUrl, hasSetup, FILTER_OPS, SOURCE_COLUMNS } from './data-sources.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
@@ -949,6 +950,18 @@ on('GET', '/api/v1/reports/calling/call-handling/:agent', (ctx) => { const a = t
 on('PUT', '/api/v1/reports/calling/call-handling/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); saveHandling(ctx.p.agent, ctx.body || {}); ok({ agent: ctx.p.agent, label: a.name, inputs: ['contact_name', 'contact_phone', 'contact_email', ...(a.contextMappings || []).map((m) => m.fieldName)], handling: handlingOf(ctx.p.agent) }); });
 on('POST', '/api/v1/reports/calling/calls/rerun', (ctx) => { const q = ctx.q; const list = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(ctx.q)), q.get('box') || 'uploaded'), logFilters(q)); ok(rerunAnswers(list, ME())); });
 on('GET', '/api/v1/reports/calling/call/:id/diagnostics', (ctx) => { const d = callDetail(ctx.p.id); const row = callingRows().find((r) => r.id === ctx.p.id); d ? ok(diagnosticsOf({ ...d, agent_key: row?.agent_key })) : fail(404, 'Call not found'); });
+
+// ── Wave 2: quality checks, persona tests, versions and the A/B split, contact memory ──
+on('GET', '/api/v1/reports/calling/quality/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); a ? ok(qaScorecard(callingRows(), ctx.p.agent, a.name)) : fail(404, 'Agent not found'); });
+on('PUT', '/api/v1/reports/calling/quality/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); saveQa(ctx.p.agent, ctx.body || {}); ok(qaScorecard(callingRows(), ctx.p.agent, a.name)); });
+on('GET', '/api/v1/reports/calling/tests/:agent', (ctx) => ok(testsView(ctx.p.agent)));
+on('POST', '/api/v1/reports/calling/tests/:agent/run', (ctx) => ok(runTests(ctx.p.agent, ctx.body?.ids || [], ctx.body?.version)));
+on('POST', '/api/v1/reports/calling/tests/:agent/from-calls', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); const r = scenariosFromCalls(callingRows(), ctx.p.agent, a.name); ok({ ...testsView(ctx.p.agent), added: r.added }); });
+on('GET', '/api/v1/reports/calling/versions/:agent', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); a ? ok(versionsView(callingRows(), ctx.p.agent, a.name)) : fail(404, 'Agent not found'); });
+on('PUT', '/api/v1/reports/calling/versions/:agent/draft', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); saveDraft(ctx.p.agent, ctx.body || {}, ME()); ok(versionsView(callingRows(), ctx.p.agent, a.name)); });
+on('POST', '/api/v1/reports/calling/versions/:agent/publish', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); const r = publishDraft(ctx.p.agent, ME()); r.error ? fail(400, r.error) : ok(versionsView(callingRows(), ctx.p.agent, a.name)); });
+on('PUT', '/api/v1/reports/calling/versions/:agent/split', (ctx) => { const a = templates.find((t) => t.id === ctx.p.agent); if (!a) return fail(404, 'Agent not found'); const r = setSplit(ctx.p.agent, ctx.body || {}); r.error ? fail(400, r.error) : ok(versionsView(callingRows(), ctx.p.agent, a.name)); });
+on('GET', '/api/v1/reports/calling/call/:id/memory', (ctx) => { const row = callingRows().find((r) => r.id === ctx.p.id); row ? ok(memoryOf(callingRows(), row, handlingOf(row.agent_key || row.agent).memory?.on !== false)) : fail(404, 'Call not found'); });
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
 // Next steps on the call page: the retry plan and WhatsApp / email messages (the demo records them, it does not send).
 on('GET', '/api/v1/reports/calling/call/:id/steps', ({ p }) => { const row = callingRows().find((r) => r.id === p.id); row ? ok(callSteps(row)) : fail(404, 'Call not found'); });

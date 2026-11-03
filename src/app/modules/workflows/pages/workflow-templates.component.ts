@@ -24,12 +24,12 @@ import {
 import { WorkflowTemplateService } from '../services/workflow-template.service';
 import { WorkflowTemplateFormComponent } from './workflow-template-form.component';
 import { firstValueFrom } from 'rxjs';
-import { AgentDataSourceComponent, AgentMetricsComponent, AgentMetricsSource, CallHandlingComponent, CallHandlingSource, DataSourceSource } from '../../dashboard/components/shared-screens/shared-screens';
+import { AgentDataSourceComponent, AgentMetricsComponent, AgentMetricsSource, AgentQualityComponent, CallHandlingComponent, CallHandlingSource, DataSourceSource, QualitySource } from '../../dashboard/components/shared-screens/shared-screens';
 import { ReportService } from '../../dashboard/services/report.service';
 
 @Component({
   selector: 'app-workflow-templates',
-  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent, AgentDataSourceComponent, CallHandlingComponent],
+  imports: [EchoMarkComponent, CommonModule, FormsModule, LucideAngularModule, WorkflowTemplateFormComponent, HasPermissionDirective, AgentMetricsComponent, AgentDataSourceComponent, CallHandlingComponent, AgentQualityComponent],
   templateUrl: './workflow-templates.component.html',
   styleUrl: './workflow-templates.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -55,6 +55,14 @@ export class WorkflowTemplatesComponent implements OnInit, OnDestroy {
   /** The agent whose call handling drawer is open: guardrail, phone menus, speech. */
   protected readonly handlingFor = signal<{ id: string; name: string } | null>(null);
   protected readonly handlingSource: CallHandlingSource = { load: (a) => firstValueFrom(this.reports.callHandling(a)), save: (a, h) => firstValueFrom(this.reports.saveCallHandling(a, h)) };
+  /** The agent whose Quality drawer is open: quality checks, persona tests, versions and the split. */
+  protected readonly qualityFor = signal<{ id: string; name: string } | null>(null);
+  protected readonly qualitySource: QualitySource = {
+    quality: (a) => firstValueFrom(this.reports.quality(a)), saveQuality: (a, c) => firstValueFrom(this.reports.saveQuality(a, c)), tests: (a) => firstValueFrom(this.reports.agentTests(a)),
+    runTests: (a, ids, v) => firstValueFrom(this.reports.runAgentTests(a, ids, v)), testsFromCalls: (a) => firstValueFrom(this.reports.agentTestsFromCalls(a)), versions: (a) => firstValueFrom(this.reports.agentVersions(a)),
+    saveDraft: (a, d) => firstValueFrom(this.reports.saveAgentDraft(a, d)), publish: (a) => firstValueFrom(this.reports.publishAgentDraft(a)), split: (a, s) => firstValueFrom(this.reports.splitAgentVersions(a, s)),
+    openCall: (id) => { this.qualityFor.set(null); this.router.navigate(['/workflows/calls', id]); },
+  };
   private readonly destroy$ = new Subject<void>();
 
   /** When set (via ?templateId= from Execution Reports), the list is narrowed to this one template. */

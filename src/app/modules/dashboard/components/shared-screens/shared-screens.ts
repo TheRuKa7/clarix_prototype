@@ -1025,13 +1025,13 @@ export interface DsFilter { field: string; op: string; value?: string }
 export interface DsSetup {
   connector: string; fields: Record<string, string>; object: string; has_secret?: boolean; authorised?: boolean; test_event?: { rows: number; at: string } | null; tested?: boolean;
   mapping: { input: string; column: string }[]; filters: DsFilter[]; group: { mode: 'row' | 'group'; by: string[]; max_lines: number; order: string };
-  dedupe: { key: string; days: number }; write_back: { mode: 'off' | 'each' | 'batch'; mapping: { output: string; field: string }[] };
+  dedupe: { key: string; days: number }; recheck?: { on: boolean }; write_back: { mode: 'off' | 'each' | 'batch'; mapping: { output: string; field: string }[] };
   schedule: { on: boolean; cadence: 'once' | 'daily' | 'weekdays' | 'days'; days: number[]; time: string; start: string; end: string };
 }
 export interface DsView { agent: string; label: string; connector_name?: string; inputs: string[]; outputs: string[]; setup: DsSetup; saved: boolean; webhook_url: string; filter_ops: [string, string][];
   columns: { key: string; label: string; type: string; sample: string }[]; runs: { at: string; by: string; read: number; after_filters: number; calls: number; campaign_id?: string; status: string }[]; next_runs: { at: string; label: string }[] }
 export interface DsTest { ok: boolean; steps: { key: string; label: string; ok: boolean; detail: string }[]; columns?: DsView['columns']; sample?: Record<string, unknown>[] }
-export interface DsPreview { read: number; after_filters: number; skipped_recent: number; no_phone: number; do_not_call?: number; total_calls: number; calls: { key: string; part: number; parts: number; lines: number; phone: string; inputs: Record<string, string> }[];
+export interface DsPreview { read: number; after_filters: number; skipped_recent: number; no_phone: number; do_not_call?: number; rechecked?: number; total_calls: number; calls: { key: string; part: number; parts: number; lines: number; phone: string; inputs: Record<string, string> }[];
   write_back: { key: string; set: Record<string, string> }[]; next_runs: { at: string; label: string }[] }
 export interface DataSourceSource {
   catalog(): Promise<{ connectors: DsConnector[] }>;
@@ -1125,6 +1125,7 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
             @if (p.skipped_recent) { <span class="ar">→</span><span><b>{{ p.skipped_recent }}</b> called recently, skipped</span> }
             @if (p.no_phone) { <span class="ar">→</span><span><b>{{ p.no_phone }}</b> without a phone</span> }
             @if (p.do_not_call) { <span class="ar">→</span><span><b>{{ p.do_not_call }}</b> on the do-not-call list</span> }
+            @if (p.rechecked) { <span class="ar">→</span><span><b>{{ p.rechecked }}</b> changed since the run, dropped at dial time</span> }
             <span class="ar">→</span><span><b>{{ p.total_calls }}</b> call{{ p.total_calls === 1 ? '' : 's' }}</span></div>
         }
 
@@ -1198,6 +1199,9 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
                 </div>
               } @empty { <p class="s-note">No conditions: every row is called.</p> }
               <div><button type="button" class="s-btn" (click)="addFilter()">+ Add condition</button></div>
+              <h3>Check again right before dialling</h3>
+              <label class="ds-switch"><input type="checkbox" [checked]="d().recheck?.on !== false" (change)="patch({ recheck: { on: $any($event.target).checked } })"> Ask {{ conn()?.name || 'the source' }} about each row just before its call</label>
+              <p class="s-muted">A PO accepted on the portal between the run and the call is dropped, so a supplier is never called about something already done.</p>
               <h3>Do not call the same line twice</h3>
               <div class="ds-inline">
                 <label class="ds-l">Each line is unique by<select (change)="patch({ dedupe: { key: $any($event.target).value, days: d().dedupe.days } })"><option value="">Do not check</option>@for (c of v.columns; track c.key) { <option [value]="c.key" [selected]="c.key === d().dedupe.key">{{ c.key }}</option> }</select></label>
@@ -1560,6 +1564,7 @@ export class AlertsComponent {
 export interface CallHandling {
   guardrail: { on: boolean; min_seconds: number; need_speech: boolean };
   ivr: { on: boolean; action: 'press' | 'wait' | 'hangup'; hint: string; digits: string; wait_seconds: number };
+  memory?: { on: boolean; days: number };
   speech: { boost: string[]; pronounce: { word: string; say: string }[] };
 }
 export interface CallHandlingSource { load(agent: string): Promise<{ agent: string; label: string; inputs: string[]; handling: CallHandling }>; save(agent: string, h: CallHandling): Promise<{ agent: string; label: string; inputs: string[]; handling: CallHandling }> }
@@ -1613,6 +1618,11 @@ export interface CallHandlingSource { load(agent: string): Promise<{ agent: stri
           <p class="s-muted">Answering machines are handled under Calling flow › Voicemail.</p>
         </section>
         <section class="ch-sec">
+          <h3>Contact memory <label><input type="checkbox" [checked]="d().memory?.on !== false" (change)="m({ on: $any($event.target).checked })"> On</label></h3>
+          <p class="s-muted">Before each call the agent gets a short brief from earlier calls to the same number: what was confirmed, what was promised, when they like to be called. It never asks again for what is already confirmed. The brief is the {{ MEMORY_VAR }} input, and the call page shows it.</p>
+          <div class="ch-row" [class.ch-off]="d().memory?.on === false"><label>Look back (days)<input type="number" min="1" max="365" [value]="d().memory?.days ?? 30" (change)="m({ days: +$any($event.target).value })"></label></div>
+        </section>
+        <section class="ch-sec">
           <h3>Words to listen for</h3>
           <p class="s-muted">Names, plants, SKUs and codes the agent must hear right. A sheet column in braces, such as {{ VAR_EXAMPLE }}, uses each row's own value.</p>
           <div class="ch-chips">
@@ -1660,6 +1670,8 @@ export class CallHandlingComponent {
   private async load(s: CallHandlingSource, a: string, again = true): Promise<void> { try { const v = await s.load(a); this.v.set(v); this.d.set(structuredClone(v.handling)); } catch { if (again) setTimeout(() => this.load(s, a, false), 1200); else { this.msg.set('Could not load call handling.'); this.bad.set(true); } } }
   private patch(part: Partial<CallHandling>): void { this.msg.set(''); this.d.set({ ...this.d(), ...part }); }
   protected g(part: Partial<CallHandling['guardrail']>): void { this.patch({ guardrail: { ...this.d().guardrail, ...part } }); }
+  protected readonly MEMORY_VAR = '{{contact_memory}}';
+  protected m(part: Partial<{ on: boolean; days: number }>): void { this.patch({ memory: { on: true, days: 30, ...(this.d().memory || {}), ...part } }); }
   protected i(part: Partial<CallHandling['ivr']>): void { this.patch({ ivr: { ...this.d().ivr, ...part } }); }
   protected boost(w: string): void { const t = w.trim(); if (!t || this.d().speech.boost.includes(t)) return; this.patch({ speech: { ...this.d().speech, boost: [...this.d().speech.boost, t] } }); }
   protected unboost(w: string): void { this.patch({ speech: { ...this.d().speech, boost: this.d().speech.boost.filter((x) => x !== w) } }); }
@@ -1674,5 +1686,225 @@ export class CallHandlingComponent {
   protected async save(): Promise<void> {
     this.busy.set(true);
     try { const v = await this.source().save(this.agent(), this.d()); this.v.set(v); this.d.set(structuredClone(v.handling)); this.msg.set('Saved.'); this.bad.set(false); } catch { this.msg.set('Could not save.'); this.bad.set(true); } finally { this.busy.set(false); }
+  }
+}
+
+// ── Agent quality: AI QA scorecard, persona tests, versions with a diff and an A/B split ──
+export interface QaCheck { key: string; label: string; hint: string; pass_rate: number | null; fails: number }
+export interface QaCard {
+  config: { sample_pct: number; min_seconds: number; checks: { key: string; on: boolean }[]; custom: { id: string; text: string; on: boolean }[] };
+  builtin: { key: string; label: string; hint: string }[]; eligible: number; sampled: number; score: number | null; by_check: QaCheck[];
+  calls: { id: string; caller: string; phone: string; date: string | null; version: number; score: number; fails: { key: string; label: string; why: string }[] }[];
+}
+export interface TestRun { at: string; version: number; passed: number; total: number; results: { id: string; name: string; expect: string; got: string; pass: boolean; why: string; seconds: number; transcript: { who: string; text: string }[] }[] }
+export interface TestsView { scenarios: { id: string; name: string; who: string; expect: string; source: string; call_id?: string }[]; last: TestRun | null; runs: { at: string; version: number; passed: number; total: number }[]; versions: { v: number; status: string }[]; added?: number }
+export interface VersionsView {
+  list: { v: number; status: 'published' | 'draft' | 'old'; at: string; by: string; note: string; prompt: string; settings: Record<string, string | number> }[]; published: number | null; draft: number | null;
+  split: { on: boolean; a: number; b: number; b_pct: number };
+  diff: { from: number; to: number; prompt: { type: 'same' | 'add' | 'del'; text: string }[]; settings: { key: string; from: unknown; to: unknown }[] } | null;
+  arms: { v: number; calls: number; answered_pct: number | null; success_pct: number | null; qa: number | null; enough: boolean }[];
+}
+export interface QualitySource {
+  quality(agent: string): Promise<QaCard>; saveQuality(agent: string, cfg: QaCard['config']): Promise<QaCard>;
+  tests(agent: string): Promise<TestsView>; runTests(agent: string, ids: string[], version: number): Promise<TestRun>; testsFromCalls(agent: string): Promise<TestsView>;
+  versions(agent: string): Promise<VersionsView>; saveDraft(agent: string, d: { prompt?: string; note?: string }): Promise<VersionsView>; publish(agent: string): Promise<VersionsView>;
+  split(agent: string, s: { on: boolean; b_pct: number }): Promise<VersionsView>; openCall?(id: string): void;
+}
+@Component({
+  selector: 'app-agent-quality',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .q { display: grid; gap: 14px; }
+    .q input, .q select, .q textarea { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .q textarea { width: 100%; box-sizing: border-box; min-height: 170px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+    .q-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+    .q-score { display: grid; gap: 2px; } .q-score b { font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; } .q-score small { color: var(--s-muted); font-size: 12.5px; }
+    .q-good { color: var(--s-good); } .q-mid { color: #b45309; } .q-bad { color: #b91c1c; }
+    .q-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; font-size: 13px; }
+    .q-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
+    .q-checks { display: grid; gap: 6px; }
+    .q-check { display: grid; grid-template-columns: auto minmax(160px, 1.3fr) minmax(120px, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--s-line); }
+    .q-check input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--s-accent); }
+    .q-check small { display: block; color: var(--s-muted); font-size: 12px; }
+    .q-bar { height: 8px; border-radius: 4px; background: var(--s-soft); overflow: hidden; } .q-bar i { display: block; height: 100%; background: var(--s-good); }
+    .q-bar.low i { background: #f59e0b; }
+    .q-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .q-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+    .q-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--s-line); vertical-align: top; }
+    .q-fail { display: block; color: #b91c1c; font-size: 12.5px; }
+    .q-pill { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); white-space: nowrap; }
+    .q-pill.pass { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 40%, transparent); } .q-pill.fail { color: #b91c1c; border-color: #fca5a5; }
+    .q-pill.pub { color: var(--s-good); } .q-pill.draft { color: var(--s-accent); border-color: color-mix(in srgb, var(--s-accent) 40%, transparent); }
+    .q-scen { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--s-line); }
+    .q-scen input { width: 20px; height: 20px; accent-color: var(--s-accent); grid-row: span 2; }
+    .q-scen small { color: var(--s-muted); font-size: 12.5px; }
+    .q-res { border: 1px solid var(--s-line); border-radius: 10px; padding: 8px 12px; display: grid; gap: 4px; font-size: 13px; }
+    .q-res.fail { border-color: #fca5a5; }
+    .q-tr { display: grid; gap: 3px; margin: 6px 0 0; padding: 8px 10px; background: var(--s-soft); border-radius: 8px; font-size: 12.5px; }
+    .q-diff { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.55; border: 1px solid var(--s-line); border-radius: 8px; overflow: hidden; }
+    .q-diff div { padding: 1px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .q-diff .add { background: color-mix(in srgb, #16a34a 14%, transparent); } .q-diff .del { background: color-mix(in srgb, #dc2626 12%, transparent); text-decoration: line-through; opacity: .85; }
+    .q-diff .add::before { content: '+ '; } .q-diff .del::before { content: '− '; } .q-diff .same::before { content: '  '; }
+    .q-scroll { overflow-x: auto; }
+    .nc-more { border-top: 1px solid var(--s-line); padding-top: 8px; display: grid; gap: 8px; }
+    .nc-more summary { cursor: pointer; font-weight: 600; list-style: none; }
+    .nc-more summary::-webkit-details-marker { display: none; }
+    .nc-more summary::before { content: '▸ '; color: var(--s-muted); }
+    .nc-more[open] summary::before { content: '▾ '; }
+    .q-err { color: #b91c1c; font-size: 13px; } .q-ok { color: var(--s-good); font-size: 13px; }
+    .q-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
+    @media (max-width: 640px) { .q-check { grid-template-columns: auto 1fr; } }
+  `],
+  template: `
+    <div class="q">
+      <div class="q-head"><div><b>Quality</b><p class="s-muted">Check real calls, test new versions before they go live, and compare versions on live traffic.</p></div><span class="s-grow"></span>
+        <div class="s-seg" role="tablist" aria-label="Quality">
+          @for (t of TABS; track t[0]) { <button type="button" role="tab" [class.on]="tab() === t[0]" [attr.aria-selected]="tab() === t[0]" (click)="go(t[0])">{{ t[1] }}</button> }
+        </div></div>
+      @if (msg()) { <span [class.q-err]="bad()" [class.q-ok]="!bad()" role="status">{{ msg() }}</span> }
+
+      @if (tab() === 'qa') {
+        @if (qa(); as c) {
+          <div class="q-head">
+            <div class="q-score"><b [class]="tone(c.score)">{{ c.score ?? '—' }}</b><small>quality score, out of 100</small></div>
+            <span class="s-muted">{{ c.sampled }} of {{ c.eligible }} answered calls checked ({{ c.config.sample_pct }}% sample, calls of {{ c.config.min_seconds }} s or more). Each call is graded on every check below.</span>
+          </div>
+          <div class="q-checks">
+            @for (k of c.by_check; track k.key) {
+              <div class="q-check"><span></span><span>{{ k.label }}<small>{{ k.hint }}</small></span>
+                <div class="q-bar" [class.low]="(k.pass_rate ?? 100) < 85" [attr.aria-label]="k.pass_rate + '% pass'"><i [style.width.%]="k.pass_rate ?? 0"></i></div>
+                <span><b>{{ k.pass_rate ?? '—' }}%</b> <span class="s-muted">{{ k.fails }} failed</span></span></div>
+            }
+          </div>
+          <b>Calls to look at first</b>
+          <div class="q-scroll"><table class="q-tbl"><thead><tr><th>Call</th><th>Version</th><th>Score</th><th>What went wrong</th></tr></thead><tbody>
+            @for (call of c.calls; track call.id) { <tr><td>{{ call.caller }}<br><span class="s-muted">{{ when(call.date) }}</span>@if (source().openCall) { <br><button type="button" class="q-link" (click)="source().openCall!(call.id)">Open the call</button> }</td>
+              <td>v{{ call.version }}</td><td><b [class]="tone(call.score)">{{ call.score }}</b></td>
+              <td>@for (f of call.fails; track f.key) { <span class="q-fail">{{ f.label }}: {{ f.why }}</span> } @empty { <span class="s-muted">Passed every check</span> }</td></tr> }
+          </tbody></table></div>
+          <details class="nc-more"><summary>Checks and sampling</summary>
+            <div class="q-row"><label>Calls to check (%)<input type="number" min="5" max="100" [value]="qaDraft().sample_pct" (change)="setQa({ sample_pct: +$any($event.target).value })"></label>
+              <label>Only calls of at least (seconds)<input type="number" min="0" max="120" [value]="qaDraft().min_seconds" (change)="setQa({ min_seconds: +$any($event.target).value })"></label></div>
+            @for (b of c.builtin; track b.key) { <label class="q-row" style="align-items: center"><input type="checkbox" style="width: 20px; height: 20px" [checked]="checkOn(b.key)" (change)="toggleCheck(b.key, $any($event.target).checked)"> {{ b.label }} <span class="s-muted">{{ b.hint }}</span></label> }
+            <b>Your own checks</b>
+            @for (cu of qaDraft().custom; track cu.id; let i = $index) { <div class="q-row"><input type="checkbox" style="width: 20px; height: 20px" [checked]="cu.on" (change)="setCustom(i, { on: $any($event.target).checked })" aria-label="Check on">
+              <input style="flex: 1 1 260px" [value]="cu.text" (input)="setCustom(i, { text: $any($event.target).value })" aria-label="Check"><button type="button" class="s-btn" (click)="removeCustom(i)">Remove</button></div> }
+            <div class="q-row"><button type="button" class="s-btn" (click)="addCustom()">+ Add a check</button><span class="s-grow"></span>
+              <button type="button" class="s-btn s-primary" (click)="saveQa()" [disabled]="busy() || !qaDirty()">Save and re-grade</button></div>
+          </details>
+        } @else { <p class="s-empty">Grading calls…</p> }
+      }
+
+      @if (tab() === 'test') {
+        @if (tv(); as t) {
+          <div class="q-row">
+            <label>Test version<select (change)="testVersion.set(+$any($event.target).value)">@for (v of t.versions; track v.v) { <option [value]="v.v" [selected]="v.v === testVersion()">v{{ v.v }} · {{ v.status }}</option> }</select></label>
+            <button type="button" class="s-btn" (click)="fromCalls()" [disabled]="busy()">+ Add scenarios from failing real calls</button><span class="s-grow"></span>
+            <button type="button" class="s-btn s-primary" (click)="run()" [disabled]="busy() || !picked().length">{{ busy() ? 'Running…' : 'Run ' + picked().length + ' test' + (picked().length === 1 ? '' : 's') }}</button>
+          </div>
+          <span class="s-muted">Each test is an AI caller playing a supplier against the version you pick. Nothing is dialled and no credits are used.</span>
+          <div>@for (s of t.scenarios; track s.id) {
+            <label class="q-scen"><input type="checkbox" [checked]="picked().includes(s.id)" (change)="pick(s.id, $any($event.target).checked)"><b>{{ s.name }}@if (s.source === 'call') { <span class="q-pill draft">from a real call</span> }</b><small>{{ s.who }} · expects {{ s.expect }}</small></label>
+          }</div>
+          @if (t.last; as r) {
+            <div class="q-head"><div class="q-score"><b [class]="r.passed === r.total ? 'q-good' : 'q-mid'">{{ r.passed }}/{{ r.total }}</b><small>passed on v{{ r.version }} · {{ when(r.at) }}</small></div>
+              @if (t.runs.length > 1) { <span class="s-muted">Earlier: @for (x of t.runs.slice(1); track x.at) { v{{ x.version }} {{ x.passed }}/{{ x.total }}; } </span> }</div>
+            @for (x of r.results; track x.id) {
+              <div class="q-res" [class.fail]="!x.pass"><div class="q-row" style="align-items: center"><span class="q-pill" [class.pass]="x.pass" [class.fail]="!x.pass">{{ x.pass ? 'Passed' : 'Failed' }}</span><b>{{ x.name }}</b><span class="s-muted">expected {{ x.expect }} · got {{ x.got }} · {{ x.seconds }} s</span></div>
+                @if (x.why) { <span class="q-fail">{{ x.why }}</span> }
+                <details><summary class="s-muted">Transcript</summary><div class="q-tr">@for (l of x.transcript; track $index) { <span><b>{{ l.who }}:</b> {{ l.text }}</span> }</div></details></div>
+            }
+          }
+        } @else { <p class="s-empty">Loading tests…</p> }
+      }
+
+      @if (tab() === 'versions') {
+        @if (vv(); as v) {
+          <div class="q-scroll"><table class="q-tbl"><thead><tr><th>Version</th><th>Status</th><th>Note</th><th>Saved</th></tr></thead><tbody>
+            @for (x of v.list; track x.v) { <tr><td><b>v{{ x.v }}</b></td><td><span class="q-pill" [class.pub]="x.status === 'published'" [class.draft]="x.status === 'draft'">{{ x.status === 'published' ? 'Live' : x.status === 'draft' ? 'Draft' : 'Earlier' }}</span></td><td>{{ x.note }}</td><td>{{ when(x.at) }}<br><span class="s-muted">{{ x.by }}</span></td></tr> }
+          </tbody></table></div>
+          @if (v.diff; as d) {
+            <b>What changes from v{{ d.from }} (live) to v{{ d.to }} (draft)</b>
+            <div class="q-diff">@for (l of d.prompt; track $index) { <div [class]="l.type">{{ l.text }}</div> }</div>
+            @if (d.settings.length) { <span class="s-muted">Settings: @for (st of d.settings; track st.key) { {{ st.key }} {{ st.from }} → {{ st.to }}; } </span> }
+          }
+          @if (draftOf(v); as dr) {
+            <details class="nc-more" [open]="editOpen()" (toggle)="editOpen.set($any($event.target).open)"><summary>Edit the draft (v{{ dr.v }})</summary>
+              <label class="q-row" style="display: grid">Note<input [value]="draftNote()" (input)="draftNote.set($any($event.target).value)"></label>
+              <textarea [value]="draftPrompt()" (input)="draftPrompt.set($any($event.target).value)" aria-label="Draft prompt"></textarea>
+              <div class="q-row"><span class="s-muted">Edits go to the draft only; live calls keep using v{{ v.published }}.</span><span class="s-grow"></span>
+                <button type="button" class="s-btn" (click)="saveDraft()" [disabled]="busy()">Save draft</button></div>
+            </details>
+            <div class="q-row"><button type="button" class="s-btn" (click)="go('test'); testVersion.set(dr.v)">Test v{{ dr.v }} first</button><span class="s-grow"></span>
+              <button type="button" class="s-btn s-primary" (click)="publish(dr.v)" [disabled]="busy()">Publish v{{ dr.v }}</button></div>
+          } @else { <div class="q-row"><span class="s-muted">No draft. Start one from the live version to change the prompt safely.</span><button type="button" class="s-btn" (click)="newDraft()">Start a draft</button></div> }
+          <b>Split live traffic (A/B)</b>
+          <div class="q-row" style="align-items: center">
+            <label style="display: inline-flex; gap: 6px; align-items: center; color: var(--s-text)"><input type="checkbox" style="width: 20px; height: 20px" [checked]="v.split.on" [disabled]="!v.draft" (change)="setSplit($any($event.target).checked, splitPct())"> Send part of each campaign to the draft</label>
+            <label>Share to v{{ v.split.b }} (%)<input type="number" min="5" max="50" style="width: 80px" [value]="splitPct()" (change)="splitPct.set(+$any($event.target).value)"></label>
+            <button type="button" class="s-btn" (click)="setSplit(v.split.on, splitPct())" [disabled]="busy() || !v.draft">Save split</button>
+          </div>
+          <div class="q-scroll"><table class="q-tbl"><thead><tr><th>Version</th><th>Calls</th><th>Answered</th><th>Success</th><th>Quality</th><th></th></tr></thead><tbody>
+            @for (a of v.arms; track a.v) { <tr><td><b>v{{ a.v }}</b>{{ a.v === v.published ? ' (live)' : ' (draft)' }}</td><td>{{ a.calls }}</td><td>{{ pct(a.answered_pct) }}</td><td>{{ pct(a.success_pct) }}</td><td><b [class]="tone(a.qa)">{{ a.qa ?? '—' }}</b></td><td class="s-muted">{{ a.enough ? '' : 'Fewer than 30 calls: too early to call it' }}</td></tr> }
+          </tbody></table></div>
+        } @else { <p class="s-empty">Loading versions…</p> }
+      }
+    </div>
+  `,
+})
+export class AgentQualityComponent {
+  readonly source = input.required<QualitySource>();
+  readonly agent = input.required<string>();
+  protected readonly TABS: [string, string][] = [['qa', 'Quality checks'], ['test', 'Test'], ['versions', 'Versions']];
+  protected readonly tab = signal('qa');
+  protected readonly qa = signal<QaCard | null>(null); protected readonly qaDraft = signal<QaCard['config']>({ sample_pct: 40, min_seconds: 15, checks: [], custom: [] });
+  protected readonly tv = signal<TestsView | null>(null); protected readonly picked = signal<string[]>([]); protected readonly testVersion = signal(0);
+  protected readonly vv = signal<VersionsView | null>(null); protected readonly draftPrompt = signal(''); protected readonly draftNote = signal(''); protected readonly editOpen = signal(false); protected readonly splitPct = signal(20);
+  protected readonly busy = signal(false); protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly qaDirty = computed(() => JSON.stringify(this.qaDraft()) !== JSON.stringify(this.qa()?.config));
+  constructor() { effect(() => { this.agent(); this.source(); untracked(() => { this.qa.set(null); this.tv.set(null); this.vv.set(null); this.go(this.tab()); }); }); }
+  private say(m: string, bad = false): void { this.msg.set(m); this.bad.set(bad); }
+  private async attempt<T>(fn: () => Promise<T>, again = true): Promise<T | null> { try { return await fn(); } catch (e) { if (again) { await new Promise((r) => setTimeout(r, 1200)); return this.attempt(fn, false); } this.say(errText(e, 'Could not load this.'), true); return null; } }
+  protected async go(t: string): Promise<void> {
+    this.tab.set(t); this.msg.set(''); const a = this.agent(); const s = this.source();
+    if (t === 'qa' && !this.qa()) { const c = await this.attempt(() => s.quality(a)); if (c) { this.qa.set(c); this.qaDraft.set(structuredClone(c.config)); } }
+    if (t === 'test' && !this.tv()) { const v = await this.attempt(() => s.tests(a)); if (v) { this.tv.set(v); this.picked.set(v.scenarios.map((x) => x.id)); if (!this.testVersion()) this.testVersion.set(v.versions.find((x) => x.status === 'published')?.v ?? v.versions[0]?.v ?? 0); } }
+    if (t === 'versions' && !this.vv()) { const v = await this.attempt(() => s.versions(a)); if (v) this.setVersions(v); }
+  }
+  protected tone(n: number | null): string { return n == null ? '' : n >= 85 ? 'q-good' : n >= 70 ? 'q-mid' : 'q-bad'; }
+  protected pct(n: number | null): string { return n == null ? '—' : n + '%'; }
+  protected when(iso: string | null): string { return iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'; }
+  // Quality checks
+  protected setQa(part: Partial<QaCard['config']>): void { this.qaDraft.set({ ...this.qaDraft(), ...part }); }
+  protected checkOn(k: string): boolean { return this.qaDraft().checks.find((c) => c.key === k)?.on !== false; }
+  protected toggleCheck(k: string, on: boolean): void { this.setQa({ checks: this.qaDraft().checks.map((c) => (c.key === k ? { ...c, on } : c)) }); }
+  protected setCustom(i: number, part: Partial<{ text: string; on: boolean }>): void { this.setQa({ custom: this.qaDraft().custom.map((c, j) => (j === i ? { ...c, ...part } : c)) }); }
+  protected addCustom(): void { this.setQa({ custom: [...this.qaDraft().custom, { id: 'n' + Date.now(), text: '', on: true }] }); }
+  protected removeCustom(i: number): void { this.setQa({ custom: this.qaDraft().custom.filter((_, j) => j !== i) }); }
+  protected async saveQa(): Promise<void> { this.busy.set(true); try { const c = await this.source().saveQuality(this.agent(), this.qaDraft()); this.qa.set(c); this.qaDraft.set(structuredClone(c.config)); this.say('Saved. The calls were graded again.'); } catch { this.say('Could not save.', true); } finally { this.busy.set(false); } }
+  // Tests
+  protected pick(id: string, on: boolean): void { this.picked.set(on ? [...this.picked(), id] : this.picked().filter((x) => x !== id)); }
+  protected async run(): Promise<void> {
+    this.busy.set(true);
+    try { const r = await this.source().runTests(this.agent(), this.picked(), this.testVersion()); const t = await this.source().tests(this.agent()); this.tv.set({ ...t, last: r }); this.say(`${r.passed} of ${r.total} passed on v${r.version}.`, r.passed < r.total); }
+    catch { this.say('Could not run the tests.', true); } finally { this.busy.set(false); }
+  }
+  protected async fromCalls(): Promise<void> {
+    this.busy.set(true);
+    try { const t = await this.source().testsFromCalls(this.agent()); this.tv.set({ ...t, last: this.tv()?.last ?? t.last }); this.picked.set(t.scenarios.map((x) => x.id)); this.say(t.added ? `Added ${t.added} scenario${t.added === 1 ? '' : 's'} from calls that failed a check.` : 'No new failing calls to turn into tests.'); }
+    catch { this.say('Could not add scenarios.', true); } finally { this.busy.set(false); }
+  }
+  // Versions
+  private setVersions(v: VersionsView): void { this.vv.set(v); const d = this.draftOf(v); this.draftPrompt.set(d?.prompt ?? ''); this.draftNote.set(d?.note ?? ''); this.splitPct.set(v.split.b_pct); this.tv.set(null); }
+  protected draftOf(v: VersionsView) { return v.list.find((x) => x.status === 'draft') ?? null; }
+  protected async saveDraft(): Promise<void> { this.busy.set(true); try { this.setVersions(await this.source().saveDraft(this.agent(), { prompt: this.draftPrompt(), note: this.draftNote() })); this.qa.set(null); this.say('Draft saved.'); } catch { this.say('Could not save the draft.', true); } finally { this.busy.set(false); } }
+  protected async newDraft(): Promise<void> { this.busy.set(true); try { this.setVersions(await this.source().saveDraft(this.agent(), {})); this.editOpen.set(true); this.say('Draft started from the live version.'); } catch { this.say('Could not start a draft.', true); } finally { this.busy.set(false); } }
+  protected async publish(n: number): Promise<void> {
+    if (!confirm(`Publish v${n}? New calls use it at once; calls already running finish on the old version.`)) return;
+    this.busy.set(true); try { this.setVersions(await this.source().publish(this.agent())); this.qa.set(null); this.say(`v${n} is live.`); } catch (e) { this.say(errText(e, 'Could not publish.'), true); } finally { this.busy.set(false); }
+  }
+  protected async setSplit(on: boolean, pct: number): Promise<void> {
+    this.busy.set(true); try { this.setVersions(await this.source().split(this.agent(), { on, b_pct: pct })); this.say(on ? `${pct}% of new calls go to the draft.` : 'All calls use the live version.'); } catch (e) { this.say(errText(e, 'Could not save the split.'), true); } finally { this.busy.set(false); }
   }
 }

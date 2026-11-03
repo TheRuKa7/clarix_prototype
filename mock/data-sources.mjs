@@ -142,7 +142,9 @@ export function buildCalls(agent, config = {}, inputs = []) {
   const phoneCol = map.get('contact_phone');
   const noPhone = phoneCol ? fresh.filter((r) => String(r[phoneCol] ?? '').replace(/\D/g, '').length < 10) : fresh;
   const onList = fresh.filter((r) => !noPhone.includes(r) && phoneCol && onDnc(r[phoneCol]));
-  const callable = fresh.filter((r) => !noPhone.includes(r) && !onList.includes(r));
+  // Demo stand-in for the source answering again at dial time: about 1 line in 6 was accepted since the run.
+  const changed = config.recheck?.on ? fresh.filter((r) => !noPhone.includes(r) && !onList.includes(r) && [...String(r.po_line_id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 6 === 0) : [];
+  const callable = fresh.filter((r) => !noPhone.includes(r) && !onList.includes(r) && !changed.includes(r));
   const g = config.group || { mode: 'row' };
   const order = g.order || ''; const sorted = order ? [...callable].sort((a, b) => String(a[order]).localeCompare(String(b[order]), undefined, { numeric: true })) : callable;
   const groups = [];
@@ -163,7 +165,7 @@ export function buildCalls(agent, config = {}, inputs = []) {
     if (inputs.includes('line_count') || g.mode === 'group') vals.line_count = String(gr.rows.length);
     return { key: gr.key, part: gr.part, parts: gr.parts, lines: gr.rows.length, phone: phoneCol ? String(gr.rows[0][phoneCol]) : '', inputs: vals, row_keys: gr.rows.map((r) => r[dd.key || 'po_line_id']) };
   });
-  return { read: all.length, after_filters: kept.length, skipped_recent: skippedRecent, no_phone: noPhone.length, do_not_call: onList.length, calls };
+  return { read: all.length, after_filters: kept.length, skipped_recent: skippedRecent, no_phone: noPhone.length, do_not_call: onList.length, rechecked: changed.length, calls };
 }
 export function markCalled(agent, calls, keyField) { const seen = calledFor(agent); const at = new Date().toISOString(); for (const c of calls) for (const k of c.row_keys) seen.set(String(k), at); }
 /** The calls as a CSV the existing upload path reads: the agent's inputs as headers. */
@@ -205,7 +207,7 @@ export function defaultSetup(inputs) {
   return { connector: '', fields: {}, object: '', has_secret: false, tested: false, mapping: suggestMapping(inputs).map(({ input, column }) => ({ input, column })),
     filters: [{ field: 'status', op: 'isnot', value: 'Closed' }, { field: 'pending_qty', op: 'gt', value: '0' }, { field: 'promised_date', op: 'due', value: '3' }],
     group: { mode: 'group', by: ['supplier_mobile'], max_lines: 8, order: 'promised_date' }, dedupe: { key: 'po_line_id', days: 2 },
-    write_back: { mode: 'off', mapping: [] }, schedule: { on: false, cadence: 'weekdays', days: [1, 2, 3, 4, 5], time: '10:00', start: day(0), end: '' } };
+    recheck: { on: true }, write_back: { mode: 'off', mapping: [] }, schedule: { on: false, cadence: 'weekdays', days: [1, 2, 3, 4, 5], time: '10:00', start: day(0), end: '' } };
 }
 /** The setup as saved: secrets are never sent back, only whether one is stored. */
 export function getSetup(agent, inputs) { const s = setups.get(agent); if (!s) return null; const { fields = {}, ...rest } = s; return { ...rest, fields: Object.fromEntries(Object.entries(fields).filter(([k]) => !/secret/.test(k))), has_secret: !!fields.secret || rest.has_secret }; }

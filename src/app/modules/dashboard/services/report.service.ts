@@ -84,6 +84,17 @@ export class ReportService {
   callHandling(agent: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call-handling/${encodeURIComponent(agent)}`)); }
   saveCallHandling(agent: string, h: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/call-handling/${encodeURIComponent(agent)}`, h)); }
   rerunCalls(sc: any, box: string, f?: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/calls/rerun`, {}, { params: this.logParams(this.reportParams(sc).set('box', box), f) })); }
+  // Wave 2: quality checks, persona tests, versions and the A/B split, contact memory.
+  quality(a: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/quality/${encodeURIComponent(a)}`)); }
+  saveQuality(a: string, cfg: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/quality/${encodeURIComponent(a)}`, cfg)); }
+  agentTests(a: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/tests/${encodeURIComponent(a)}`)); }
+  runAgentTests(a: string, ids: string[], version: number): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/tests/${encodeURIComponent(a)}/run`, { ids, version })); }
+  agentTestsFromCalls(a: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/tests/${encodeURIComponent(a)}/from-calls`, {})); }
+  agentVersions(a: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}`)); }
+  saveAgentDraft(a: string, d: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/draft`, d)); }
+  publishAgentDraft(a: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/publish`, {})); }
+  splitAgentVersions(a: string, s: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/split`, s)); }
+  callMemory(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call/${encodeURIComponent(id)}/memory`)); }
   callDiagnostics(id: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/call/${encodeURIComponent(id)}/diagnostics`)); }
   callingRules(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/calling-rules`)); }
   saveCallingRule(code: string, rule: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/calling-rules/${encodeURIComponent(code)}`, rule)); }

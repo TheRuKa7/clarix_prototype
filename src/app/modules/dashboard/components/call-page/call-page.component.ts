@@ -16,6 +16,8 @@ export interface CallDetail {
   has_audio: boolean; audio_path: string | null; dials: { n: number; at: string; ring_seconds: number | null; talk_seconds: number | null; result: string; provider: string }[];
   timeline: { at: string; type: string; status: string; detail: string }[]; prev_id: string | null; next_id: string | null; position: number; of: number; outcome_options: string[];
 }
+/** The contact memory brief the agent got before the call. */
+export interface CallMemory { on: boolean; calls: number; lines: string[]; variable: string; last?: { id: string; date: string; result: string; campaign: string }[] }
 /** Diagnostics for one call, for the technical reader. */
 export interface CallDiagnostics {
   summary: { p50_ms: number | null; p90_ms: number | null; turns: number; interruptions: number; slow_turns: number };
@@ -50,6 +52,8 @@ export interface CallPageSource {
   steps?(id: string): Promise<CallSteps>;
   /** Technical detail for one call: latency per turn, tool calls, phone menu, why it ended. */
   diagnostics?(id: string): Promise<CallDiagnostics>;
+  /** What the agent knew before this call, from earlier calls to the same number. */
+  memory?(id: string): Promise<CallMemory>;
   sendMessage?(id: string, m: { channel: string; key: string; text: string }): Promise<CallSteps>;
   audio(path: string): Promise<Blob>;
   changeOutcome(id: string, statusReason: string, note: string): Promise<CallDetail>;
@@ -172,6 +176,15 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
             }
           </div>
           <div class="cp-col">
+            @if (memory(); as mem) {
+              <section class="cp-card">
+                <div class="cp-card-head"><h2>What the agent knew</h2><span class="cp-muted">{{ mem.on ? 'from ' + mem.calls + ' earlier call' + (mem.calls === 1 ? '' : 's') : 'contact memory is off for this agent' }}</span></div>
+                @if (mem.on) {
+                  <ul class="cp-mem">@for (l of mem.lines; track $index) { <li>{{ l }}</li> }</ul>
+                  @if (mem.last?.length) { <div class="cp-rows">@for (x of mem.last!; track x.id) { <div class="cp-row"><span class="cp-muted">{{ when(x.date) }}</span><button type="button" class="cp-linkbtn" (click)="go(x.id)" [title]="'Open that call'">{{ x.result }}</button><span class="cp-muted">{{ x.campaign }}</span></div> }</div> }
+                }
+              </section>
+            }
             @if (steps(); as st) {
               <section class="cp-card cp-steps">
                 <h2>Next steps</h2>
@@ -288,6 +301,8 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
     .cp-tool { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 12.5px; border-bottom: 1px solid var(--cp-line); padding: 4px 0; }
     .cp-tool code, .cp-kv code { font-size: 12px; background: var(--cp-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
     .cp-sub { font-size: 13px; }
+    .cp-linkbtn { border: 0; background: none; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; text-align: left; }
+    .cp-mem { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
     .cp-edit { grid-template-columns: auto 1fr 1.4fr auto auto; align-items: center; }
     .cp-edit select, .cp-edit input { border: 1px solid var(--cp-line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--cp-bg); color: var(--cp-text); }
     .cp-turns { display: grid; gap: 8px; max-height: 520px; overflow: auto; }
@@ -336,6 +351,7 @@ export class CallPageComponent implements OnDestroy {
   protected readonly copied = signal(false);
   protected readonly steps = signal<CallSteps | null>(null);
   protected readonly diagOpen = signal(false);
+  protected readonly memory = signal<CallMemory | null>(null);
   protected readonly diag = signal<CallDiagnostics | null>(null);
   protected toggleDiag(id: string): void {
     this.diagOpen.set(!this.diagOpen()); if (!this.diagOpen() || this.diag()) return;
@@ -368,7 +384,8 @@ export class CallPageComponent implements OnDestroy {
     try {
       const c = await this.source().detail(id); if (my !== this.seq) return; this.d.set(c);
       this.steps.set(null); this.drafts.set({});
-      this.diag.set(null); this.diagOpen.set(false);
+      this.diag.set(null); this.diagOpen.set(false); this.memory.set(null);
+      this.source().memory?.(id).then((m) => { if (my === this.seq) this.memory.set(m); }).catch(() => {});
       this.source().steps?.(id).then((st) => { if (my !== this.seq) return; this.steps.set(st); if (!st.messages.some((m) => m.channel === this.channel())) this.channel.set(st.messages[0]?.channel ?? 'whatsapp'); }).catch(() => {});
       if (c.has_audio && c.audio_path) this.source().audio(c.audio_path).then((b) => { if (my === this.seq) this.audioUrl.set(URL.createObjectURL(b)); }).catch(() => {});
     } catch { if (my === this.seq) this.error.set('Could not load this call.'); }

@@ -157,6 +157,8 @@
               [attr.aria-label]="'Data source for ' + template.name" title="Data source">Data source</button>
             <button type="button" class="action-btn metrics-btn" (click)="handlingFor.set({ id: template.id, name: template.name })"
               [attr.aria-label]="'Call handling for ' + template.name" title="Call handling">Call handling</button>
+            <button type="button" class="action-btn metrics-btn" (click)="qualityFor.set({ id: template.id, name: template.name })"
+              [attr.aria-label]="'Quality for ' + template.name" title="Quality">Quality</button>
             @if (actionLoading() === template.id) {
             <span class="action-btn action-loading" aria-label="Working…">
               <lucide-icon name="loader-circle" [size]="15" class="animate-spin"></lucide-icon>
@@ -299,6 +301,14 @@
   <header class="metrics-head"><div><span class="metrics-kicker">Agent setup</span><h2>{{ mt.name }}</h2></div>
     <button type="button" class="metrics-close" (click)="metricsFor.set(null)" aria-label="Close">✕</button></header>
   <app-agent-metrics [source]="metricsSource" [agent]="mt.id"></app-agent-metrics>
+</aside>
+}
+@if (qualityFor(); as qf) {
+<div class="metrics-backdrop" (click)="qualityFor.set(null)"></div>
+<aside class="metrics-drawer" role="dialog" [attr.aria-label]="'Quality for ' + qf.name" (keydown.escape)="qualityFor.set(null)">
+  <header class="metrics-head"><div><span class="metrics-kicker">Agent setup</span><h2>{{ qf.name }}</h2></div>
+    <button type="button" class="metrics-close" (click)="qualityFor.set(null)" aria-label="Close">✕</button></header>
+  <app-agent-quality [source]="qualitySource" [agent]="qf.id"></app-agent-quality>
 </aside>
 }
 @if (handlingFor(); as hf) {

@@ -16,6 +16,7 @@ export class CallPageRouteComponent {
     detail: (id) => firstValueFrom(this.reports.callDetail(id)),
     steps: (id) => firstValueFrom(this.reports.callSteps(id)),
     diagnostics: (id) => firstValueFrom(this.reports.callDiagnostics(id)),
+    memory: (id) => firstValueFrom(this.reports.callMemory(id)),
     sendMessage: (id, m) => firstValueFrom(this.reports.sendCallMessage(id, m)),
     audio: (path) => firstValueFrom(this.reports.blobAt(path)),
     changeOutcome: (id, reason, note) => firstValueFrom(this.reports.changeCallOutcome(id, reason, note)),
