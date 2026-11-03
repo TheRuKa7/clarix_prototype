@@ -15,8 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # site/ is the live Clarix build plus the mock in a service worker, built with
-      # node mock/browser/build-prod-site.mjs (see PROD-CLONE.md). It is published as is.
+      # site/ is the prototype build plus the mock in a service worker (mock/browser/build-sw.mjs). It is published as is.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
