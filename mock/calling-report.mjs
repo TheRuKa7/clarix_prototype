@@ -466,11 +466,95 @@ export function followChecklist(rows, show = 'open', kind = 'all') {
 }
 export const FOLLOW_COLUMNS = [['caller_name', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['kind', 'Type'], ['task', 'Action task'], ['summary', 'Summary'], ['owner', 'Owner'], ['agent', 'Agent'], ['campaign', 'Campaign'], ['callback_at', 'Call back'], ['call_date', 'Last call']];
 
-/** The dashboard's small box: open follow ups and the work still running. */
+/** The dashboard's small box: what needs a person, what the agent will call again, and the work still running. */
 export function tasksSummary(rows) {
-  const f = followChecklist(rows); const camps = campaignSummaries(rows);
-  return { follow_ups: f.counts.open, callbacks: f.counts.callback, follow_up_required: f.counts.follow_up, running_campaigns: camps.filter((c) => c.status === 'Running').length, not_finished: rows.filter(BOX.in_progress).length };
+  const a = actionNeeded(rows); const camps = campaignSummaries(rows);
+  return { follow_ups: a.counts.you, queued: a.counts.agent, callbacks: a.counts.by_group.you.callback || 0, follow_up_required: a.counts.by_group.you.follow_up || 0,
+    running_campaigns: camps.filter((c) => ['Running', 'Paused'].includes(c.status)).length, not_finished: rows.filter(BOX.in_progress).length };
 }
+
+// ── Action needed: one list of what a person must do, beside what the agent will call again ──
+// Lanes: "you" (manual), "agent" (queued for the agent: retries, callbacks, first calls), "done".
+// Groups: fix_data (not planned: bad data), not_reached (no answer / voicemail / silent / DND / system, retries used up),
+// not_successful (answered but not successful: wrong number, hung up early on every try), follow_up (follow-up required, partial),
+// callback (callback asked: queued with the agent, or needs a person when no time was given or it was missed).
+export const ACTION_GROUPS = [
+  { key: 'fix_data', label: 'Fix the data', hint: 'Not planned: the row could not be called' },
+  { key: 'not_reached', label: 'Not reached', hint: 'No answer, voicemail, silent or blocked after every try' },
+  { key: 'not_successful', label: 'Not successful', hint: 'Answered, but the call could not do its job' },
+  { key: 'follow_up', label: 'Follow-up required', hint: 'The supplier answered; a person acts on it' },
+  { key: 'callback', label: 'Callback', hint: 'The supplier asked to be called back' },
+  { key: 'first_call', label: 'First call', hint: 'Not called yet in a running campaign' },
+];
+const DAY_MS = 864e5;
+const fmtAt = (ms) => new Date(ms).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+/** One row of the list, before a person's own changes. */
+function actionOf(r) {
+  const st = callSteps(r); const now = Date.now(); const tries = Number(r.retries) || 0;
+  const plan = (st.retry?.plan || []).map((x) => Date.parse(x)).filter(Boolean);
+  // The next attempt still ahead; a planned time already gone means the agent calls at its next free slot.
+  const next = plan.length ? (plan.find((t) => t > now) || now) : null; const triesTotal = tries + 1 + plan.length;
+  const nextText = (t) => (t <= now + 60000 ? 'at its next free slot' : fmtAt(t));
+  const base = { id: r.id, caller: r.caller_name || r.phone, phone: r.phone, email: r.email || '', campaign: r.campaign, agent: r.agent, owner: r.uploaded_by || '—', last_call: r.call_date || null,
+    status: r.call_status, reason: r.status_reason || r.call_status, summary: r.summary || '', tries: `${tries + 1} of ${triesTotal}`, next_at: null, row: r };
+  if (st.dnc) return null; // On the do-not-call list: nothing more to do.
+  const s = r.call_status, why = r.status_reason || '';
+  if (s === 'Bad data') return { ...base, lane: 'you', group: 'fix_data', task: `Fix the row: ${why || 'it failed the upload check'}`, action: 'fix', tries: '0', why: 'Not planned: the agent cannot call this row' };
+  if (BOX.in_progress(r)) return { ...base, lane: 'agent', group: 'first_call', task: 'Waiting for its first call', action: 'none', why: 'In a running campaign', next_at: null };
+  if (why === 'Success: Accepted' || s === 'Internal test call' || s === 'Stopped') return null;
+  if (why === 'Success: Callback requested') {
+    const at = Date.parse(r.callback_at || '') || null;
+    if (at && at > now - DAY_MS) return { ...base, lane: 'agent', group: 'callback', task: at > now ? `Agent calls back ${fmtAt(st.retry?.plan?.[0] ? Date.parse(st.retry.plan[0]) : at)}, as asked` : 'Agent calls back at the next free slot: the agreed time is due', action: 'none', why: 'Callback asked', next_at: new Date(Math.max(at, now)).toISOString() };
+    return { ...base, lane: 'you', group: 'callback', task: at ? `Missed callback: they asked for ${fmtAt(at)}. Call them or book a new time` : 'They asked for a callback but gave no time: agree one', action: 'requeue', why: 'Callback asked' };
+  }
+  if (why === 'Success: Follow-up required') return { ...base, lane: 'you', group: 'follow_up', task: followTask(r), action: 'done', why: 'Follow-up required' };
+  if (why === 'Success: Partial') {
+    if (next) return { ...base, lane: 'agent', group: 'follow_up', task: `Agent calls again ${nextText(next)} for the rest of the POs`, action: 'none', why: 'Partial answer', next_at: new Date(next).toISOString() };
+    return { ...base, lane: 'you', group: 'follow_up', task: 'Get the remaining POs confirmed', action: 'done', why: 'Partial answer' };
+  }
+  if (why === 'Wrong number') return { ...base, lane: 'you', group: 'not_successful', task: `Find the right number for ${base.caller}`, action: 'fix', why: 'Wrong number' };
+  const early = s === 'Answered' && /not given time|left before/i.test(why);
+  if (s === 'Answered' && !early) return { ...base, lane: 'you', group: 'not_successful', task: 'Listen to the call and decide the next step', action: 'done', why };
+  // Not picked up, or hung up early: the agent retries while tries are left; after that a person takes over.
+  const group = early ? 'not_successful' : 'not_reached';
+  if (next) return { ...base, lane: 'agent', group, task: `Agent tries again ${nextText(next)} (try ${tries + 2} of ${triesTotal})`, action: 'none', why, next_at: new Date(next).toISOString() };
+  const how = s === 'DND' ? 'The number blocks unknown callers: send the WhatsApp with our contact card, or call from your phone'
+    : early ? 'Hung up early on every try: call from your phone or send the PO details on WhatsApp'
+    : `Not reached after ${tries + 1} call${tries ? 's' : ''}: try WhatsApp or email, call from your phone, or ask the buyer for another number`;
+  return { ...base, lane: 'you', group, task: how, action: 'requeue', why };
+}
+/** The list for one lane, with counts, filtered by group, owner and text. */
+export function actionNeeded(rows, { lane = 'you', group = 'all', owner = 'all', q = '' } = {}) {
+  dncScan(rows); // numbers on the do-not-call list drop out of both lists
+  const now = Date.now(); const all = [];
+  for (const r of rows) {
+    const a = actionOf(r); if (!a) continue; const f = followState.get(r.id);
+    if (f?.state === 'done') { all.push({ ...a, lane: 'done', done_by: f.by, done_at: f.at, task: a.task }); continue; }
+    if (f?.state === 'mine' && a.lane === 'agent') { all.push({ ...a, lane: 'you', task: 'You took this over from the agent: reach them yourself, then mark it done', action: 'requeue', taken_by: f.by }); continue; }
+    if (f?.state === 'queued' && a.lane === 'you') { all.push({ ...a, lane: 'agent', task: `Sent back to the agent by ${f.by}${f.fix ? ` with ${f.fix}` : ''}: calls ${fmtAt(Date.parse(f.next_at))}`, next_at: f.next_at, action: 'none' }); continue; }
+    all.push(a);
+  }
+  const counts = { you: 0, agent: 0, done: 0, by_group: { you: {}, agent: {}, done: {} } };
+  for (const a of all) { counts[a.lane]++; counts.by_group[a.lane][a.group] = (counts.by_group[a.lane][a.group] || 0) + 1; }
+  const t = String(q).trim().toLowerCase();
+  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (owner === 'all' || a.owner === owner)
+    && (!t || [a.caller, a.phone, a.campaign, a.task, a.reason, a.summary].join(' ').toLowerCase().includes(t)));
+  const order = Object.fromEntries(ACTION_GROUPS.map((g, i) => [g.key, i]));
+  list.sort((a, b) => (lane === 'agent' ? String(a.next_at || '9').localeCompare(String(b.next_at || '9')) : (order[a.group] - order[b.group]) || String(b.last_call).localeCompare(String(a.last_call))));
+  return { rows: list.map(({ row, ...a }) => a), counts, groups: ACTION_GROUPS, owners: [...new Set(all.map((a) => a.owner))].filter((o) => o !== '—').sort(), now: new Date(now).toISOString() };
+}
+/** A person's action on one row: done, reopen, take it from the agent, send it back to the agent (optionally with a fix). */
+export function actionAct(id, { action, fix = '' } = {}, by = 'you') {
+  const at = new Date().toISOString();
+  if (action === 'done') followState.set(id, { state: 'done', by, at });
+  else if (action === 'reopen') followState.delete(id);
+  else if (action === 'take') followState.set(id, { state: 'mine', by, at });
+  else if (action === 'requeue') followState.set(id, { state: 'queued', by, at, fix: String(fix || '').trim().slice(0, 80), next_at: new Date(Date.now() + 30 * 60000).toISOString() });
+  else return { error: 'Unknown action' };
+  return { ok: true };
+}
+export const ACTION_COLUMNS = [['lane', 'List'], ['group', 'Type'], ['task', 'What to do'], ['why', 'Why'], ['caller', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['campaign', 'Campaign'], ['agent', 'Agent'],
+  ['owner', 'Owner'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['tries', 'Tries'], ['summary', 'Call summary']];
 
 // ── Upload check (ideas doc 2.1): fix what can be fixed, warn on doubtful, reject only what cannot be called ──
 const LIST_SPLIT = /\s*[,;]\s*/;

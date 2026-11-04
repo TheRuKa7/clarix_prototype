@@ -95,7 +95,7 @@ export const routes: Routes = [
           {
             path: 'follow-ups',
             component: ClarixFollowUpsPage,
-            title: 'Follow ups | Clarix'
+            title: 'Action needed | Clarix'
           },
           {
             path: 'sheets',

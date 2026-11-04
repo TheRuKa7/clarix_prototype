@@ -24,7 +24,7 @@ import { qaScorecard, saveQa, testsView, runTests, scenariosFromCalls, versionsV
 import { dncScan, dncView, dncAdd, dncRemove, dncSettings, onDnc, alertsView, saveAlerts, resumeCampaign, handlingOf, saveHandling, rerunAnswers, diagnosticsOf } from './wave1.mjs';
 import { CONNECTORS, testConnection, suggestMapping, buildCalls, markCalled, callsCsv, writeBackPreview, nextRuns as dsNextRuns, getSetup, saveSetup, defaultSetup, runsOf, addRun, webhookUrl, hasSetup, FILTER_OPS, SOURCE_COLUMNS } from './data-sources.mjs';
 import { decideStatus, resultFromAnswers, scopeRows, buildReport, rowsInBox, exportTable, agentChoices, normalisePhone, callingReport, personOutcome, checkOutcomeChange, neighbours, ANSWERED_REASONS, filterRows, logFilters, campaignSummaries, filterCampaigns, followUpRows, followUpAction,
-  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, agentStats, unitLabel, flatValues, campaignColumns,
+  statsByAgent, unitsFor, campaignStats, columnValues, followChecklist, FOLLOW_COLUMNS, tasksSummary, actionNeeded, actionAct, ACTION_COLUMNS, agentStats, unitLabel, flatValues, campaignColumns,
   setAgentMetrics, allCountryRules, setCountryRule, resetCountryRule, registerCheck, countriesOf, retryPreview, checkUploadRow, uploadNote, agentTips, RETRY_SCHEDULES, retryRules, retryRuleOf, retryGaps, retryPlan, defaultRetryRule, callSteps, sendMessage, presentSheet, buildDummyRow, cleanRetryRule } from './calling-report.mjs';
 /** Number columns of a row's upload, for counting by POs, items and other per-agent stats. */
 const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter(([, v]) => v !== '' && v != null && typeof v !== 'object' && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
@@ -973,6 +973,17 @@ on('POST', '/api/v1/reports/calling/telephony/connect', (ctx) => { const r = con
 on('POST', '/api/v1/reports/calling/telephony/:key/disconnect', (ctx) => { const r = disconnectCarrier(ctx.p.key); r.error ? fail(400, r.error) : ok(telephonyView(callingRows())); });
 on('PUT', '/api/v1/reports/calling/telephony/slots', (ctx) => { saveSlots(ctx.body || {}); ok(telephonyView(callingRows())); });
 on('POST', '/api/v1/reports/calling/copilot', (ctx) => { const q = ctx.q; const list = filterRows(rowsInBox(scopeRows(callingRows(), callingScope(ctx.q)), q.get('box') || 'uploaded'), logFilters(q)); ok({ ...copilotAnswer(list, ctx.body?.q), suggestions: COPILOT_SUGGESTIONS }); });
+
+// ── Action needed: what a person must do, beside what the agent will call again (lane, type, owner, search) ──
+const anOpts = (q) => ({ lane: q.get('lane') || 'you', group: q.get('group') || 'all', owner: q.get('owner') || 'all', q: q.get('q') || '' });
+on('GET', '/api/v1/reports/calling/follow-ups/actions', (ctx) => ok(actionNeeded(scopeRows(callingRows(), callingScope(ctx.q)), anOpts(ctx.q))));
+on('POST', '/api/v1/reports/calling/follow-ups/actions/:id', (ctx) => { const r = actionAct(ctx.p.id, ctx.body || {}, ME()); r.error ? fail(400, r.error) : ok(r); });
+on('GET', '/api/v1/reports/calling/follow-ups/actions/export.xlsx', (ctx) => {
+  const o = anOpts(ctx.q); const d = actionNeeded(scopeRows(callingRows(), callingScope(ctx.q)), o); const g = Object.fromEntries(d.groups.map((x) => [x.key, x.label]));
+  const lanes = { you: 'For you', agent: 'Agent will call', done: 'Done' }; const when = (v) => (v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' }) : '');
+  const cell = (r, k) => (k === 'lane' ? lanes[r.lane] : k === 'group' ? g[r.group] : k === 'last_call' || k === 'next_at' ? when(r[k]) : r[k] ?? '');
+  file(writeXlsx([ACTION_COLUMNS.map(([, l]) => l), ...d.rows.map((r) => ACTION_COLUMNS.map(([k]) => cell(r, k)))], "Action needed"), XLSX, `action-needed-${o.lane}.xlsx`);
+});
 on('GET', '/api/v1/reports/calling/call/:id', ({ p }) => { const d = callDetail(p.id); d ? ok(d) : fail(404, 'Call not found'); });
 // Next steps on the call page: the retry plan and WhatsApp / email messages (the demo records them, it does not send).
 on('GET', '/api/v1/reports/calling/call/:id/steps', ({ p }) => { const row = callingRows().find((r) => r.id === p.id); row ? ok(callSteps(row)) : fail(404, 'Call not found'); });

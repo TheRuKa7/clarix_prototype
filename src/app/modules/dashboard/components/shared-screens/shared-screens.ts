@@ -137,13 +137,6 @@ export interface NewCampaignSource {
   opened(campaignId: string): void;
   cancel(): void;
 }
-export type FollowRow = ReportCallRow & { email?: string; kind: 'Callback' | 'Follow-up'; task: string; owner: string; follow: { state: string; by?: string; at?: string } };
-export interface FollowUpsSource {
-  list(show: string, kind: string): Promise<{ rows: FollowRow[]; counts: { open: number; callback: number; follow_up: number; done: number } }>;
-  act(id: string, action: 'done' | 'open'): Promise<unknown>;
-  exportXlsx(show: string, kind: string): Promise<Blob>;
-  openCall(row: ReportCallRow): void;
-}
 
 const CSS = `
   :host { display: block; --s-text: var(--ds-text, var(--text, #0c0a09)); --s-muted: var(--ds-text-muted, var(--muted, #5c5752)); --s-line: var(--ds-border, var(--line, #e7e5e2));
@@ -728,46 +721,88 @@ export class NewCampaignComponent {
   }
 }
 
-// ── Follow ups: one checklist ─────────────────────────────────────────────────
+// ── Action needed: what a person must do after the calls, beside what the agent will call again ──
+export interface ActionRow {
+  id: string; caller: string; phone: string; email: string; campaign: string; agent: string; owner: string; last_call: string | null; status: string; reason: string; summary: string; tries: string;
+  next_at: string | null; lane: 'you' | 'agent' | 'done'; group: string; task: string; action: 'fix' | 'requeue' | 'done' | 'none'; why: string; done_by?: string; done_at?: string; taken_by?: string;
+}
+export interface ActionList { rows: ActionRow[]; counts: { you: number; agent: number; done: number; by_group: Record<string, Record<string, number>> }; groups: { key: string; label: string; hint: string }[]; owners: string[] }
+export interface ActionQuery { lane: string; group: string; owner: string; q: string }
+export interface FollowUpsSource {
+  list(p: ActionQuery): Promise<ActionList>;
+  act(id: string, a: { action: 'done' | 'reopen' | 'take' | 'requeue'; fix?: string }): Promise<unknown>;
+  exportXlsx(p: ActionQuery): Promise<Blob>;
+  openCall(row: { id: string }): void;
+}
+
 @Component({
   selector: 'app-follow-ups-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [CSS],
+  styles: [CSS + `
+    .an-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .an-filters select, .an-filters input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .an-filters input { flex: 1 1 200px; }
+    .an-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .an-chip b { font-variant-numeric: tabular-nums; margin-left: 4px; }
+    .an-chip.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-bg)); color: var(--s-accent); font-weight: 600; }
+    .an-group { padding: 10px 14px 4px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--s-muted); border-top: 1px solid var(--s-line); }
+    .an-group:first-child { border-top: 0; }
+    .an-group small { text-transform: none; letter-spacing: 0; margin-left: 6px; }
+    .an-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; padding: 10px 14px; border-top: 1px solid var(--s-line); }
+    .an-row:hover { background: var(--s-soft); }
+    .an-task { font-weight: 600; font-size: 14px; }
+    .an-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--s-muted); margin-top: 3px; }
+    .an-why { display: inline-block; font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); color: var(--s-muted); margin-left: 6px; font-weight: 400; vertical-align: 1px; }
+    .an-when { display: inline-block; font-size: 12px; font-weight: 600; color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 9%, var(--s-bg)); border-radius: 6px; padding: 2px 8px; margin-top: 4px; }
+    .an-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+    .an-acts input { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; width: 170px; background: var(--s-bg); color: var(--s-text); }
+    .an-ok { color: var(--s-good); font-size: 13px; }
+    @media (max-width: 760px) { .an-row { grid-template-columns: minmax(0, 1fr); } .an-acts { justify-content: flex-start; } }
+  `],
   template: `
     <div class="s">
       <div class="s-head">
-        <div><h1 class="s-title">Follow ups</h1><p class="s-sub">What a person does next after a call: tick it off when done. The owner is whoever uploaded the sheet.</p></div>
+        <div><h1 class="s-title">Action needed</h1><p class="s-sub">What a person has to do after the calls, and what the agent will call again by itself. Work down "For you", then mark each row done.</p></div>
         <span class="s-grow"></span>
-        <button type="button" class="s-btn" (click)="exportList()">Export</button>
+        <button type="button" class="s-btn" (click)="exportList()" [title]="'Export the ' + total() + ' rows shown, with these filters'">Export</button>
       </div>
-      <div class="s-head">
-        <div class="s-seg" role="group" aria-label="Type">
-          <button type="button" [class.on]="kind() === 'all'" (click)="kind.set('all')">All ({{ counts().open }})</button>
-          <button type="button" [class.on]="kind() === 'callback'" (click)="kind.set('callback')">Callbacks ({{ counts().callback }})</button>
-          <button type="button" [class.on]="kind() === 'follow_up'" (click)="kind.set('follow_up')">Follow-up required ({{ counts().follow_up }})</button>
-        </div>
-        <div class="s-seg" role="group" aria-label="Show"><button type="button" [class.on]="show() === 'open'" (click)="show.set('open')">To do</button><button type="button" [class.on]="show() === 'done'" (click)="show.set('done')">Done ({{ counts().done }})</button></div>
+      <div class="s-seg" role="tablist" aria-label="List">
+        @for (l of LANES; track l[0]) { <button type="button" role="tab" [class.on]="lane() === l[0]" [attr.aria-selected]="lane() === l[0]" (click)="setLane(l[0])">{{ l[1] }} ({{ laneCount(l[0]) }})</button> }
       </div>
+      <p class="s-muted" style="margin: 0">{{ laneHint() }}</p>
+      <div class="an-filters">
+        <button type="button" class="an-chip" [class.on]="group() === 'all'" [attr.aria-pressed]="group() === 'all'" (click)="setGroup('all')">All<b>{{ laneCount(lane()) }}</b></button>
+        @for (g of groupsHere(); track g.key) { <button type="button" class="an-chip" [class.on]="group() === g.key" [attr.aria-pressed]="group() === g.key" (click)="setGroup(g.key)" [title]="g.hint">{{ g.label }}<b>{{ g.count }}</b></button> }
+        <span class="s-grow"></span>
+        <select (change)="setOwner($any($event.target).value)" aria-label="Owner"><option value="all">All owners</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select>
+        <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier, phone, PO, campaign" aria-label="Search">
+      </div>
+      @if (msg()) { <span class="an-ok" role="status">{{ msg() }}</span> }
       <div class="s-card">
-        <div class="s-scroll">
-          <table class="s-stack">
-            <thead><tr><th></th><th>Action task</th><th>Summary</th><th>Owner</th><th>Caller</th><th>Last call</th></tr></thead>
-            <tbody>
-              @for (r of pageRows(); track r.id) {
-                <tr class="click" [class.done]="r.follow.state === 'done'" (click)="source().openCall(r)" [title]="'Open the call with ' + (r.caller_name || r.phone)">
-                  <td (click)="$event.stopPropagation()"><input type="checkbox" class="s-check" [checked]="r.follow.state === 'done'" (change)="toggle(r)" [attr.aria-label]="'Done: ' + r.task"></td>
-                  <td class="s-task">{{ r.task }}<small>{{ r.kind }}@if (r.follow.state === 'done' && r.follow.by) { · done by {{ r.follow.by }} }</small></td>
-                  <td class="s-wrap" data-l="Summary">{{ r.summary || r.status_reason }}</td>
-                  <td data-l="Owner">{{ r.owner }}</td>
-                  <td class="s-caller" data-l="Caller">{{ r.caller_name || '—' }}<small>{{ r.phone }}{{ r.email ? ' · ' + r.email : '' }}</small><small class="s-cut" [title]="r.agent + ' · ' + r.campaign">{{ r.agent }} · {{ r.campaign }}</small></td>
-                  <td data-l="Last call">{{ when(r.call_date) }}</td>
-                </tr>
+        @for (r of pageRows(); track r.id; let i = $index) {
+          @if (showGroup(i)) { <div class="an-group">{{ groupLabel(r.group) }}<small>{{ groupHint(r.group) }}</small></div> }
+          <div class="an-row">
+            <div>
+              <div class="an-task">{{ r.task }}<span class="an-why">{{ r.why }}</span></div>
+              <div class="an-meta"><span>{{ r.caller }} · {{ r.phone }}</span><span>{{ r.campaign }}</span><span>Owner {{ r.owner }}</span>
+                <span>{{ r.last_call ? 'Last call ' + when(r.last_call) : 'Not called yet' }}</span>@if (r.tries !== '0') { <span>Calls {{ r.tries }}</span> }</div>
+              @if (r.lane === 'agent') { <span class="an-when">{{ r.next_at ? 'Next call ' + when(r.next_at) : 'In the current run' }}</span> }
+              @if (r.lane === 'done') { <div class="an-meta">Done by {{ r.done_by }} · {{ when(r.done_at || null) }}</div> }
+            </div>
+            <div class="an-acts">
+              @if (r.lane === 'you') {
+                @if (r.action === 'fix') { <input [value]="fix()[r.id] || ''" (input)="setFix(r.id, $any($event.target).value)" placeholder="Correct number or value" [attr.aria-label]="'Correction for ' + r.caller">
+                  <button type="button" class="s-btn" [disabled]="!(fix()[r.id] || '').trim()" (click)="act(r, 'requeue')">Send to the agent</button> }
+                @if (r.action === 'requeue') { <button type="button" class="s-btn" (click)="act(r, 'requeue')" title="The agent calls again in about 30 minutes">Agent calls again</button> }
+                <button type="button" class="s-btn" (click)="source().openCall(r)">Open call</button>
+                <button type="button" class="s-btn s-primary" (click)="act(r, 'done')">Mark done</button>
               }
-            </tbody>
-          </table>
-        </div>
-        @if (!rows().length) { <p class="s-empty">{{ show() === 'open' ? 'Nothing to do here.' : 'Nothing done yet.' }}</p> }
+              @if (r.lane === 'agent') { <button type="button" class="s-btn" (click)="source().openCall(r)">Open call</button><button type="button" class="s-btn" (click)="act(r, 'take')" title="Move it to For you: the agent will not call">I'll handle it</button> }
+              @if (r.lane === 'done') { <button type="button" class="s-btn" (click)="source().openCall(r)">Open call</button><button type="button" class="s-btn" (click)="act(r, 'reopen')">Reopen</button> }
+            </div>
+          </div>
+        } @empty { <p class="s-empty">{{ emptyText() }}</p> }
         @if (rows().length > PAGE) {
           <div class="s-pager"><button type="button" class="s-btn" [disabled]="page() === 0" (click)="page.set(page() - 1)">Previous</button>
             <span>{{ page() * PAGE + 1 }}–{{ Math.min((page() + 1) * PAGE, rows().length) }} of {{ rows().length }}</span>
@@ -778,20 +813,50 @@ export class NewCampaignComponent {
   `,
 })
 export class FollowUpsListComponent {
+  readonly source = input.required<FollowUpsSource>();
+  protected readonly LANES: [string, string][] = [['you', 'For you'], ['agent', 'Agent will call'], ['done', 'Done']];
   protected readonly PAGE = 20;
   protected readonly Math = Math;
-  protected readonly page = signal(0);
-  protected readonly pageRows = computed(() => this.rows().slice(this.page() * this.PAGE, (this.page() + 1) * this.PAGE));
-  readonly source = input.required<FollowUpsSource>();
-  protected readonly kind = signal('all');
-  protected readonly show = signal('open');
-  protected readonly rows = signal<FollowRow[]>([]);
-  protected readonly counts = signal({ open: 0, callback: 0, follow_up: 0, done: 0 });
   protected readonly when = when;
-  constructor() { effect(() => { this.kind(); this.show(); untracked(() => { this.page.set(0); this.load(); }); }); }
-  private async load(): Promise<void> { const r = await this.source().list(this.show(), this.kind()); this.rows.set(r.rows); this.counts.set(r.counts); if (this.page() * this.PAGE >= r.rows.length) this.page.set(0); }
-  protected async toggle(r: FollowRow): Promise<void> { await this.source().act(r.id, r.follow.state === 'done' ? 'open' : 'done'); this.load(); }
-  protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.show(), this.kind()), `follow-ups-${this.kind()}-${this.show()}.xlsx`); }
+  protected readonly lane = signal('you'); protected readonly group = signal('all'); protected readonly owner = signal('all'); protected readonly q = signal('');
+  protected readonly page = signal(0);
+  protected readonly data = signal<ActionList | null>(null);
+  protected readonly fix = signal<Record<string, string>>({});
+  protected readonly msg = signal('');
+  protected readonly rows = computed(() => this.data()?.rows ?? []);
+  protected readonly total = computed(() => this.rows().length);
+  protected readonly owners = computed(() => this.data()?.owners ?? []);
+  protected readonly pageRows = computed(() => this.rows().slice(this.page() * this.PAGE, (this.page() + 1) * this.PAGE));
+  protected readonly groupsHere = computed(() => { const d = this.data(); const by = d?.counts.by_group[this.lane()] ?? {}; return (d?.groups ?? []).filter((g) => by[g.key]).map((g) => ({ ...g, count: by[g.key] })); });
+  private t: ReturnType<typeof setTimeout> | null = null;
+  constructor() { effect(() => { this.lane(); this.group(); this.owner(); untracked(() => { this.page.set(0); this.load(); }); }); }
+  private query(): ActionQuery { return { lane: this.lane(), group: this.group(), owner: this.owner(), q: this.q().trim() }; }
+  private async load(again = true): Promise<void> {
+    try { this.data.set(await this.source().list(this.query())); if (this.page() * this.PAGE >= this.rows().length) this.page.set(0); }
+    catch { if (again) setTimeout(() => this.load(false), 1200); }
+  }
+  protected setLane(l: string): void { this.lane.set(l); this.group.set('all'); this.msg.set(''); }
+  protected setGroup(g: string): void { this.group.set(g); }
+  protected setOwner(o: string): void { this.owner.set(o); }
+  protected setQ(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => { this.page.set(0); this.load(); }, 200); }
+  protected setFix(id: string, v: string): void { this.fix.set({ ...this.fix(), [id]: v }); }
+  protected laneCount(l: string): number { const c = this.data()?.counts; return c ? (c as unknown as Record<string, number>)[l] ?? 0 : 0; }
+  protected laneHint(): string {
+    return { you: 'Calls the agent cannot settle on its own: fix the data, reach the supplier another way, or act on what they said.', agent: 'Already queued: the agent calls these again by itself at the time shown. Take one over if you would rather handle it.', done: 'Ticked off in this period. Reopen a row if it needs more work.' }[this.lane()] ?? '';
+  }
+  protected groupLabel(k: string): string { return this.data()?.groups.find((g) => g.key === k)?.label ?? k; }
+  protected groupHint(k: string): string { return this.data()?.groups.find((g) => g.key === k)?.hint ?? ''; }
+  protected showGroup(i: number): boolean { if (this.group() !== 'all' || this.lane() === 'agent') return false; const p = this.pageRows(); return i === 0 || p[i - 1].group !== p[i].group; }
+  protected emptyText(): string {
+    if (this.q() || this.owner() !== 'all' || this.group() !== 'all') return 'Nothing matches these filters.';
+    return { you: `Nothing needs you right now. The agent is handling ${this.laneCount('agent')} call${this.laneCount('agent') === 1 ? '' : 's'}.`, agent: 'The agent has nothing queued.', done: 'Nothing marked done yet.' }[this.lane()] ?? '';
+  }
+  protected async act(r: ActionRow, action: 'done' | 'reopen' | 'take' | 'requeue'): Promise<void> {
+    await this.source().act(r.id, { action, fix: this.fix()[r.id] });
+    this.msg.set({ done: `Done: ${r.caller}.`, reopen: `${r.caller} is back on your list.`, take: `${r.caller} moved to For you: the agent will not call.`, requeue: `${r.caller} sent to the agent: it calls in about 30 minutes.` }[action]);
+    this.load();
+  }
+  protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.query()), `action-needed-${this.lane()}.xlsx`); }
 }
 
 // ── Agent metrics: what an agent's campaigns can be counted in, beside calls ──

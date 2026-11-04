@@ -95,6 +95,10 @@ export class ReportService {
   publishAgentDraft(a: string): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/publish`, {})); }
   splitAgentVersions(a: string, s: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/versions/${encodeURIComponent(a)}/split`, s)); }
   // Wave 3: live calls, telephony and slots, the copilot.
+  // Action needed: manual work beside the agent's queue.
+  actionNeeded(p: any): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/follow-ups/actions`, { params: p })); }
+  actionAct(id: string, a: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/follow-ups/actions/${encodeURIComponent(id)}`, a)); }
+  actionExport(p: any): Observable<Blob> { return this.http.get(`${this.callingBase}/follow-ups/actions/export.xlsx`, { params: p, responseType: 'blob' }); }
   liveCalls(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/live`)); }
   liveAct(id: string, action: string, body: any = {}): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/live/${encodeURIComponent(id)}/${action}`, body)); }
   telephony(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/telephony`)); }

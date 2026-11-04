@@ -55,7 +55,7 @@ export class ClarixNewCampaignPage {
 export class ClarixFollowUpsPage {
   private r = inject(ReportService); private router = inject(Router);
   readonly source: FollowUpsSource = {
-    list: (show, kind) => firstValueFrom(this.r.followChecklist(show, kind)), act: (id, a) => firstValueFrom(this.r.reportFollowUpAct(id, a)), exportXlsx: (show, kind) => firstValueFrom(this.r.followChecklistExport(show, kind)),
+    list: (p) => firstValueFrom(this.r.actionNeeded(p)), act: (id, a) => firstValueFrom(this.r.actionAct(id, a)), exportXlsx: (p) => firstValueFrom(this.r.actionExport(p)),
     openCall: (row) => this.router.navigate(['/workflows/calls', row.id]),
   };
 }

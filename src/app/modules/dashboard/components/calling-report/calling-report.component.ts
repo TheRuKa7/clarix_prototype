@@ -75,12 +75,12 @@ export interface CallingReportSource {
   /** Distinct values of one call log column, for the multi-select filter. */
   values?(scope: ReportScope, box: string, filters: LogFilters, column: string, search?: string): Promise<{ value: string; count: number }[]>;
   /** Open follow ups and work still running, for the small box on the dashboard. */
-  tasks?(scope: ReportScope): Promise<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number }>;
+  tasks?(scope: ReportScope): Promise<{ follow_ups: number; queued?: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number }>;
   openCampaigns?(): void;
   /** Each agent's custom stats (POs, items…): what to count the funnel and campaigns in. */
   agentStats?(): Promise<{ agent: string; label: string; fields: { field: string; label: string }[]; stats: { field: string; label: string }[] }[]>;
   saveAgentStats?(agent: string, stats: { field: string; label: string }[]): Promise<unknown>;
-  /** Opens the Follow ups page, where the product has one. */
+  /** Opens the Action needed page, where the product has one. */
   openFollowUps?(): void;
   saveTestNumbers?(numbers: string[]): Promise<string[]>;
 }
@@ -192,8 +192,8 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
           <p class="cr-note cr-filtered">Showing {{ filterSummary() }}: the funnel, call status and calls all follow this. <button type="button" class="cr-link" (click)="clearScopeFilters()">Show all</button></p>
         }
         @if (mode() === 'dashboard' && !campaign() && tasks(); as t) {
-          <div class="cr-tasks" role="list" aria-label="Follow ups and active tasks">
-            <button type="button" role="listitem" (click)="source().openFollowUps?.()"><b>{{ num(t.follow_ups) }}</b> follow ups open <small>{{ t.callbacks }} callbacks · {{ t.follow_up_required }} follow-up required</small></button>
+          <div class="cr-tasks" role="list" aria-label="Action needed and active work">
+            <button type="button" role="listitem" (click)="source().openFollowUps?.()"><b>{{ num(t.follow_ups) }}</b> need action <small>{{ t.queued ?? 0 }} queued with the agent</small></button>
             <button type="button" role="listitem" (click)="source().openCampaigns?.()"><b>{{ num(t.running_campaigns) }}</b> campaign{{ t.running_campaigns === 1 ? '' : 's' }} running</button>
             <button type="button" role="listitem" (click)="open('in_progress', 'Not finished')"><b>{{ num(t.not_finished) }}</b> calls not finished</button>
           </div>
@@ -581,7 +581,7 @@ export class CallingReportComponent {
   private pickTyping: ReturnType<typeof setTimeout> | null = null;
   protected readonly unit = signal('');
   protected readonly unitName = computed(() => this.r()?.units_available?.find((u) => u.field === this.unit())?.label ?? '');
-  protected readonly tasks = signal<{ follow_ups: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number } | null>(null);
+  protected readonly tasks = signal<{ follow_ups: number; queued?: number; callbacks: number; follow_up_required: number; running_campaigns: number; not_finished: number } | null>(null);
   protected readonly statsOpen = signal(false);
   protected readonly statsDraft = signal<{ agent: string; label: string; fields: { field: string; label: string }[]; stats: { field: string; label: string }[] }[]>([]);
   protected readonly logFiltered = computed(() => !!this.search().trim() || Object.values(this.colFilters()).some((v) => isOn(v)));
