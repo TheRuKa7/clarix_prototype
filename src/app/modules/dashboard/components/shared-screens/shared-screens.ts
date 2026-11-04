@@ -721,144 +721,202 @@ export class NewCampaignComponent {
   }
 }
 
+// ── Action needed: what a person must do after the calls, beside what the agent is already handling ──
+export interface ActionRow {
+  id: string; caller: string; phone: string; email: string; campaign: string; agent: string; owner: string; last_call: string | null; status: string; reason: string; summary: string;
+  made: number; total: number; since: string | null; next_at: string | null; lane: 'you' | 'agent' | 'done'; group: string; title: string; detail: string; state?: string;
+  assignee: string; assigned_by?: string; closed?: 'done' | 'dismissed'; closed_by?: string; closed_at?: string; note?: string;
+}
+export interface ActionList { rows: ActionRow[]; counts: { you: number; agent: number; done: number; mine?: number; overdue?: number; by_group: Record<string, Record<string, number>> }; groups: { key: string; label: string; hint: string }[]; owners: string[]; me?: string }
+export interface ActionQuery { lane: string; group: string; owner: string; q: string }
+export type ActionVerb = 'done' | 'dismiss' | 'reopen' | 'requeue' | 'assign';
+export interface FollowUpsSource {
+  list(p: ActionQuery): Promise<ActionList>;
+  act(id: string, a: { action: ActionVerb; to?: string; note?: string }): Promise<unknown>;
+  /** The same action on many rows at once. */
+  bulk?(ids: string[], a: { action: ActionVerb; to?: string }): Promise<unknown>;
+  exportXlsx(p: ActionQuery): Promise<Blob>;
+  openCall(row: { id: string }): void;
+  /** One page for a supplier: every call, PO, promise and open action. */
+  openSupplier?(phone: string): void;
+}
 /** A per-viewer choice kept in the browser (falls back quietly when storage is blocked). */
 function remembered(key: string, fallback: string): string { try { return localStorage.getItem('echo.' + key) ?? fallback; } catch { return fallback; } }
 function remember(key: string, v: string): void { try { localStorage.setItem('echo.' + key, v); } catch { /* storage blocked */ } }
-// ── Action needed: what a person must do after the calls, beside what the agent will call again ──
-export interface ActionRow {
-  id: string; caller: string; phone: string; email: string; campaign: string; agent: string; owner: string; last_call: string | null; status: string; reason: string; summary: string; tries: string;
-  next_at: string | null; lane: 'you' | 'agent' | 'done'; group: string; task: string; action: 'fix' | 'requeue' | 'done' | 'none'; why: string; done_by?: string; done_at?: string; taken_by?: string;
-  assignee: string; assigned_by?: string;
-}
-export interface ActionList { rows: ActionRow[]; counts: { you: number; agent: number; done: number; mine?: number; by_group: Record<string, Record<string, number>> }; groups: { key: string; label: string; hint: string }[]; owners: string[]; me?: string }
-export interface ActionQuery { lane: string; group: string; owner: string; q: string }
-export interface FollowUpsSource {
-  list(p: ActionQuery): Promise<ActionList>;
-  act(id: string, a: { action: 'done' | 'reopen' | 'take' | 'requeue' | 'assign'; fix?: string; to?: string }): Promise<unknown>;
-  /** The same action on many rows at once. */
-  bulk?(ids: string[], a: { action: 'done' | 'requeue' | 'assign'; to?: string }): Promise<unknown>;
-  /** One page for a supplier: every call, PO, promise and open action. */
-  openSupplier?(phone: string): void;
-  exportXlsx(p: ActionQuery): Promise<Blob>;
-  openCall(row: { id: string }): void;
-}
+const DAY = 864e5;
 
 @Component({
   selector: 'app-follow-ups-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(document:click)': 'menuId.set("")', '(document:keydown.escape)': 'menuId.set("")' },
   styles: [CSS + `
-    .an-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .an-filters select, .an-filters input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
-    .an-filters input { flex: 1 1 200px; }
+    .an-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .an-tab { text-align: left; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 12px; padding: 10px 14px; font: inherit; cursor: pointer; display: grid; gap: 2px; }
+    .an-tab b { font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; } .an-tab span { font-size: 13px; color: var(--s-muted); }
+    .an-tab.on { border: 2px solid var(--s-accent); padding: 9px 13px; background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); } .an-tab.on span { color: var(--s-text); }
+    .an-tab small { color: #b91c1c; font-size: 12px; font-weight: 600; }
+    :host .s { align-content: start; grid-auto-rows: max-content; }
+    .an-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow: visible; min-height: max-content; }
+    .an-bar select, .an-bar input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .an-bar input[type=search] { flex: 1 1 200px; }
     .an-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
-    .an-chip b { font-variant-numeric: tabular-nums; margin-left: 4px; }
-    .an-chip.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-bg)); color: var(--s-accent); font-weight: 600; }
-    .an-group { padding: 10px 14px 4px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--s-muted); border-top: 1px solid var(--s-line); }
-    .an-group:first-child { border-top: 0; }
-    .an-group small { text-transform: none; letter-spacing: 0; margin-left: 6px; }
-    .an-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; padding: 10px 14px; border-top: 1px solid var(--s-line); }
-    .an-row.picked { background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
-    .an-pick { margin-top: 2px; }
-    .an-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
-    .an-asg { border: 1px solid var(--s-line); border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12.5px; background: var(--s-bg); color: var(--s-text); max-width: 210px; }
-    .an-bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--s-line); border-radius: 10px; font-size: 13px; }
-    .an-bulk.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); position: sticky; top: 8px; z-index: 5; }
+    .an-chip b { font-variant-numeric: tabular-nums; margin-left: 5px; color: var(--s-muted); font-weight: 600; }
+    .an-chip.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-bg)); color: var(--s-accent); font-weight: 600; } .an-chip.on b { color: var(--s-accent); }
+    .an-list { display: grid; }
+    .an-h, .an-r { display: grid; grid-template-columns: 28px minmax(160px, 1.1fr) minmax(200px, 1.6fr) 96px 150px 112px; gap: 10px; align-items: center; padding: 9px 14px; }
+    .an-list.agent .an-h, .an-list.agent .an-r { grid-template-columns: minmax(160px, 1.1fr) minmax(150px, 1fr) 150px minmax(120px, .8fr) minmax(140px, 1fr); }
+    .an-list.done .an-h, .an-list.done .an-r { grid-template-columns: minmax(160px, 1.1fr) minmax(200px, 1.5fr) 120px minmax(160px, 1fr) 44px; }
+    .an-h { font-size: 12px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); padding-top: 8px; padding-bottom: 8px; }
+    .an-r { border-bottom: 1px solid var(--s-line); font-size: 13px; cursor: pointer; }
+    .an-r:hover { background: var(--s-soft); } .an-r.picked { background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
+    .an-list.agent .an-r { cursor: default; }
+    .an-who b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-who span { color: var(--s-muted); font-size: 12px; }
+    .an-what b { display: block; font-weight: 600; } .an-what span { color: var(--s-muted); font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .an-age { font-size: 12.5px; color: var(--s-muted); } .an-age.late { color: #b91c1c; font-weight: 600; }
+    .an-av { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; min-width: 0; } .an-av i { font-style: normal; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--s-soft); font-size: 11px; font-weight: 600; flex: none; }
+    .an-av span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .an-ic { display: flex; gap: 4px; justify-content: flex-end; position: relative; }
+    .an-ib { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-muted); display: grid; place-items: center; cursor: pointer; padding: 0; }
+    .an-ib:hover { color: var(--s-text); border-color: var(--s-text); } .an-ib.ok:hover { color: var(--s-good); border-color: var(--s-good); } .an-ib.no:hover { color: #b91c1c; border-color: #b91c1c; }
+    .an-ib svg { width: 16px; height: 16px; }
+    .an-menu { position: fixed; z-index: 960; min-width: 220px; background: var(--s-bg); border: 1px solid var(--s-line); border-radius: 10px; box-shadow: 0 12px 32px -12px rgba(0, 0, 0, .35); padding: 4px; display: grid; }
+    .an-menu button, .an-menu label { text-align: left; border: 0; background: none; color: var(--s-text); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+    .an-menu button:hover { background: var(--s-soft); } .an-menu hr { border: 0; border-top: 1px solid var(--s-line); margin: 4px 0; }
+    .an-menu select { margin: 2px 10px 6px; border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
+    .an-menu small { color: var(--s-muted); font-size: 12px; padding: 4px 10px 0; }
+    .an-more { grid-column: 2 / -1; display: grid; gap: 6px; padding: 2px 0 10px; font-size: 13px; cursor: default; }
+    .an-more p { margin: 0; } .an-kv { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--s-muted); font-size: 12.5px; }
+    .an-state { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; } .an-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--s-accent); }
+    .an-dots { display: inline-flex; gap: 3px; align-items: center; } .an-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--s-line); } .an-dots i.on { background: var(--s-accent); }
+    .an-dots span { margin-left: 6px; font-size: 12px; color: var(--s-muted); }
+    .an-lock { display: flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); background: var(--s-soft); border-radius: 12px 12px 0 0; }
+    .an-out { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; border-radius: 999px; padding: 2px 10px; }
+    .an-out.done { color: var(--s-good); background: color-mix(in srgb, var(--s-good) 10%, var(--s-bg)); } .an-out.dismissed { color: #b91c1c; background: color-mix(in srgb, #dc2626 9%, var(--s-bg)); }
+    .an-bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--s-accent); background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); border-radius: 10px; font-size: 13px; position: sticky; top: 8px; z-index: 5; }
     .an-bulk select { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
-    .an-all { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; } .an-all input { width: 20px; height: 20px; accent-color: var(--s-accent); }
-    .an-row:hover { background: var(--s-soft); }
-    .an-task { font-weight: 600; font-size: 14px; }
-    .an-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--s-muted); margin-top: 3px; }
-    .an-why { display: inline-block; font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); color: var(--s-muted); margin-left: 6px; font-weight: 400; vertical-align: 1px; }
-    .an-when { display: inline-block; font-size: 12px; font-weight: 600; color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 9%, var(--s-bg)); border-radius: 6px; padding: 2px 8px; margin-top: 4px; }
-    .an-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
-    .an-acts input { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; width: 170px; background: var(--s-bg); color: var(--s-text); }
     .an-ok { color: var(--s-good); font-size: 13px; }
-    @media (max-width: 760px) { .an-row { grid-template-columns: auto minmax(0, 1fr); } .an-acts { grid-column: 2; justify-content: flex-start; } }
+    .an-check { width: 18px; height: 18px; accent-color: var(--s-accent); cursor: pointer; }
+    @media (max-width: 860px) {
+      .an-tabs { grid-template-columns: 1fr 1fr 1fr; } .an-tab b { font-size: 20px; }
+      .an-h { display: none; }
+      .an-r, .an-list.agent .an-r, .an-list.done .an-r { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-areas: 'c w i' 'c t t' 'c m m'; row-gap: 4px; }
+      .an-list.agent .an-r, .an-list.done .an-r { grid-template-columns: minmax(0, 1fr) auto; }
+      .an-r > .an-what { grid-column: 2 / -1; } .an-r > .an-age, .an-r > .an-av { grid-column: 2 / -1; }
+      .an-more { grid-column: 1 / -1; }
+    }
   `],
   template: `
     <div class="s">
       <div class="s-head">
-        <div><h1 class="s-title">Action needed</h1><p class="s-sub">What a person has to do after the calls, and what the agent will call again by itself. Work down "For you", then mark each row done.</p></div>
+        <div><h1 class="s-title">Action needed</h1><p class="s-sub">Calls the agent cannot settle on its own, and what it is already handling.</p></div>
         <span class="s-grow"></span>
-        <button type="button" class="s-btn" (click)="exportList()" [title]="'Export the ' + total() + ' rows shown, with these filters'">Export</button>
+        <button type="button" class="s-btn" (click)="exportList()" [title]="'Export the ' + rows().length + ' rows shown'">Export</button>
       </div>
-      <div class="s-seg" role="tablist" aria-label="List">
-        @for (l of LANES; track l[0]) { <button type="button" role="tab" [class.on]="lane() === l[0]" [attr.aria-selected]="lane() === l[0]" (click)="setLane(l[0])">{{ l[1] }} ({{ laneCount(l[0]) }})</button> }
+      <div class="an-tabs" role="tablist" aria-label="List">
+        <button type="button" role="tab" class="an-tab" [class.on]="lane() === 'you'" [attr.aria-selected]="lane() === 'you'" (click)="setLane('you')"><b>{{ count('you') }}</b><span>To do</span>@if (data()?.counts?.overdue) { <small>{{ data()!.counts.overdue }} waiting over 2 days</small> }</button>
+        <button type="button" role="tab" class="an-tab" [class.on]="lane() === 'agent'" [attr.aria-selected]="lane() === 'agent'" (click)="setLane('agent')"><b>{{ count('agent') }}</b><span>With the agent</span></button>
+        <button type="button" role="tab" class="an-tab" [class.on]="lane() === 'done'" [attr.aria-selected]="lane() === 'done'" (click)="setLane('done')"><b>{{ count('done') }}</b><span>Closed</span></button>
       </div>
-      <p class="s-muted" style="margin: 0">{{ laneHint() }}</p>
-      <div class="an-filters">
-        <button type="button" class="an-chip" [class.on]="group() === 'all'" [attr.aria-pressed]="group() === 'all'" (click)="setGroup('all')">All<b>{{ laneCount(lane()) }}</b></button>
-        @for (g of groupsHere(); track g.key) { <button type="button" class="an-chip" [class.on]="group() === g.key" [attr.aria-pressed]="group() === g.key" (click)="setGroup(g.key)" [title]="g.hint">{{ g.label }}<b>{{ g.count }}</b></button> }
+      <div class="an-bar">
+        <button type="button" class="an-chip" [class.on]="group() === 'all'" [attr.aria-pressed]="group() === 'all'" (click)="group.set('all')">All<b>{{ count(lane()) }}</b></button>
+        @for (g of groupsHere(); track g.key) { <button type="button" class="an-chip" [class.on]="group() === g.key" [attr.aria-pressed]="group() === g.key" (click)="group.set(g.key)" [title]="g.hint">{{ g.label }}<b>{{ g.count }}</b></button> }
         <span class="s-grow"></span>
-        <select (change)="setOwner($any($event.target).value)" aria-label="Assigned to"><option value="all" [selected]="owner() === 'all'">Everyone's</option><option value="mine" [selected]="owner() === 'mine'">Mine ({{ data()?.counts?.mine ?? 0 }})</option><option value="" [selected]="owner() === ''">Unassigned</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select>
-        <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier, phone, PO, campaign" aria-label="Search">
+        @if (lane() === 'you') { <select (change)="setOwner($any($event.target).value)" aria-label="Assigned to"><option value="all" [selected]="owner() === 'all'">Everyone</option><option value="mine" [selected]="owner() === 'mine'">Assigned to me ({{ data()?.counts?.mine ?? 0 }})</option><option value="" [selected]="owner() === ''">Unassigned</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select> }
+        <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier, phone, campaign" aria-label="Search">
       </div>
       @if (msg()) { <span class="an-ok" role="status">{{ msg() }}</span> }
-      @if (lane() !== 'done' && rows().length) {
-        <div class="an-bulk" [class.on]="sel().length > 0">
-          <label class="an-all"><input type="checkbox" [checked]="allPicked()" [indeterminate]="sel().length > 0 && !allPicked()" (change)="pickAll($any($event.target).checked)" aria-label="Select every row on this page"> {{ sel().length ? sel().length + ' selected' : 'Select' }}</label>
-          @if (sel().length) {
-            @if (lane() === 'you') { <button type="button" class="s-btn s-primary" (click)="bulk('done')">Mark done</button><button type="button" class="s-btn" (click)="bulk('requeue')">Agent calls again</button> }
-            <select (change)="bulkTo.set($any($event.target).value)" aria-label="Assign to"><option value="">Assign to…</option>@for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }</select>
-            <button type="button" class="s-btn" [disabled]="!bulkTo()" (click)="bulk('assign')">Assign</button>
-            <button type="button" class="s-btn" (click)="sel.set([])">Clear</button>
-          }
+      @if (sel().length) {
+        <div class="an-bulk"><b>{{ sel().length }} selected</b>
+          <button type="button" class="s-btn s-primary" (click)="bulk('done')">Mark done</button><button type="button" class="s-btn" (click)="bulk('dismiss')">Dismiss</button>
+          <select (change)="bulkTo.set($any($event.target).value)" aria-label="Assign to"><option value="">Assign to…</option>@for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }</select>
+          <button type="button" class="s-btn" [disabled]="!bulkTo()" (click)="bulk('assign')">Assign</button><span class="s-grow"></span><button type="button" class="s-btn" (click)="sel.set([])">Clear</button>
         </div>
       }
-      <div class="s-card">
-        @for (r of pageRows(); track r.id; let i = $index) {
-          @if (showGroup(i)) { <div class="an-group">{{ groupLabel(r.group) }}<small>{{ groupHint(r.group) }}</small></div> }
-          <div class="an-row" [class.picked]="sel().includes(r.id)">
-            @if (lane() !== 'done') { <input type="checkbox" class="s-check an-pick" [checked]="sel().includes(r.id)" (change)="pick(r.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + r.caller"> } @else { <span></span> }
-            <div>
-              <div class="an-task">{{ r.task }}<span class="an-why">{{ r.why }}</span></div>
-              <div class="an-meta"><span>@if (source().openSupplier) { <button type="button" class="an-link" (click)="source().openSupplier!(r.phone)" title="Everything about this supplier">{{ r.caller }}</button> } @else { {{ r.caller }} } · {{ r.phone }}</span><span>{{ r.campaign }}</span>
-                <span>@if (lane() !== 'done') { <select class="an-asg" (change)="reassign(r, $any($event.target).value)" [attr.aria-label]="'Assigned to, for ' + r.caller"><option value="" [selected]="!r.assignee">Unassigned</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === r.assignee">{{ o === me() ? 'Me' : o }}</option> }</select> } @else { {{ r.assignee || 'Unassigned' }} }</span>
-                <span>{{ r.last_call ? 'Last call ' + when(r.last_call) : 'Not called yet' }}</span>@if (r.tries !== '0') { <span>Calls {{ r.tries }}</span> }</div>
-              @if (r.lane === 'agent') { <span class="an-when">{{ r.next_at ? 'Next call ' + when(r.next_at) : 'In the current run' }}</span> }
-              @if (r.lane === 'done') { <div class="an-meta">Done by {{ r.done_by }} · {{ when(r.done_at || null) }}</div> }
-            </div>
-            <div class="an-acts">
-              @if (r.lane === 'you') {
-                @if (r.action === 'fix') { <input [value]="fix()[r.id] || ''" (input)="setFix(r.id, $any($event.target).value)" placeholder="Correct number or value" [attr.aria-label]="'Correction for ' + r.caller">
-                  <button type="button" class="s-btn" [disabled]="!(fix()[r.id] || '').trim()" (click)="act(r, 'requeue')">Send to the agent</button> }
-                @if (r.action === 'requeue') { <button type="button" class="s-btn" (click)="act(r, 'requeue')" title="The agent calls again in about 30 minutes">Agent calls again</button> }
-                <button type="button" class="s-btn" (click)="source().openCall(r)">Open call</button>
-                <button type="button" class="s-btn s-primary" (click)="act(r, 'done')">Mark done</button>
+
+      <div class="s-card an-list" [class.agent]="lane() === 'agent'" [class.done]="lane() === 'done'">
+        @if (lane() === 'you') {
+          <div class="an-h"><input type="checkbox" class="an-check" [checked]="allPicked()" (change)="pickAll($any($event.target).checked)" aria-label="Select every row on this page"><span>Supplier</span><span>What to do</span><span>Waiting</span><span>Assigned to</span><span></span></div>
+          @for (r of pageRows(); track r.id) {
+            <div class="an-r" [class.picked]="sel().includes(r.id)" (click)="toggleOpen(r.id)">
+              <input type="checkbox" class="an-check" [checked]="sel().includes(r.id)" (click)="$event.stopPropagation()" (change)="pick(r.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + r.caller">
+              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
+              <div class="an-what"><b>{{ r.title }}</b><span>{{ subline(r) }}</span></div>
+              <span class="an-age" [class.late]="late(r)">{{ age(r.since) }}</span>
+              <span class="an-av" [title]="r.assignee || 'Unassigned'"><i>{{ initials(r.assignee) }}</i><span>{{ r.assignee ? (r.assignee === me() ? 'Me' : short(r.assignee)) : 'Unassigned' }}</span></span>
+              <div class="an-ic" (click)="$event.stopPropagation()">
+                <button type="button" class="an-ib ok" (click)="act(r, 'done')" title="Mark done" aria-label="Mark done"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg></button>
+                <button type="button" class="an-ib no" (click)="act(r, 'dismiss')" title="Dismiss: will not be done" aria-label="Dismiss"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+                <button type="button" class="an-ib" (click)="openMenu($event, r.id)" [attr.aria-expanded]="menuId() === r.id" aria-label="More actions" title="More"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button>
+              </div>
+              @if (openId() === r.id) {
+                <div class="an-more" (click)="$event.stopPropagation()"><p>{{ r.detail }}</p>
+                  <div class="an-kv"><span>Campaign: {{ r.campaign }}</span><span>Agent: {{ r.agent }}</span>@if (r.made) { <span>Calls made: {{ r.made }}</span> }<span>Last call: {{ r.last_call ? when(r.last_call) : 'not called' }}</span><span>Uploaded by: {{ r.owner }}</span></div>
+                  @if (r.summary && r.summary !== r.detail) { <p class="s-muted">Call summary: {{ r.summary }}</p> }</div>
               }
-              @if (r.lane === 'agent') { <button type="button" class="s-btn" (click)="source().openCall(r)">Open call</button><button type="button" class="s-btn" (click)="act(r, 'take')" title="Move it to For you: the agent will not call">I'll handle it</button> }
-              @if (r.lane === 'done') { <button type="button" class="s-btn" (click)="source().openCall(r)">Open call</button><button type="button" class="s-btn" (click)="act(r, 'reopen')">Reopen</button> }
             </div>
-          </div>
-        } @empty { <p class="s-empty">{{ emptyText() }}</p> }
+          } @empty { <p class="s-empty">{{ emptyText() }}</p> }
+        }
+        @if (lane() === 'agent') {
+          <div class="an-lock"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>The agent is handling these: retries and booked callbacks run on their own and cannot be changed here. Anything it cannot settle moves to To do.</div>
+          <div class="an-h"><span>Supplier</span><span>The agent is</span><span>Next attempt</span><span>Attempts</span><span>Campaign</span></div>
+          @for (r of pageRows(); track r.id) {
+            <div class="an-r">
+              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
+              <div class="an-what"><span class="an-state"><i></i>{{ r.state }}</span><span>{{ r.title }}</span></div>
+              <span class="an-age">{{ r.next_at ? nextText(r.next_at) : 'In the current run' }}</span>
+              <span class="an-dots" [attr.aria-label]="r.made + ' of ' + r.total + ' attempts'">@for (d of dots(r); track $index) { <i [class.on]="d"></i> }<span>{{ r.made }}/{{ r.total }}</span></span>
+              <span class="an-what"><span>{{ r.campaign }}</span></span>
+            </div>
+          } @empty { <p class="s-empty">The agent has nothing queued.</p> }
+        }
+        @if (lane() === 'done') {
+          <div class="an-h"><span>Supplier</span><span>What it was</span><span>Outcome</span><span>Closed by</span><span></span></div>
+          @for (r of pageRows(); track r.id) {
+            <div class="an-r" (click)="source().openCall(r)">
+              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
+              <div class="an-what"><b>{{ r.title }}</b><span>{{ groupLabel(r.group) }}</span></div>
+              <span><span class="an-out" [class.done]="r.closed === 'done'" [class.dismissed]="r.closed === 'dismissed'">{{ r.closed === 'done' ? '✓ Done' : '✕ Dismissed' }}</span></span>
+              <span class="an-age">{{ short(r.closed_by || '') }} · {{ when(r.closed_at || null) }}</span>
+              <div class="an-ic" (click)="$event.stopPropagation()"><button type="button" class="an-ib" (click)="act(r, 'reopen')" title="Reopen" aria-label="Reopen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 109-3"/><path d="M12 2v3H9"/></svg></button></div>
+            </div>
+          } @empty { <p class="s-empty">Nothing closed yet.</p> }
+        }
         @if (rows().length > PAGE) {
           <div class="s-pager"><button type="button" class="s-btn" [disabled]="page() === 0" (click)="page.set(page() - 1)">Previous</button>
             <span>{{ page() * PAGE + 1 }}–{{ Math.min((page() + 1) * PAGE, rows().length) }} of {{ rows().length }}</span>
             <button type="button" class="s-btn" [disabled]="(page() + 1) * PAGE >= rows().length" (click)="page.set(page() + 1)">Next</button></div>
         }
       </div>
+      @if (menuRow(); as r) {
+        <div class="an-menu" role="menu" [style.top.px]="menuAt().y" [style.left.px]="menuAt().x" (click)="$event.stopPropagation()">
+          <button type="button" role="menuitem" (click)="menuId.set(''); source().openCall(r)">Open the call</button>
+          @if (source().openSupplier) { <button type="button" role="menuitem" (click)="menuId.set(''); source().openSupplier!(r.phone)">All about this supplier</button> }
+          @if (r.group === 'not_reached' || r.group === 'not_successful' || r.group === 'callback') { <button type="button" role="menuitem" (click)="act(r, 'requeue')">Let the agent try once more</button> }
+          <hr><small>Assign to</small>
+          <select (change)="assignTo(r, $any($event.target).value)" aria-label="Assign to"><option value="">{{ r.assignee ? (r.assignee === me() ? 'Me' : r.assignee) : 'Unassigned' }}</option>@for (o of owners(); track o) { @if (o !== r.assignee) { <option [value]="o">{{ o === me() ? 'Me (' + o + ')' : o }}</option> } }</select>
+        </div>
+      }
     </div>
   `,
 })
 export class FollowUpsListComponent {
   readonly source = input.required<FollowUpsSource>();
-  protected readonly LANES: [string, string][] = [['you', 'For you'], ['agent', 'Agent will call'], ['done', 'Done']];
   protected readonly PAGE = 20;
   protected readonly Math = Math;
   protected readonly when = when;
   protected readonly lane = signal('you'); protected readonly group = signal('all'); protected readonly owner = signal(remembered('an.owner', 'all')); protected readonly q = signal('');
-  protected readonly sel = signal<string[]>([]); protected readonly bulkTo = signal('');
-  protected readonly me = computed(() => this.data()?.me ?? '');
-  protected readonly allPicked = computed(() => this.pageRows().length > 0 && this.pageRows().every((r) => this.sel().includes(r.id)));
   protected readonly page = signal(0);
   protected readonly data = signal<ActionList | null>(null);
-  protected readonly fix = signal<Record<string, string>>({});
+  protected readonly sel = signal<string[]>([]); protected readonly bulkTo = signal('');
+  protected readonly openId = signal(''); protected readonly menuId = signal(''); protected readonly menuAt = signal({ x: 0, y: 0 });
   protected readonly msg = signal('');
   protected readonly rows = computed(() => this.data()?.rows ?? []);
-  protected readonly total = computed(() => this.rows().length);
   protected readonly owners = computed(() => this.data()?.owners ?? []);
+  protected readonly me = computed(() => this.data()?.me ?? '');
   protected readonly pageRows = computed(() => this.rows().slice(this.page() * this.PAGE, (this.page() + 1) * this.PAGE));
+  protected readonly allPicked = computed(() => this.pageRows().length > 0 && this.pageRows().every((r) => this.sel().includes(r.id)));
+  protected readonly menuRow = computed(() => this.rows().find((r) => r.id === this.menuId()) ?? null);
   protected readonly groupsHere = computed(() => { const d = this.data(); const by = d?.counts.by_group[this.lane()] ?? {}; return (d?.groups ?? []).filter((g) => by[g.key]).map((g) => ({ ...g, count: by[g.key] })); });
   private t: ReturnType<typeof setTimeout> | null = null;
   constructor() { effect(() => { this.lane(); this.group(); this.owner(); untracked(() => { this.page.set(0); this.load(); }); }); }
@@ -867,37 +925,40 @@ export class FollowUpsListComponent {
     try { this.data.set(await this.source().list(this.query())); if (this.page() * this.PAGE >= this.rows().length) this.page.set(0); }
     catch { if (again) setTimeout(() => this.load(false), 1200); }
   }
-  protected setLane(l: string): void { this.lane.set(l); this.group.set('all'); this.msg.set(''); this.sel.set([]); }
-  protected pick(id: string, on: boolean): void { this.sel.set(on ? [...this.sel(), id] : this.sel().filter((x) => x !== id)); }
-  protected pickAll(on: boolean): void { const ids = this.pageRows().map((r) => r.id); this.sel.set(on ? [...new Set([...this.sel(), ...ids])] : this.sel().filter((x) => !ids.includes(x))); }
-  protected async reassign(r: ActionRow, to: string): Promise<void> {
-    if (!to) return; await this.source().act(r.id, { action: 'assign', to }); this.msg.set(`${r.caller} assigned to ${to === this.me() ? 'you' : to}.`); this.load();
-  }
-  protected async bulk(action: 'done' | 'requeue' | 'assign'): Promise<void> {
-    const ids = this.sel(); if (!ids.length) return; const to = this.bulkTo();
-    if (this.source().bulk) await this.source().bulk!(ids, { action, to }); else for (const id of ids) await this.source().act(id, { action, to });
-    this.msg.set(action === 'done' ? `${ids.length} marked done.` : action === 'requeue' ? `${ids.length} sent to the agent: it calls in about 30 minutes.` : `${ids.length} assigned to ${to === this.me() ? 'you' : to}.`);
-    this.sel.set([]); this.bulkTo.set(''); this.load();
-  }
-  protected setGroup(g: string): void { this.group.set(g); }
+  protected count(l: string): number { const c = this.data()?.counts as unknown as Record<string, number> | undefined; return c?.[l] ?? 0; }
+  protected setLane(l: string): void { this.lane.set(l); this.group.set('all'); this.msg.set(''); this.sel.set([]); this.openId.set(''); }
   protected setOwner(o: string): void { this.owner.set(o); remember('an.owner', o); this.sel.set([]); }
   protected setQ(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => { this.page.set(0); this.load(); }, 200); }
-  protected setFix(id: string, v: string): void { this.fix.set({ ...this.fix(), [id]: v }); }
-  protected laneCount(l: string): number { const c = this.data()?.counts; return c ? (c as unknown as Record<string, number>)[l] ?? 0 : 0; }
-  protected laneHint(): string {
-    return { you: 'Calls the agent cannot settle on its own: fix the data, reach the supplier another way, or act on what they said.', agent: 'Already queued: the agent calls these again by itself at the time shown. Take one over if you would rather handle it.', done: 'Ticked off in this period. Reopen a row if it needs more work.' }[this.lane()] ?? '';
+  protected pick(id: string, on: boolean): void { this.sel.set(on ? [...this.sel(), id] : this.sel().filter((x) => x !== id)); }
+  protected pickAll(on: boolean): void { const ids = this.pageRows().map((r) => r.id); this.sel.set(on ? [...new Set([...this.sel(), ...ids])] : this.sel().filter((x) => !ids.includes(x))); }
+  protected toggleOpen(id: string): void { this.openId.set(this.openId() === id ? '' : id); }
+  protected openMenu(ev: MouseEvent, id: string): void {
+    ev.stopPropagation(); if (this.menuId() === id) { this.menuId.set(''); return; }
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); const w = 240, h = 220;
+    this.menuAt.set({ x: Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)), y: r.bottom + h > window.innerHeight ? Math.max(8, r.top - h) : r.bottom + 4 });
+    this.menuId.set(id);
   }
+  /** Type, then the call result only when it adds something ("Follow-up required" twice says nothing). */
+  protected subline(r: ActionRow): string { const g = this.groupLabel(r.group); const why = r.reason.replace(/^Success: /, ''); return why && why.toLowerCase() !== g.toLowerCase() && why !== r.title ? `${g} · ${why}` : g; }
   protected groupLabel(k: string): string { return this.data()?.groups.find((g) => g.key === k)?.label ?? k; }
-  protected groupHint(k: string): string { return this.data()?.groups.find((g) => g.key === k)?.hint ?? ''; }
-  protected showGroup(i: number): boolean { if (this.group() !== 'all' || this.lane() === 'agent') return false; const p = this.pageRows(); return i === 0 || p[i - 1].group !== p[i].group; }
-  protected emptyText(): string {
-    if (this.q() || this.owner() !== 'all' || this.group() !== 'all') return 'Nothing matches these filters.';
-    return { you: `Nothing needs you right now. The agent is handling ${this.laneCount('agent')} call${this.laneCount('agent') === 1 ? '' : 's'}.`, agent: 'The agent has nothing queued.', done: 'Nothing marked done yet.' }[this.lane()] ?? '';
-  }
-  protected async act(r: ActionRow, action: 'done' | 'reopen' | 'take' | 'requeue'): Promise<void> {
-    await this.source().act(r.id, { action, fix: this.fix()[r.id] });
-    this.msg.set({ done: `Done: ${r.caller}.`, reopen: `${r.caller} is back on your list.`, take: `${r.caller} moved to For you: the agent will not call.`, requeue: `${r.caller} sent to the agent: it calls in about 30 minutes.` }[action]);
+  protected initials(e: string): string { if (!e) return '–'; const n = e.split('@')[0].split(/[._-]/).filter(Boolean); return ((n[0]?.[0] || '') + (n[1]?.[0] || '')).toUpperCase() || e[0].toUpperCase(); }
+  protected short(e: string): string { return e.split('@')[0]; }
+  protected late(r: ActionRow): boolean { return !!r.since && Date.now() - Date.parse(r.since) > 2 * DAY; }
+  protected age(iso: string | null): string { if (!iso) return '—'; const m = Math.max(0, Date.now() - Date.parse(iso)) / 60000; return m < 60 ? `${Math.round(m)} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; }
+  protected nextText(iso: string): string { const t = Date.parse(iso); return t <= Date.now() + 60000 ? 'Next free slot' : when(iso); }
+  protected dots(r: ActionRow): boolean[] { const n = Math.min(10, Math.max(r.total, r.made)); return Array.from({ length: n }, (_, i) => i < r.made); }
+  protected emptyText(): string { return this.q() || this.owner() !== 'all' || this.group() !== 'all' ? 'Nothing matches these filters.' : `Nothing needs a person right now. The agent is handling ${this.count('agent')} call${this.count('agent') === 1 ? '' : 's'}.`; }
+  protected async act(r: ActionRow, action: ActionVerb): Promise<void> {
+    this.menuId.set(''); await this.source().act(r.id, { action });
+    this.msg.set({ done: `✓ Done: ${r.caller}.`, dismiss: `✕ Dismissed: ${r.caller}. Reopen it from Closed if needed.`, reopen: `${r.caller} is back in To do.`, requeue: `${r.caller}: the agent tries once more in about 30 minutes.`, assign: '' }[action]);
     this.load();
+  }
+  protected async assignTo(r: ActionRow, to: string): Promise<void> { if (!to) return; this.menuId.set(''); await this.source().act(r.id, { action: 'assign', to }); this.msg.set(`${r.caller} assigned to ${to === this.me() ? 'you' : to}.`); this.load(); }
+  protected async bulk(action: 'done' | 'dismiss' | 'assign'): Promise<void> {
+    const ids = this.sel(); if (!ids.length) return; const to = this.bulkTo();
+    if (this.source().bulk) await this.source().bulk!(ids, { action, to }); else for (const id of ids) await this.source().act(id, { action, to });
+    this.msg.set(action === 'done' ? `✓ ${ids.length} marked done.` : action === 'dismiss' ? `✕ ${ids.length} dismissed.` : `${ids.length} assigned to ${to === this.me() ? 'you' : to}.`);
+    this.sel.set([]); this.bulkTo.set(''); this.load();
   }
   protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.query()), `action-needed-${this.lane()}.xlsx`); }
 }
@@ -2264,7 +2325,7 @@ export interface SupplierSource { load(phone: string): Promise<SupplierView>; op
         <div class="sp-grid">
           <div class="s" style="gap: 12px">
             <div class="s-card sp-sec"><h2>Open actions ({{ s.open_actions.length }})</h2>
-              @for (a of s.open_actions; track a.id) { <div class="sp-item"><b>{{ a.task }}</b><small>{{ a.lane === 'agent' ? 'Agent will call' + (a.next_at ? ' · ' + when(a.next_at) : '') : 'For ' + (a.assignee || 'nobody yet') }} · {{ a.campaign }}</small></div> }
+              @for (a of s.open_actions; track a.id) { <div class="sp-item"><b>{{ a.title }}</b><small>{{ a.lane === 'agent' ? 'With the agent: ' + (a.state || '') + (a.next_at ? ' · ' + when(a.next_at) : '') : 'For ' + (a.assignee || 'nobody yet') }} · {{ a.campaign }}</small></div> }
               @empty { <p class="s-muted">Nothing open for this supplier.</p> }
               @if (s.open_actions.length && source().openActions) { <div><button type="button" class="s-btn" (click)="source().openActions!()">Open Action needed</button></div> }
             </div>

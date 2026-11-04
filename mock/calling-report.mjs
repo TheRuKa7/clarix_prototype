@@ -470,7 +470,7 @@ export const FOLLOW_COLUMNS = [['caller_name', 'Caller'], ['phone', 'Phone'], ['
 /** The dashboard's small box: what needs a person, what the agent will call again, and the work still running. */
 export function tasksSummary(rows) {
   const a = actionNeeded(rows); const camps = campaignSummaries(rows);
-  return { follow_ups: a.counts.you, queued: a.counts.agent, callbacks: a.counts.by_group.you.callback || 0, follow_up_required: a.counts.by_group.you.follow_up || 0,
+  return { follow_ups: a.counts.you, queued: a.counts.agent, overdue: a.counts.overdue, callbacks: a.counts.by_group.you.callback || 0, follow_up_required: a.counts.by_group.you.follow_up || 0,
     running_campaigns: camps.filter((c) => ['Running', 'Paused'].includes(c.status)).length, not_finished: rows.filter(BOX.in_progress).length };
 }
 
@@ -494,74 +494,80 @@ function actionOf(r) {
   const st = callSteps(r); const now = Date.now(); const tries = Number(r.retries) || 0;
   const plan = (st.retry?.plan || []).map((x) => Date.parse(x)).filter(Boolean);
   // The next attempt still ahead; a planned time already gone means the agent calls at its next free slot.
-  const next = plan.length ? (plan.find((t) => t > now) || now) : null; const triesTotal = tries + 1 + plan.length;
-  const nextText = (t) => (t <= now + 60000 ? 'at its next free slot' : fmtAt(t));
+  const next = plan.length ? (plan.find((t) => t > now) || now) : null; const made = tries + 1; const total = made + plan.length;
+  const since = r.call_date || r.uploaded_at || null;
   const base = { id: r.id, caller: r.caller_name || r.phone, phone: r.phone, email: r.email || '', campaign: r.campaign, agent: r.agent, owner: r.uploaded_by || '—', last_call: r.call_date || null,
-    status: r.call_status, reason: r.status_reason || r.call_status, summary: r.summary || '', tries: `${tries + 1} of ${triesTotal}`, next_at: null, row: r };
+    status: r.call_status, reason: r.status_reason || r.call_status, summary: r.summary || '', made, total, next_at: null, since, row: r };
+  const you = (group, title, detail, extra = {}) => ({ ...base, lane: 'you', group, title, detail, ...extra });
+  const agent = (group, state, title, at = next) => ({ ...base, lane: 'agent', group, state, title, detail: '', next_at: at ? new Date(at).toISOString() : null });
   if (st.dnc) return null; // On the do-not-call list: nothing more to do.
   const s = r.call_status, why = r.status_reason || '';
-  if (s === 'Bad data') return { ...base, lane: 'you', group: 'fix_data', task: `Fix the row: ${why || 'it failed the upload check'}`, action: 'fix', tries: '0', why: 'Not planned: the agent cannot call this row' };
-  if (BOX.in_progress(r)) return { ...base, lane: 'agent', group: 'first_call', task: 'Waiting for its first call', action: 'none', why: 'In a running campaign', next_at: null };
+  if (s === 'Bad data') return you('fix_data', 'Fix the row and upload it again', why || 'It failed the upload check', { made: 0, total: 0 });
+  if (BOX.in_progress(r)) return agent('first_call', 'Waiting', 'First call in a running campaign', null);
   if (why === 'Success: Accepted' || s === 'Internal test call' || s === 'Stopped') return null;
   if (why === 'Success: Callback requested') {
-    const at = Date.parse(r.callback_at || '') || null;
-    if (at && at > now - DAY_MS) return { ...base, lane: 'agent', group: 'callback', task: at > now ? `Agent calls back ${fmtAt(st.retry?.plan?.[0] ? Date.parse(st.retry.plan[0]) : at)}, as asked` : 'Agent calls back at the next free slot: the agreed time is due', action: 'none', why: 'Callback asked', next_at: new Date(Math.max(at, now)).toISOString() };
-    return { ...base, lane: 'you', group: 'callback', task: at ? `Missed callback: they asked for ${fmtAt(at)}. Call them or book a new time` : 'They asked for a callback but gave no time: agree one', action: 'requeue', why: 'Callback asked' };
+    // The agent places callbacks itself. A person steps in only when the callback tries are used up.
+    const rule = (retryRuleOf(r.agent_key || r.agent).by_result || {}).callback || { tries: 1 };
+    const left = Math.max(0, (Number(rule.tries) || 1) + 1 - tries);
+    if (left > 0) { const at = Date.parse(r.callback_at || '') || null; return agent('callback', 'Callback booked', at && at > now ? 'Calls back at the time the supplier asked' : 'Calls back at the next free slot', at && at > now ? at : now); }
+    return you('callback', 'Callback missed', `The agent tried ${tries + 1} time${tries ? 's' : ''} at the agreed time and could not reach them. Call them yourself or close this.`);
   }
-  if (why === 'Success: Follow-up required') return { ...base, lane: 'you', group: 'follow_up', task: followTask(r), action: 'done', why: 'Follow-up required' };
+  if (why === 'Success: Follow-up required') return you('follow_up', followTask(r), r.summary || 'The supplier answered; read the answer and act on it.');
   if (why === 'Success: Partial') {
-    if (next) return { ...base, lane: 'agent', group: 'follow_up', task: `Agent calls again ${nextText(next)} for the rest of the POs`, action: 'none', why: 'Partial answer', next_at: new Date(next).toISOString() };
-    return { ...base, lane: 'you', group: 'follow_up', task: 'Get the remaining POs confirmed', action: 'done', why: 'Partial answer' };
+    if (next) return agent('follow_up', 'Calling again', 'Asks again for the POs not confirmed');
+    return you('follow_up', 'Get the remaining POs confirmed', r.summary || 'Some POs were confirmed on the call; the rest were not.');
   }
-  if (why === 'Wrong number') return { ...base, lane: 'you', group: 'not_successful', task: `Find the right number for ${base.caller}`, action: 'fix', why: 'Wrong number' };
+  if (why === 'Wrong number') return you('not_successful', 'Wrong number', `Get the right number for ${base.caller} from the buyer, then fix it in the next upload.`);
   const early = s === 'Answered' && /not given time|left before/i.test(why);
-  if (s === 'Answered' && !early) return { ...base, lane: 'you', group: 'not_successful', task: 'Listen to the call and decide the next step', action: 'done', why };
+  if (s === 'Answered' && !early) return you('not_successful', 'Decide the next step', r.summary || why);
   // Not picked up, or hung up early: the agent retries while tries are left; after that a person takes over.
   const group = early ? 'not_successful' : 'not_reached';
-  if (next) return { ...base, lane: 'agent', group, task: `Agent tries again ${nextText(next)} (try ${tries + 2} of ${triesTotal})`, action: 'none', why, next_at: new Date(next).toISOString() };
-  const how = s === 'DND' ? 'The number blocks unknown callers: send the WhatsApp with our contact card, or call from your phone'
-    : early ? 'Hung up early on every try: call from your phone or send the PO details on WhatsApp'
-    : `Not reached after ${tries + 1} call${tries ? 's' : ''}: try WhatsApp or email, call from your phone, or ask the buyer for another number`;
-  return { ...base, lane: 'you', group, task: how, action: 'requeue', why };
+  if (next) return agent(group, 'Retrying', `Retry ${made + 1} of ${total}`);
+  const how = s === 'DND' ? 'The number blocks unknown callers. Send our contact card on WhatsApp, or call from your phone.'
+    : early ? 'They hung up early on every try. Call from your phone or send the PO details on WhatsApp.'
+    : `No answer after ${made} call${made === 1 ? '' : 's'}. Try WhatsApp or email, call from your phone, or ask the buyer for another number.`;
+  return you(group, s === 'DND' ? 'Blocked number' : early ? 'Hung up every time' : 'Not reached', how);
 }
 /** The list for one lane, with counts, filtered by group, owner and text. */
 export function actionNeeded(rows, { lane = 'you', group = 'all', owner = 'all', q = '', me = '' } = {}) {
-  dncScan(rows); // numbers on the do-not-call list drop out of both lists
+  dncScan(rows); // numbers on the do-not-call list drop out of every list
   const now = Date.now(); const all = [];
   for (const r of rows) {
     if (isDeleted(r.phone)) continue;
     const a0 = actionOf(r); if (!a0) continue; const f = followState.get(r.id);
-    // Who does it: the person it was assigned to, else whoever uploaded the sheet.
-    const asg = assigneeOf(r.id); const a = { ...a0, assignee: asg?.to || (a0.owner !== '—' ? a0.owner : ''), assigned_by: asg?.by || '' };
-    if (f?.state === 'done') { all.push({ ...a, lane: 'done', done_by: f.by, done_at: f.at, task: a.task }); continue; }
-    if (f?.state === 'mine' && a.lane === 'agent') { all.push({ ...a, lane: 'you', task: 'You took this over from the agent: reach them yourself, then mark it done', action: 'requeue', taken_by: f.by }); continue; }
-    if (f?.state === 'queued' && a.lane === 'you') { all.push({ ...a, lane: 'agent', task: `Sent back to the agent by ${f.by}${f.fix ? ` with ${f.fix}` : ''}: calls ${fmtAt(Date.parse(f.next_at))}`, next_at: f.next_at, action: 'none' }); continue; }
+    // Who does it: the person it was assigned to, else whoever uploaded the sheet. Only manual work is assigned.
+    const asg = assigneeOf(r.id); const a = { ...a0, assignee: a0.lane === 'you' ? (asg?.to || (a0.owner !== '—' ? a0.owner : '')) : '', assigned_by: asg?.by || '' };
+    if (f?.state === 'done' || f?.state === 'dismissed') { all.push({ ...a, lane: 'done', closed: f.state, closed_by: f.by, closed_at: f.at, note: f.note || '' }); continue; }
+    if (f?.state === 'queued' && a.lane === 'you') { all.push({ ...a, lane: 'agent', state: 'Sent back', title: `Sent back by ${f.by}`, next_at: f.next_at, assignee: '' }); continue; }
     all.push(a);
   }
-  const counts = { you: 0, agent: 0, done: 0, by_group: { you: {}, agent: {}, done: {} } };
-  for (const a of all) { counts[a.lane]++; counts.by_group[a.lane][a.group] = (counts.by_group[a.lane][a.group] || 0) + 1; }
+  const counts = { you: 0, agent: 0, done: 0, overdue: 0, by_group: { you: {}, agent: {}, done: {} } };
+  for (const a of all) { counts[a.lane]++; counts.by_group[a.lane][a.group] = (counts.by_group[a.lane][a.group] || 0) + 1; if (a.lane === 'you' && a.since && now - Date.parse(a.since) > 2 * DAY_MS) counts.overdue++; }
   const t = String(q).trim().toLowerCase();
   const who = owner === 'mine' ? me : owner;
   counts.mine = all.filter((a) => a.lane === 'you' && a.assignee === me).length;
-  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (who === 'all' || (who === '' ? !a.assignee : a.assignee === who))
-    && (!t || [a.caller, a.phone, a.campaign, a.task, a.reason, a.summary].join(' ').toLowerCase().includes(t)));
+  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (lane !== 'you' || who === 'all' || (who === '' ? !a.assignee : a.assignee === who))
+    && (!t || [a.caller, a.phone, a.campaign, a.title, a.detail, a.reason, a.summary].join(' ').toLowerCase().includes(t)));
   const order = Object.fromEntries(ACTION_GROUPS.map((g, i) => [g.key, i]));
-  list.sort((a, b) => (lane === 'agent' ? String(a.next_at || '9').localeCompare(String(b.next_at || '9')) : (order[a.group] - order[b.group]) || String(b.last_call).localeCompare(String(a.last_call))));
+  // To do: oldest first inside each type, so nothing waits forever. Agent: soonest call first. Closed: newest first.
+  list.sort((a, b) => (lane === 'agent' ? String(a.next_at || '9').localeCompare(String(b.next_at || '9'))
+    : lane === 'done' ? String(b.closed_at).localeCompare(String(a.closed_at))
+    : (order[a.group] - order[b.group]) || String(a.since || '').localeCompare(String(b.since || ''))));
   return { rows: list.map(({ row, ...a }) => a), counts, groups: ACTION_GROUPS, owners: [...new Set([...PEOPLE, ...all.map((a) => a.assignee)])].filter(Boolean).sort(), me, now: new Date(now).toISOString() };
 }
-/** A person's action on one row: done, reopen, take it from the agent, send it back to the agent (optionally with a fix). */
-export function actionAct(id, { action, fix = '', to = '' } = {}, by = 'you') {
+/** A person's action on one row: done, dismissed (will not be done, with a reason), reopen, assign, or send back to the agent. */
+export function actionAct(id, { action, note = '', to = '' } = {}, by = 'you') {
   const at = new Date().toISOString();
-  if (action === 'done') followState.set(id, { state: 'done', by, at });
+  if (action === 'done') followState.set(id, { state: 'done', by, at, note: String(note || '').slice(0, 200) });
+  else if (action === 'dismiss') followState.set(id, { state: 'dismissed', by, at, note: String(note || '').slice(0, 200) });
   else if (action === 'reopen') followState.delete(id);
-  else if (action === 'take') followState.set(id, { state: 'mine', by, at });
   else if (action === 'assign') { const r = assign([id], to, by); if (r.error) return r; }
-  else if (action === 'requeue') followState.set(id, { state: 'queued', by, at, fix: String(fix || '').trim().slice(0, 80), next_at: new Date(Date.now() + 30 * 60000).toISOString() });
+  else if (action === 'requeue') followState.set(id, { state: 'queued', by, at, next_at: new Date(Date.now() + 30 * 60000).toISOString() });
   else return { error: 'Unknown action' };
   return { ok: true };
 }
-export const ACTION_COLUMNS = [['lane', 'List'], ['group', 'Type'], ['task', 'What to do'], ['why', 'Why'], ['caller', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['campaign', 'Campaign'], ['agent', 'Agent'],
-  ['assignee', 'Assigned to'], ['owner', 'Uploaded by'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['tries', 'Tries'], ['summary', 'Call summary']];
+export const ACTION_COLUMNS = [['lane', 'List'], ['group', 'Type'], ['title', 'What to do'], ['detail', 'Details'], ['reason', 'Call result'], ['closed', 'Closed as'], ['caller', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['campaign', 'Campaign'], ['agent', 'Agent'],
+  ['assignee', 'Assigned to'], ['owner', 'Uploaded by'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['made', 'Calls made'], ['summary', 'Call summary']];
 
 // ── Upload check (ideas doc 2.1): fix what can be fixed, warn on doubtful, reject only what cannot be called ──
 const LIST_SPLIT = /\s*[,;]\s*/;
