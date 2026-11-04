@@ -20,7 +20,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: 'Overview', items: [{ label: 'Dashboard', icon: 'chart-column', route: '/dashboard/overview' }] },
   { label: 'Run', items: WORKFLOW_NAV.run.map((i) => ({ ...i, requiresAnyPermission: WF })) },
   { label: 'Build', items: WORKFLOW_NAV.build.map((i) => ({ ...i, requiresAnyPermission: WF })) },
-  { label: 'Admin', items: [{ label: 'Calling rules', icon: 'clock', route: '/admin/calling-rules' }, { label: 'Telephony', icon: 'phone', route: '/admin/telephony' }, { label: 'Do-not-call list', icon: 'phone-off', route: '/admin/do-not-call' }, { label: 'Alerts', icon: 'bell', route: '/admin/alerts' }, { label: 'Permissions', icon: 'shield-check', route: '/admin/permissions', requiresAnyPermission: ['manage-permissions:menuvisibility'] }] },
+  { label: 'Admin', items: [{ label: 'Calling rules', icon: 'clock', route: '/admin/calling-rules' }, { label: 'Telephony', icon: 'phone', route: '/admin/telephony' }, { label: 'Do-not-call list', icon: 'phone-off', route: '/admin/do-not-call' }, { label: 'Alerts', icon: 'bell', route: '/admin/alerts' }, { label: 'Security', icon: 'lock', route: '/admin/security' }, { label: 'Audit log', icon: 'scroll-text', route: '/admin/audit-log' }, { label: 'Permissions', icon: 'shield-check', route: '/admin/permissions', requiresAnyPermission: ['manage-permissions:menuvisibility'] }] },
 ];
 
 const ALL = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label })));

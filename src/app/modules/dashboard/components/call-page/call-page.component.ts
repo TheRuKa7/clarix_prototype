@@ -50,6 +50,8 @@ export interface CallPageSource {
   detail(id: string): Promise<CallDetail>;
   /** Next steps: the retry plan and messages; sending one returns the steps again. */
   steps?(id: string): Promise<CallSteps>;
+  /** Opens Supplier 360 for this number, where the product has it. */
+  openSupplier?(phone: string): void;
   /** Technical detail for one call: latency per turn, tool calls, phone menu, why it ended. */
   diagnostics?(id: string): Promise<CallDiagnostics>;
   /** What the agent knew before this call, from earlier calls to the same number. */
@@ -91,7 +93,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
         <header class="cp-head">
           <div>
             <h1 class="cp-title">{{ c.caller_name || c.phone || 'Unknown caller' }}</h1>
-            <p class="cp-sub">{{ c.phone }}@if (c.email) { · {{ c.email }} }</p>
+            <p class="cp-sub">{{ c.phone }}@if (c.email) { · {{ c.email }} }@if (source().openSupplier && c.phone) { · <button type="button" class="cp-linkbtn" (click)="source().openSupplier!(c.phone)">All calls with this supplier</button> }</p>
             <p class="cp-sub">{{ c.agent }} · {{ c.campaign }}@if (c.call_date) { · {{ when(c.call_date) }} } · talk {{ mmss(c.duration_seconds) }} · {{ c.dials_count }} dial{{ c.dials_count === 1 ? '' : 's' }}</p>
           </div>
           <div class="cp-chips">

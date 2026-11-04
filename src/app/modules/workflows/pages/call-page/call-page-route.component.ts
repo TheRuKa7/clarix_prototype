@@ -1,4 +1,5 @@
 import { Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { CallPageComponent, CallPageSource } from '../../../dashboard/components/call-page/call-page.component';
 import { ReportService } from '../../../dashboard/services/report.service';
@@ -12,11 +13,13 @@ import { ReportService } from '../../../dashboard/services/report.service';
 })
 export class CallPageRouteComponent {
   private reports = inject(ReportService);
+  private router = inject(Router);
   readonly source: CallPageSource = {
     detail: (id) => firstValueFrom(this.reports.callDetail(id)),
     steps: (id) => firstValueFrom(this.reports.callSteps(id)),
     diagnostics: (id) => firstValueFrom(this.reports.callDiagnostics(id)),
     memory: (id) => firstValueFrom(this.reports.callMemory(id)),
+    openSupplier: (phone) => this.router.navigate(['/workflows/suppliers', phone]),
     sendMessage: (id, m) => firstValueFrom(this.reports.sendCallMessage(id, m)),
     audio: (path) => firstValueFrom(this.reports.blobAt(path)),
     changeOutcome: (id, reason, note) => firstValueFrom(this.reports.changeCallOutcome(id, reason, note)),

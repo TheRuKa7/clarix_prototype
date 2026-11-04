@@ -17,7 +17,7 @@ import { CampaignDetailComponent } from './modules/workflows/pages/campaign-deta
 import { CallLogsComponent } from './modules/workflows/pages/call-logs/call-logs.component';
 import { FollowUpsComponent } from './modules/workflows/pages/follow-ups/follow-ups.component';
 import { CallPageRouteComponent } from './modules/workflows/pages/call-page/call-page-route.component';
-import { ClarixCallLogsPage, ClarixCampaignPage, ClarixCampaignsPage, ClarixFollowUpsPage, ClarixNewCampaignPage } from './modules/workflows/pages/shared-screens/shared-screen-routes';
+import { ClarixCallLogsPage, ClarixCampaignPage, ClarixCampaignsPage, ClarixFollowUpsPage, ClarixNewCampaignPage, ClarixSupplierPage } from './modules/workflows/pages/shared-screens/shared-screen-routes';
 import { DataHubComponent } from './modules/workflows/pages/data-hub/data-hub.component';
 import { OrchestrationHubComponent } from './modules/workflows/pages/orchestration-hub/orchestration-hub.component';
 import { LoginComponent } from './pages/login.component';
@@ -93,6 +93,11 @@ export const routes: Routes = [
             title: 'Call | Clarix'
           },
           {
+            path: 'suppliers/:phone',
+            component: ClarixSupplierPage,
+            title: 'Supplier | Clarix'
+          },
+          {
             path: 'follow-ups',
             component: ClarixFollowUpsPage,
             title: 'Action needed | Clarix'
@@ -151,6 +156,16 @@ export const routes: Routes = [
             title: 'Edit Report | Clarix'
           }
         ]
+      },
+      {
+        path: 'admin/security',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixSecurityPage),
+        title: 'Security | Clarix'
+      },
+      {
+        path: 'admin/audit-log',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixAuditPage),
+        title: 'Audit log | Clarix'
       },
       {
         path: 'admin/telephony',

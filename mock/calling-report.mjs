@@ -3,6 +3,7 @@
 // those stored statuses. The Echo and Clarix mocks share this file: keep the two copies identical.
 
 import { dncScan, onDnc, checkAlerts, pausedOf } from './wave1.mjs';
+import { assigneeOf, assign, isDeleted, PEOPLE } from './wave4.mjs';
 
 export const DEFINITIONS_VERSION = 'v1 · 30 Oct 2026';
 /** A picked-up call shorter than this is "Agent not given time to speak" (a workspace setting). */
@@ -524,11 +525,14 @@ function actionOf(r) {
   return { ...base, lane: 'you', group, task: how, action: 'requeue', why };
 }
 /** The list for one lane, with counts, filtered by group, owner and text. */
-export function actionNeeded(rows, { lane = 'you', group = 'all', owner = 'all', q = '' } = {}) {
+export function actionNeeded(rows, { lane = 'you', group = 'all', owner = 'all', q = '', me = '' } = {}) {
   dncScan(rows); // numbers on the do-not-call list drop out of both lists
   const now = Date.now(); const all = [];
   for (const r of rows) {
-    const a = actionOf(r); if (!a) continue; const f = followState.get(r.id);
+    if (isDeleted(r.phone)) continue;
+    const a0 = actionOf(r); if (!a0) continue; const f = followState.get(r.id);
+    // Who does it: the person it was assigned to, else whoever uploaded the sheet.
+    const asg = assigneeOf(r.id); const a = { ...a0, assignee: asg?.to || (a0.owner !== '—' ? a0.owner : ''), assigned_by: asg?.by || '' };
     if (f?.state === 'done') { all.push({ ...a, lane: 'done', done_by: f.by, done_at: f.at, task: a.task }); continue; }
     if (f?.state === 'mine' && a.lane === 'agent') { all.push({ ...a, lane: 'you', task: 'You took this over from the agent: reach them yourself, then mark it done', action: 'requeue', taken_by: f.by }); continue; }
     if (f?.state === 'queued' && a.lane === 'you') { all.push({ ...a, lane: 'agent', task: `Sent back to the agent by ${f.by}${f.fix ? ` with ${f.fix}` : ''}: calls ${fmtAt(Date.parse(f.next_at))}`, next_at: f.next_at, action: 'none' }); continue; }
@@ -537,24 +541,27 @@ export function actionNeeded(rows, { lane = 'you', group = 'all', owner = 'all',
   const counts = { you: 0, agent: 0, done: 0, by_group: { you: {}, agent: {}, done: {} } };
   for (const a of all) { counts[a.lane]++; counts.by_group[a.lane][a.group] = (counts.by_group[a.lane][a.group] || 0) + 1; }
   const t = String(q).trim().toLowerCase();
-  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (owner === 'all' || a.owner === owner)
+  const who = owner === 'mine' ? me : owner;
+  counts.mine = all.filter((a) => a.lane === 'you' && a.assignee === me).length;
+  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (who === 'all' || (who === '' ? !a.assignee : a.assignee === who))
     && (!t || [a.caller, a.phone, a.campaign, a.task, a.reason, a.summary].join(' ').toLowerCase().includes(t)));
   const order = Object.fromEntries(ACTION_GROUPS.map((g, i) => [g.key, i]));
   list.sort((a, b) => (lane === 'agent' ? String(a.next_at || '9').localeCompare(String(b.next_at || '9')) : (order[a.group] - order[b.group]) || String(b.last_call).localeCompare(String(a.last_call))));
-  return { rows: list.map(({ row, ...a }) => a), counts, groups: ACTION_GROUPS, owners: [...new Set(all.map((a) => a.owner))].filter((o) => o !== '—').sort(), now: new Date(now).toISOString() };
+  return { rows: list.map(({ row, ...a }) => a), counts, groups: ACTION_GROUPS, owners: [...new Set([...PEOPLE, ...all.map((a) => a.assignee)])].filter(Boolean).sort(), me, now: new Date(now).toISOString() };
 }
 /** A person's action on one row: done, reopen, take it from the agent, send it back to the agent (optionally with a fix). */
-export function actionAct(id, { action, fix = '' } = {}, by = 'you') {
+export function actionAct(id, { action, fix = '', to = '' } = {}, by = 'you') {
   const at = new Date().toISOString();
   if (action === 'done') followState.set(id, { state: 'done', by, at });
   else if (action === 'reopen') followState.delete(id);
   else if (action === 'take') followState.set(id, { state: 'mine', by, at });
+  else if (action === 'assign') { const r = assign([id], to, by); if (r.error) return r; }
   else if (action === 'requeue') followState.set(id, { state: 'queued', by, at, fix: String(fix || '').trim().slice(0, 80), next_at: new Date(Date.now() + 30 * 60000).toISOString() });
   else return { error: 'Unknown action' };
   return { ok: true };
 }
 export const ACTION_COLUMNS = [['lane', 'List'], ['group', 'Type'], ['task', 'What to do'], ['why', 'Why'], ['caller', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['campaign', 'Campaign'], ['agent', 'Agent'],
-  ['owner', 'Owner'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['tries', 'Tries'], ['summary', 'Call summary']];
+  ['assignee', 'Assigned to'], ['owner', 'Uploaded by'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['tries', 'Tries'], ['summary', 'Call summary']];
 
 // ── Upload check (ideas doc 2.1): fix what can be fixed, warn on doubtful, reject only what cannot be called ──
 const LIST_SPLIT = /\s*[,;]\s*/;

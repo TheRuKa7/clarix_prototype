@@ -721,16 +721,24 @@ export class NewCampaignComponent {
   }
 }
 
+/** A per-viewer choice kept in the browser (falls back quietly when storage is blocked). */
+function remembered(key: string, fallback: string): string { try { return localStorage.getItem('echo.' + key) ?? fallback; } catch { return fallback; } }
+function remember(key: string, v: string): void { try { localStorage.setItem('echo.' + key, v); } catch { /* storage blocked */ } }
 // ── Action needed: what a person must do after the calls, beside what the agent will call again ──
 export interface ActionRow {
   id: string; caller: string; phone: string; email: string; campaign: string; agent: string; owner: string; last_call: string | null; status: string; reason: string; summary: string; tries: string;
   next_at: string | null; lane: 'you' | 'agent' | 'done'; group: string; task: string; action: 'fix' | 'requeue' | 'done' | 'none'; why: string; done_by?: string; done_at?: string; taken_by?: string;
+  assignee: string; assigned_by?: string;
 }
-export interface ActionList { rows: ActionRow[]; counts: { you: number; agent: number; done: number; by_group: Record<string, Record<string, number>> }; groups: { key: string; label: string; hint: string }[]; owners: string[] }
+export interface ActionList { rows: ActionRow[]; counts: { you: number; agent: number; done: number; mine?: number; by_group: Record<string, Record<string, number>> }; groups: { key: string; label: string; hint: string }[]; owners: string[]; me?: string }
 export interface ActionQuery { lane: string; group: string; owner: string; q: string }
 export interface FollowUpsSource {
   list(p: ActionQuery): Promise<ActionList>;
-  act(id: string, a: { action: 'done' | 'reopen' | 'take' | 'requeue'; fix?: string }): Promise<unknown>;
+  act(id: string, a: { action: 'done' | 'reopen' | 'take' | 'requeue' | 'assign'; fix?: string; to?: string }): Promise<unknown>;
+  /** The same action on many rows at once. */
+  bulk?(ids: string[], a: { action: 'done' | 'requeue' | 'assign'; to?: string }): Promise<unknown>;
+  /** One page for a supplier: every call, PO, promise and open action. */
+  openSupplier?(phone: string): void;
   exportXlsx(p: ActionQuery): Promise<Blob>;
   openCall(row: { id: string }): void;
 }
@@ -749,7 +757,15 @@ export interface FollowUpsSource {
     .an-group { padding: 10px 14px 4px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--s-muted); border-top: 1px solid var(--s-line); }
     .an-group:first-child { border-top: 0; }
     .an-group small { text-transform: none; letter-spacing: 0; margin-left: 6px; }
-    .an-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; padding: 10px 14px; border-top: 1px solid var(--s-line); }
+    .an-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; padding: 10px 14px; border-top: 1px solid var(--s-line); }
+    .an-row.picked { background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
+    .an-pick { margin-top: 2px; }
+    .an-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
+    .an-asg { border: 1px solid var(--s-line); border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12.5px; background: var(--s-bg); color: var(--s-text); max-width: 210px; }
+    .an-bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--s-line); border-radius: 10px; font-size: 13px; }
+    .an-bulk.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); position: sticky; top: 8px; z-index: 5; }
+    .an-bulk select { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
+    .an-all { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; } .an-all input { width: 20px; height: 20px; accent-color: var(--s-accent); }
     .an-row:hover { background: var(--s-soft); }
     .an-task { font-weight: 600; font-size: 14px; }
     .an-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--s-muted); margin-top: 3px; }
@@ -758,7 +774,7 @@ export interface FollowUpsSource {
     .an-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
     .an-acts input { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; width: 170px; background: var(--s-bg); color: var(--s-text); }
     .an-ok { color: var(--s-good); font-size: 13px; }
-    @media (max-width: 760px) { .an-row { grid-template-columns: minmax(0, 1fr); } .an-acts { justify-content: flex-start; } }
+    @media (max-width: 760px) { .an-row { grid-template-columns: auto minmax(0, 1fr); } .an-acts { grid-column: 2; justify-content: flex-start; } }
   `],
   template: `
     <div class="s">
@@ -775,17 +791,30 @@ export interface FollowUpsSource {
         <button type="button" class="an-chip" [class.on]="group() === 'all'" [attr.aria-pressed]="group() === 'all'" (click)="setGroup('all')">All<b>{{ laneCount(lane()) }}</b></button>
         @for (g of groupsHere(); track g.key) { <button type="button" class="an-chip" [class.on]="group() === g.key" [attr.aria-pressed]="group() === g.key" (click)="setGroup(g.key)" [title]="g.hint">{{ g.label }}<b>{{ g.count }}</b></button> }
         <span class="s-grow"></span>
-        <select (change)="setOwner($any($event.target).value)" aria-label="Owner"><option value="all">All owners</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select>
+        <select (change)="setOwner($any($event.target).value)" aria-label="Assigned to"><option value="all" [selected]="owner() === 'all'">Everyone's</option><option value="mine" [selected]="owner() === 'mine'">Mine ({{ data()?.counts?.mine ?? 0 }})</option><option value="" [selected]="owner() === ''">Unassigned</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select>
         <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier, phone, PO, campaign" aria-label="Search">
       </div>
       @if (msg()) { <span class="an-ok" role="status">{{ msg() }}</span> }
+      @if (lane() !== 'done' && rows().length) {
+        <div class="an-bulk" [class.on]="sel().length > 0">
+          <label class="an-all"><input type="checkbox" [checked]="allPicked()" [indeterminate]="sel().length > 0 && !allPicked()" (change)="pickAll($any($event.target).checked)" aria-label="Select every row on this page"> {{ sel().length ? sel().length + ' selected' : 'Select' }}</label>
+          @if (sel().length) {
+            @if (lane() === 'you') { <button type="button" class="s-btn s-primary" (click)="bulk('done')">Mark done</button><button type="button" class="s-btn" (click)="bulk('requeue')">Agent calls again</button> }
+            <select (change)="bulkTo.set($any($event.target).value)" aria-label="Assign to"><option value="">Assign to…</option>@for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }</select>
+            <button type="button" class="s-btn" [disabled]="!bulkTo()" (click)="bulk('assign')">Assign</button>
+            <button type="button" class="s-btn" (click)="sel.set([])">Clear</button>
+          }
+        </div>
+      }
       <div class="s-card">
         @for (r of pageRows(); track r.id; let i = $index) {
           @if (showGroup(i)) { <div class="an-group">{{ groupLabel(r.group) }}<small>{{ groupHint(r.group) }}</small></div> }
-          <div class="an-row">
+          <div class="an-row" [class.picked]="sel().includes(r.id)">
+            @if (lane() !== 'done') { <input type="checkbox" class="s-check an-pick" [checked]="sel().includes(r.id)" (change)="pick(r.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + r.caller"> } @else { <span></span> }
             <div>
               <div class="an-task">{{ r.task }}<span class="an-why">{{ r.why }}</span></div>
-              <div class="an-meta"><span>{{ r.caller }} · {{ r.phone }}</span><span>{{ r.campaign }}</span><span>Owner {{ r.owner }}</span>
+              <div class="an-meta"><span>@if (source().openSupplier) { <button type="button" class="an-link" (click)="source().openSupplier!(r.phone)" title="Everything about this supplier">{{ r.caller }}</button> } @else { {{ r.caller }} } · {{ r.phone }}</span><span>{{ r.campaign }}</span>
+                <span>@if (lane() !== 'done') { <select class="an-asg" (change)="reassign(r, $any($event.target).value)" [attr.aria-label]="'Assigned to, for ' + r.caller"><option value="" [selected]="!r.assignee">Unassigned</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === r.assignee">{{ o === me() ? 'Me' : o }}</option> }</select> } @else { {{ r.assignee || 'Unassigned' }} }</span>
                 <span>{{ r.last_call ? 'Last call ' + when(r.last_call) : 'Not called yet' }}</span>@if (r.tries !== '0') { <span>Calls {{ r.tries }}</span> }</div>
               @if (r.lane === 'agent') { <span class="an-when">{{ r.next_at ? 'Next call ' + when(r.next_at) : 'In the current run' }}</span> }
               @if (r.lane === 'done') { <div class="an-meta">Done by {{ r.done_by }} · {{ when(r.done_at || null) }}</div> }
@@ -818,7 +847,10 @@ export class FollowUpsListComponent {
   protected readonly PAGE = 20;
   protected readonly Math = Math;
   protected readonly when = when;
-  protected readonly lane = signal('you'); protected readonly group = signal('all'); protected readonly owner = signal('all'); protected readonly q = signal('');
+  protected readonly lane = signal('you'); protected readonly group = signal('all'); protected readonly owner = signal(remembered('an.owner', 'all')); protected readonly q = signal('');
+  protected readonly sel = signal<string[]>([]); protected readonly bulkTo = signal('');
+  protected readonly me = computed(() => this.data()?.me ?? '');
+  protected readonly allPicked = computed(() => this.pageRows().length > 0 && this.pageRows().every((r) => this.sel().includes(r.id)));
   protected readonly page = signal(0);
   protected readonly data = signal<ActionList | null>(null);
   protected readonly fix = signal<Record<string, string>>({});
@@ -835,9 +867,20 @@ export class FollowUpsListComponent {
     try { this.data.set(await this.source().list(this.query())); if (this.page() * this.PAGE >= this.rows().length) this.page.set(0); }
     catch { if (again) setTimeout(() => this.load(false), 1200); }
   }
-  protected setLane(l: string): void { this.lane.set(l); this.group.set('all'); this.msg.set(''); }
+  protected setLane(l: string): void { this.lane.set(l); this.group.set('all'); this.msg.set(''); this.sel.set([]); }
+  protected pick(id: string, on: boolean): void { this.sel.set(on ? [...this.sel(), id] : this.sel().filter((x) => x !== id)); }
+  protected pickAll(on: boolean): void { const ids = this.pageRows().map((r) => r.id); this.sel.set(on ? [...new Set([...this.sel(), ...ids])] : this.sel().filter((x) => !ids.includes(x))); }
+  protected async reassign(r: ActionRow, to: string): Promise<void> {
+    if (!to) return; await this.source().act(r.id, { action: 'assign', to }); this.msg.set(`${r.caller} assigned to ${to === this.me() ? 'you' : to}.`); this.load();
+  }
+  protected async bulk(action: 'done' | 'requeue' | 'assign'): Promise<void> {
+    const ids = this.sel(); if (!ids.length) return; const to = this.bulkTo();
+    if (this.source().bulk) await this.source().bulk!(ids, { action, to }); else for (const id of ids) await this.source().act(id, { action, to });
+    this.msg.set(action === 'done' ? `${ids.length} marked done.` : action === 'requeue' ? `${ids.length} sent to the agent: it calls in about 30 minutes.` : `${ids.length} assigned to ${to === this.me() ? 'you' : to}.`);
+    this.sel.set([]); this.bulkTo.set(''); this.load();
+  }
   protected setGroup(g: string): void { this.group.set(g); }
-  protected setOwner(o: string): void { this.owner.set(o); }
+  protected setOwner(o: string): void { this.owner.set(o); remember('an.owner', o); this.sel.set([]); }
   protected setQ(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => { this.page.set(0); this.load(); }, 200); }
   protected setFix(id: string, v: string): void { this.fix.set({ ...this.fix(), [id]: v }); }
   protected laneCount(l: string): number { const c = this.data()?.counts; return c ? (c as unknown as Record<string, number>)[l] ?? 0 : 0; }
@@ -2183,4 +2226,239 @@ export class TelephonyHubComponent {
   protected share(n: number, of: number): number { return of ? Math.min(100, (100 * n) / of) : 0; }
   protected async save(): Promise<void> { this.busy.set(true); try { this.set(await this.source().saveSlots({ rotate: this.rotate(), slots: this.slots() })); this.say('Saved.'); } catch { this.say('Could not save.', true); } finally { this.busy.set(false); } }
   protected when(iso: string): string { return new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' }); }
+}
+
+// ── Supplier 360: one page per supplier, across every campaign and agent ──
+export interface SupplierView {
+  phone: string; name: string; email: string; agents: string[]; dnc: { reason: string } | null;
+  stats: { calls: number; answered: number; success: number; campaigns: number; last_call: string | null };
+  open_actions: ActionRow[]; pos: { po: string; campaigns: string[]; last: string | null; result: string }[];
+  promises: { what: string; value: string; at: string | null; campaign: string; id: string }[]; memory: string[];
+  calls: { id: string; at: string | null; campaign: string; agent: string; status: string; reason: string; summary: string }[];
+}
+export interface SupplierSource { load(phone: string): Promise<SupplierView>; openCall(id: string): void; openActions?(): void; back(): void }
+@Component({
+  selector: 'app-supplier-page',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .sp-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    .sp-nums div { background: var(--s-soft); border-radius: 10px; padding: 10px 12px; display: grid; } .sp-nums span { font-size: 12px; color: var(--s-muted); } .sp-nums b { font-size: 22px; }
+    .sp-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .sp-sec { display: grid; gap: 8px; padding: 12px 14px; } .sp-sec h2 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--s-muted); }
+    .sp-item { display: grid; gap: 2px; border-top: 1px solid var(--s-line); padding-top: 8px; font-size: 13px; } .sp-item:first-of-type { border-top: 0; padding-top: 0; }
+    .sp-item small { color: var(--s-muted); }
+    .sp-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; text-align: left; }
+    .sp-warn { border: 1px solid #fca5a5; background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+    .sp-mem { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+    @media (max-width: 900px) { .sp-grid { grid-template-columns: minmax(0, 1fr); } }
+  `],
+  template: `
+    <div class="s">
+      <div class="s-head"><button type="button" class="s-btn" (click)="source().back()">← Back</button></div>
+      @if (v(); as s) {
+        <div class="s-head"><div><h1 class="s-title">{{ s.name }}</h1><p class="s-sub">{{ s.phone }}{{ s.email ? ' · ' + s.email : '' }} · called by {{ s.agents.join(', ') }}</p></div></div>
+        @if (s.dnc) { <div class="sp-warn" role="alert">On the do-not-call list: {{ s.dnc.reason }}. No agent calls this number.</div> }
+        <div class="sp-nums"><div><span>Calls</span><b>{{ s.stats.calls }}</b></div><div><span>Answered</span><b>{{ s.stats.answered }}</b></div><div><span>Successful</span><b>{{ s.stats.success }}</b></div>
+          <div><span>Campaigns</span><b>{{ s.stats.campaigns }}</b></div><div><span>Last call</span><b style="font-size: 15px">{{ when(s.stats.last_call) }}</b></div></div>
+        <div class="sp-grid">
+          <div class="s" style="gap: 12px">
+            <div class="s-card sp-sec"><h2>Open actions ({{ s.open_actions.length }})</h2>
+              @for (a of s.open_actions; track a.id) { <div class="sp-item"><b>{{ a.task }}</b><small>{{ a.lane === 'agent' ? 'Agent will call' + (a.next_at ? ' · ' + when(a.next_at) : '') : 'For ' + (a.assignee || 'nobody yet') }} · {{ a.campaign }}</small></div> }
+              @empty { <p class="s-muted">Nothing open for this supplier.</p> }
+              @if (s.open_actions.length && source().openActions) { <div><button type="button" class="s-btn" (click)="source().openActions!()">Open Action needed</button></div> }
+            </div>
+            <div class="s-card sp-sec"><h2>Calls ({{ s.calls.length }})</h2>
+              @for (c of s.calls; track c.id) { <div class="sp-item"><button type="button" class="sp-link" (click)="source().openCall(c.id)">{{ when(c.at) }} · {{ c.reason }}</button><small>{{ c.campaign }} · {{ c.agent }}</small>@if (c.summary) { <span>{{ c.summary }}</span> }</div> }
+            </div>
+          </div>
+          <div class="s" style="gap: 12px">
+            <div class="s-card sp-sec"><h2>What the agent knows</h2><ul class="sp-mem">@for (l of s.memory; track $index) { <li>{{ l }}</li> }</ul></div>
+            <div class="s-card sp-sec"><h2>Promises</h2>
+              @for (p of s.promises; track $index) { <div class="sp-item"><b>{{ p.what }}: {{ p.value }}</b><small>said {{ when(p.at) }} · {{ p.campaign }}</small></div> } @empty { <p class="s-muted">No dates promised yet.</p> }</div>
+            <div class="s-card sp-sec"><h2>POs ({{ s.pos.length }})</h2>
+              @for (p of s.pos; track p.po) { <div class="sp-item"><b>{{ p.po }}</b><small>{{ p.result }} · {{ when(p.last) }} · {{ p.campaigns.join(', ') }}</small></div> } @empty { <p class="s-muted">No PO numbers in the rows.</p> }</div>
+          </div>
+        </div>
+      } @else { <p class="s-empty">{{ err() || 'Loading the supplier…' }}</p> }
+    </div>
+  `,
+})
+export class SupplierPageComponent {
+  readonly source = input.required<SupplierSource>();
+  private readonly route = inject(ActivatedRoute);
+  protected readonly v = signal<SupplierView | null>(null);
+  protected readonly err = signal('');
+  protected readonly when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : '—');
+  constructor() { this.route.paramMap.subscribe((m) => { const p = m.get('phone'); if (p) this.load(p); }); }
+  private async load(p: string, again = true): Promise<void> {
+    this.v.set(null); this.err.set('');
+    try { this.v.set(await this.source().load(p)); } catch (e) { if (again) setTimeout(() => this.load(p, false), 1200); else this.err.set(errText(e, 'Could not load this supplier.')); }
+  }
+}
+
+// ── Security center: sign-in, provisioning, data protection and deletion ──
+export interface SecurityView {
+  sso: { on: boolean; protocol: 'saml' | 'oidc'; provider: string; metadata_url: string; client_id: string; domain: string; enforce: boolean; tested: { ok: boolean; at: string } | null };
+  scim: { on: boolean; base_url: string; token_hint: string }; mfa_required: boolean; session_hours: number; ip_allowlist: string;
+  residency: { region: string; backups: string; note: string }; retention: { recordings_days: number; transcripts_days: number; contacts_days: number };
+  pii_redaction: boolean; mask_numbers_for_viewers: boolean; recording_link_hours: number;
+}
+export interface SecuritySource {
+  load(): Promise<SecurityView>; save(s: Partial<SecurityView>): Promise<SecurityView>; testSso(s: Partial<SecurityView>): Promise<{ ok: boolean; steps: { label: string; ok: boolean; detail: string }[] }>;
+  scimToken(): Promise<SecurityView & { token: string }>; deleteContact(b: { phone: string; confirm?: boolean; reason?: string }): Promise<{ preview: { phone: string; calls: number; recordings: number; campaigns: number; on_dnc: boolean }; deleted?: boolean; note?: string }>;
+}
+@Component({
+  selector: 'app-security-center',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .sc { display: grid; gap: 14px; }
+    .sc input, .sc select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .sc-sec { border: 1px solid var(--s-line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+    .sc-sec h3 { margin: 0; font-size: 15px; display: flex; gap: 10px; align-items: center; } .sc-sec h3 .s-muted { font-weight: 400; font-size: 12.5px; }
+    .sc-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; font-size: 13px; } .sc-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
+    .sc-tog { display: inline-flex !important; grid: none; gap: 8px; align-items: center; color: var(--s-text) !important; font-size: 13px !important; cursor: pointer; } .sc-tog input { width: 20px; height: 20px; accent-color: var(--s-accent); }
+    .sc-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; } .sc-steps .bad { color: #b91c1c; }
+    .sc-token { font-family: ui-monospace, Consolas, monospace; background: var(--s-soft); padding: 6px 8px; border-radius: 6px; font-size: 12.5px; overflow-wrap: anywhere; }
+    .sc-ok { color: var(--s-good); font-size: 13px; } .sc-bad { color: #b91c1c; font-size: 13px; } .sc-chip { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); }
+    .sc-chip.on { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 40%, transparent); }
+  `],
+  template: `
+    <div class="sc">
+      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Security</h2><p class="s-muted">Who can sign in and how, where data lives, how long it is kept, and deleting a contact on request.</p></div>
+      @if (d(); as s) {
+        <section class="sc-sec"><h3>Single sign-on <span class="sc-chip" [class.on]="s.sso.enforce">{{ s.sso.enforce ? 'Required' : s.sso.on ? 'On, not required' : 'Off' }}</span></h3>
+          <div class="sc-row">
+            <label class="sc-tog"><input type="checkbox" [checked]="s.sso.on" (change)="sso({ on: $any($event.target).checked })"> Sign in with your identity provider</label>
+            <label>Protocol<select (change)="sso({ protocol: $any($event.target).value })"><option value="saml" [selected]="s.sso.protocol === 'saml'">SAML 2.0</option><option value="oidc" [selected]="s.sso.protocol === 'oidc'">OpenID Connect</option></select></label>
+            <label>Provider<select (change)="sso({ provider: $any($event.target).value })">@for (p of PROVIDERS; track p[0]) { <option [value]="p[0]" [selected]="p[0] === s.sso.provider">{{ p[1] }}</option> }</select></label>
+            <label>Email domain<input [value]="s.sso.domain" (input)="sso({ domain: $any($event.target).value })"></label>
+          </div>
+          <div class="sc-row">@if (s.sso.protocol === 'saml') { <label style="flex: 1 1 320px">Metadata URL<input [value]="s.sso.metadata_url" (input)="sso({ metadata_url: $any($event.target).value })" placeholder="https://idp.example.com/app/metadata"></label> }
+            @else { <label style="flex: 1 1 260px">Client ID<input [value]="s.sso.client_id" (input)="sso({ client_id: $any($event.target).value })"></label> }
+            <button type="button" class="s-btn" (click)="test()" [disabled]="busy()">Test sign-in</button></div>
+          @if (ssoTest(); as t) { <ul class="sc-steps">@for (x of t.steps; track x.label) { <li [class.bad]="!x.ok">{{ x.ok ? '✓' : '✕' }} <b>{{ x.label }}</b> · {{ x.detail }}</li> }</ul> }
+          <label class="sc-tog"><input type="checkbox" [checked]="s.sso.enforce" [disabled]="!s.sso.tested?.ok && !ssoTest()?.ok" (change)="sso({ enforce: $any($event.target).checked })"> Require single sign-on for everyone {{ '@' }}{{ s.sso.domain }} (passwords stop working)</label>
+          <span class="s-muted">Requiring it is only possible after a test passes, so nobody is locked out.</span>
+        </section>
+        <section class="sc-sec"><h3>User provisioning (SCIM) <span class="sc-chip" [class.on]="s.scim.on">{{ s.scim.on ? 'On' : 'Off' }}</span></h3>
+          <span class="s-muted">Your identity provider adds, updates and removes Echo users and their roles automatically.</span>
+          <div class="sc-row"><label style="flex: 1 1 280px">SCIM base URL<input [value]="s.scim.base_url" readonly></label><label>Token<input [value]="s.scim.token_hint || 'none yet'" readonly></label>
+            <button type="button" class="s-btn" (click)="token()" [disabled]="busy()">{{ s.scim.token_hint ? 'Replace token' : 'Generate token' }}</button></div>
+          @if (newToken()) { <div class="sc-token">{{ newToken() }}</div><span class="s-muted">Copy it now: it is shown once.</span> }
+        </section>
+        <section class="sc-sec"><h3>Sign-in rules</h3>
+          <div class="sc-row"><label class="sc-tog"><input type="checkbox" [checked]="s.mfa_required" (change)="set({ mfa_required: $any($event.target).checked })"> Two-step sign-in for everyone</label>
+            <label>Sign out after (hours)<input type="number" min="1" max="72" style="width: 80px" [value]="s.session_hours" (change)="set({ session_hours: +$any($event.target).value })"></label>
+            <label style="flex: 1 1 260px">Allowed IP ranges (optional)<input [value]="s.ip_allowlist" (input)="set({ ip_allowlist: $any($event.target).value })" placeholder="e.g. 103.21.0.0/16, 49.36.12.4"></label></div>
+        </section>
+        <section class="sc-sec"><h3>Where data lives</h3>
+          <div class="sc-row"><span><b>Region:</b> {{ s.residency.region }}</span><span><b>Backups:</b> {{ s.residency.backups }}</span></div><span class="s-muted">{{ s.residency.note }} Other regions and a private cloud are arranged with your account team.</span>
+        </section>
+        <section class="sc-sec"><h3>Keep data for</h3>
+          <div class="sc-row"><label>Recordings (days)<input type="number" min="7" max="3650" style="width: 90px" [value]="s.retention.recordings_days" (change)="ret({ recordings_days: +$any($event.target).value })"></label>
+            <label>Transcripts and answers (days)<input type="number" min="7" max="3650" style="width: 90px" [value]="s.retention.transcripts_days" (change)="ret({ transcripts_days: +$any($event.target).value })"></label>
+            <label>Contact details (days)<input type="number" min="30" max="3650" style="width: 90px" [value]="s.retention.contacts_days" (change)="ret({ contacts_days: +$any($event.target).value })"></label></div>
+          <div class="sc-row"><label class="sc-tog"><input type="checkbox" [checked]="s.pii_redaction" (change)="set({ pii_redaction: $any($event.target).checked })"> Hide bank, card and ID numbers in transcripts</label>
+            <label class="sc-tog"><input type="checkbox" [checked]="s.mask_numbers_for_viewers" (change)="set({ mask_numbers_for_viewers: $any($event.target).checked })"> Mask phone numbers for viewers</label>
+            <label>Recording links expire after (hours)<input type="number" min="1" max="168" style="width: 80px" [value]="s.recording_link_hours" (change)="set({ recording_link_hours: +$any($event.target).value })"></label></div>
+        </section>
+        <div class="sc-row"><span class="s-grow"></span>@if (msg()) { <span [class.sc-ok]="!bad()" [class.sc-bad]="bad()" role="status">{{ msg() }}</span> }
+          <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button><button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">Save security settings</button></div>
+        <section class="sc-sec"><h3>Delete a contact's data <span class="s-muted">for a privacy request (DPDP, GDPR)</span></h3>
+          <div class="sc-row"><label>Number<input [value]="delPhone()" (input)="delPhone.set($any($event.target).value); delPreview.set(null)" inputmode="tel" placeholder="10-digit mobile"></label>
+            <button type="button" class="s-btn" (click)="preview()" [disabled]="!delPhone().trim()">See what would be deleted</button></div>
+          @if (delPreview(); as p) {
+            <span>{{ p.calls }} call{{ p.calls === 1 ? '' : 's' }} in {{ p.campaigns }} campaign{{ p.campaigns === 1 ? '' : 's' }}, {{ p.recordings }} recording{{ p.recordings === 1 ? '' : 's' }}, transcripts and answers.{{ p.on_dnc ? ' The number stays on the do-not-call list.' : '' }}</span>
+            <div class="sc-row"><label style="flex: 1 1 260px">Why (request reference)<input [value]="delReason()" (input)="delReason.set($any($event.target).value)"></label>
+              <button type="button" class="s-btn s-danger" (click)="del()" [disabled]="!delReason().trim() || busy()">Delete permanently</button></div>
+          }
+          @if (delNote()) { <span class="sc-ok" role="status">{{ delNote() }}</span> }
+        </section>
+      } @else { <p class="s-empty">{{ msg() || 'Loading security settings…' }}</p> }
+    </div>
+  `,
+})
+export class SecurityCenterComponent {
+  readonly source = input.required<SecuritySource>();
+  readonly page = input(false);
+  protected readonly PROVIDERS: [string, string][] = [['okta', 'Okta'], ['azure', 'Microsoft Entra ID (Azure AD)'], ['google', 'Google Workspace'], ['onelogin', 'OneLogin'], ['other', 'Other']];
+  protected readonly v = signal<SecurityView | null>(null); protected readonly d = signal<SecurityView | null>(null);
+  protected readonly ssoTest = signal<{ ok: boolean; steps: { label: string; ok: boolean; detail: string }[] } | null>(null);
+  protected readonly newToken = signal(''); protected readonly busy = signal(false); protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly delPhone = signal(''); protected readonly delReason = signal(''); protected readonly delNote = signal('');
+  protected readonly delPreview = signal<{ phone: string; calls: number; recordings: number; campaigns: number; on_dnc: boolean } | null>(null);
+  protected readonly dirty = computed(() => JSON.stringify(this.d()) !== JSON.stringify(this.v()));
+  constructor() { effect(() => { const s = this.source(); untracked(() => this.load(s)); }); }
+  private async load(s = this.source(), again = true): Promise<void> { try { const v = await s.load(); this.v.set(v); this.d.set(structuredClone(v)); } catch { if (again) setTimeout(() => this.load(s, false), 1200); else this.say('Could not load security settings.', true); } }
+  private say(m: string, bad = false): void { this.msg.set(m); this.bad.set(bad); }
+  protected set(part: Partial<SecurityView>): void { const d = this.d(); if (d) this.d.set({ ...d, ...part }); this.msg.set(''); }
+  protected sso(part: Partial<SecurityView['sso']>): void { const d = this.d(); if (d) this.set({ sso: { ...d.sso, ...part } }); if (!('enforce' in part)) this.ssoTest.set(null); }
+  protected ret(part: Partial<SecurityView['retention']>): void { const d = this.d(); if (d) this.set({ retention: { ...d.retention, ...part } }); }
+  protected undo(): void { this.d.set(structuredClone(this.v())); }
+  protected async test(): Promise<void> { this.busy.set(true); try { this.ssoTest.set(await this.source().testSso({ sso: this.d()!.sso })); } catch { this.say('Could not run the test.', true); } finally { this.busy.set(false); } }
+  protected async save(): Promise<void> { this.busy.set(true); try { const v = await this.source().save(this.d()!); this.v.set(v); this.d.set(structuredClone(v)); this.say('Saved. The change is in the audit log.'); } catch { this.say('Could not save.', true); } finally { this.busy.set(false); } }
+  protected async token(): Promise<void> { this.busy.set(true); try { const r = await this.source().scimToken(); this.newToken.set(r.token); const { token, ...v } = r; this.v.set(v); this.d.set({ ...structuredClone(v) }); } finally { this.busy.set(false); } }
+  protected async preview(): Promise<void> { this.delNote.set(''); try { this.delPreview.set((await this.source().deleteContact({ phone: this.delPhone() })).preview); } catch (e) { this.say(errText(e, 'Could not look that up.'), true); } }
+  protected async del(): Promise<void> {
+    if (!confirm('Delete every call, recording, transcript and answer for this number? This cannot be undone.')) return;
+    this.busy.set(true); try { const r = await this.source().deleteContact({ phone: this.delPhone(), confirm: true, reason: this.delReason() }); this.delNote.set(r.note || 'Deleted.'); this.delPreview.set(null); this.delPhone.set(''); this.delReason.set(''); }
+    catch (e) { this.say(errText(e, 'Could not delete.'), true); } finally { this.busy.set(false); }
+  }
+}
+
+// ── Audit log: every change and export, who did it and when; cannot be edited ──
+export interface AuditEntry { at: string; who: string; area: string; action: string; target: string }
+export interface AuditQuery { q: string; who: string; area: string; days: string }
+export interface AuditSource { load(p: AuditQuery): Promise<{ rows: AuditEntry[]; total: number; people: string[]; areas: string[] }>; exportXlsx(p: AuditQuery): Promise<Blob> }
+@Component({
+  selector: 'app-audit-log',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .al { display: grid; gap: 12px; }
+    .al-f { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .al-f select, .al-f input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .al-f input { flex: 1 1 220px; }
+    .al-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .al-t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+    .al-t td { padding: 7px 8px; border-bottom: 1px solid var(--s-line); vertical-align: top; }
+    .al-t td.w { white-space: nowrap; color: var(--s-muted); } .al-area { font-size: 11.5px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+    .al-scroll { overflow-x: auto; }
+  `],
+  template: `
+    <div class="al">
+      <div class="s-head"><div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Audit log</h2><p class="s-muted">Every change and every export in this workspace, with who did it. Entries cannot be edited or deleted.</p></div>
+        <span class="s-grow"></span><button type="button" class="s-btn" (click)="exportList()">Export</button></div>
+      <div class="al-f">
+        <select (change)="days.set($any($event.target).value)" aria-label="Period">@for (p of PERIODS; track p[0]) { <option [value]="p[0]" [selected]="p[0] === days()">{{ p[1] }}</option> }</select>
+        <select (change)="who.set($any($event.target).value)" aria-label="Who"><option value="all">Everyone</option>@for (p of people(); track p) { <option [value]="p">{{ p }}</option> }</select>
+        <select (change)="area.set($any($event.target).value)" aria-label="Area"><option value="all">All areas</option>@for (a of areas(); track a) { <option [value]="a">{{ a }}</option> }</select>
+        <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search what changed" aria-label="Search">
+        <span class="s-muted">{{ total() }} entr{{ total() === 1 ? 'y' : 'ies' }}</span>
+      </div>
+      <div class="s-card al-scroll"><table class="al-t"><thead><tr><th>When</th><th>Who</th><th>Area</th><th>What</th><th>On</th></tr></thead><tbody>
+        @for (e of rows(); track $index) { <tr><td class="w">{{ when(e.at) }}</td><td>{{ e.who }}</td><td><span class="al-area">{{ e.area }}</span></td><td>{{ e.action }}</td><td class="s-muted">{{ e.target }}</td></tr> }
+        @empty { <tr><td colspan="5" class="s-muted">Nothing matches.</td></tr> }
+      </tbody></table></div>
+    </div>
+  `,
+})
+export class AuditLogComponent {
+  readonly source = input.required<AuditSource>();
+  readonly page = input(false);
+  protected readonly PERIODS: [string, string][] = [['1', 'Last 24 hours'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['0', 'All time']];
+  protected readonly q = signal(''); protected readonly who = signal('all'); protected readonly area = signal('all'); protected readonly days = signal('30');
+  protected readonly rows = signal<AuditEntry[]>([]); protected readonly total = signal(0); protected readonly people = signal<string[]>([]); protected readonly areas = signal<string[]>([]);
+  private t: ReturnType<typeof setTimeout> | null = null;
+  constructor() { effect(() => { this.who(); this.area(); this.days(); this.source(); untracked(() => this.load()); }); }
+  private query(): AuditQuery { return { q: this.q().trim(), who: this.who(), area: this.area(), days: this.days() }; }
+  private async load(again = true): Promise<void> {
+    try { const r = await this.source().load(this.query()); this.rows.set(r.rows); this.total.set(r.total); this.people.set(r.people); this.areas.set(r.areas); }
+    catch { if (again) setTimeout(() => this.load(false), 1200); }
+  }
+  protected setQ(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => this.load(), 200); }
+  protected when(iso: string): string { return new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); }
+  protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.query()), 'audit-log.xlsx'); }
 }

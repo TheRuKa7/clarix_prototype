@@ -97,6 +97,16 @@ export class ReportService {
   // Wave 3: live calls, telephony and slots, the copilot.
   // Action needed: manual work beside the agent's queue.
   actionNeeded(p: any): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/follow-ups/actions`, { params: p })); }
+  // Enterprise shell: bulk actions, Supplier 360, security center, audit log.
+  actionBulk(ids: string[], a: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/follow-ups/actions/bulk`, { ids, ...a })); }
+  supplier(phone: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/supplier/${encodeURIComponent(phone)}`)); }
+  security(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/security`)); }
+  saveSecurity(s: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/security`, s)); }
+  testSso(s: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/security/sso/test`, s)); }
+  scimToken(): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/security/scim/token`, {})); }
+  deleteContact(b: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/security/delete-contact`, b)); }
+  auditLog(p: any): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/audit`, { params: p })); }
+  auditExport(p: any): Observable<Blob> { return this.http.get(`${this.callingBase}/audit/export.xlsx`, { params: p, responseType: 'blob' }); }
   actionAct(id: string, a: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/follow-ups/actions/${encodeURIComponent(id)}`, a)); }
   actionExport(p: any): Observable<Blob> { return this.http.get(`${this.callingBase}/follow-ups/actions/export.xlsx`, { params: p, responseType: 'blob' }); }
   liveCalls(): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/live`)); }

@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ReportService } from '../../../dashboard/services/report.service';
 import { CallingReportComponent, CallingReportSource } from '../../../dashboard/components/calling-report/calling-report.component';
-import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, SupplierPageComponent, SupplierSource, SecurityCenterComponent, SecuritySource, AuditLogComponent, AuditSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
 
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
@@ -56,6 +56,7 @@ export class ClarixFollowUpsPage {
   private r = inject(ReportService); private router = inject(Router);
   readonly source: FollowUpsSource = {
     list: (p) => firstValueFrom(this.r.actionNeeded(p)), act: (id, a) => firstValueFrom(this.r.actionAct(id, a)), exportXlsx: (p) => firstValueFrom(this.r.actionExport(p)),
+    bulk: (ids, a) => firstValueFrom(this.r.actionBulk(ids, a)), openSupplier: (phone) => this.router.navigate(['/workflows/suppliers', phone]),
     openCall: (row) => this.router.navigate(['/workflows/calls', row.id]),
   };
 }
@@ -98,4 +99,28 @@ export class ClarixTelephonyPage {
     load: () => firstValueFrom(this.r.telephony()), test: (b) => firstValueFrom(this.r.telTest(b)), connect: (b) => firstValueFrom(this.r.telConnect(b)),
     disconnect: (k) => firstValueFrom(this.r.telDisconnect(k)), saveSlots: (b) => firstValueFrom(this.r.telSlots(b)),
   };
+}
+
+@Component({ selector: 'app-clarix-supplier', standalone: true, imports: [SupplierPageComponent], template: `<div class="rx-page"><app-supplier-page [source]="source"></app-supplier-page></div>` })
+export class ClarixSupplierPage {
+  private r = inject(ReportService); private router = inject(Router);
+  /** Supplier 360: every call, PO, promise and open action for one number. */
+  readonly source: SupplierSource = { load: (p) => firstValueFrom(this.r.supplier(p)), openCall: (id) => this.router.navigate(['/workflows/calls', id]), openActions: () => this.router.navigate(['/workflows/follow-ups']), back: () => history.back() };
+}
+
+@Component({ selector: 'app-clarix-security', standalone: true, imports: [SecurityCenterComponent], template: `<div class="rx-page"><app-security-center [source]="source" [page]="true"></app-security-center></div>` })
+export class ClarixSecurityPage {
+  private r = inject(ReportService);
+  /** Sign-in, provisioning, data protection and deletion. */
+  readonly source: SecuritySource = {
+    load: () => firstValueFrom(this.r.security()), save: (x) => firstValueFrom(this.r.saveSecurity(x)), testSso: (x) => firstValueFrom(this.r.testSso(x)),
+    scimToken: () => firstValueFrom(this.r.scimToken()), deleteContact: (b) => firstValueFrom(this.r.deleteContact(b)),
+  };
+}
+
+@Component({ selector: 'app-clarix-audit', standalone: true, imports: [AuditLogComponent], template: `<div class="rx-page"><app-audit-log [source]="source" [page]="true"></app-audit-log></div>` })
+export class ClarixAuditPage {
+  private r = inject(ReportService);
+  /** Every change and export, with who did it. */
+  readonly source: AuditSource = { load: (p) => firstValueFrom(this.r.auditLog(p)), exportXlsx: (p) => firstValueFrom(this.r.auditExport(p)) };
 }
