@@ -2523,3 +2523,337 @@ export class AuditLogComponent {
   protected when(iso: string): string { return new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); }
   protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.query()), 'audit-log.xlsx'); }
 }
+
+// ── Team and access: the org, its sub-orgs and teams, who is in each, their roles and what each role may do ──
+export type AccessLevel = 'org' | 'sub_org' | 'team';
+export interface AccessGrant { id: string; role: string; unit: string; role_label: string; unit_name: string; level: AccessLevel; can_remove: boolean }
+export interface AccessUser {
+  id: string; name: string; email: string; type: string; status: string; state: 'active' | 'invited' | 'suspended' | 'expired'; expires: string | null; last_active: string | null;
+  grants: AccessGrant[]; can_edit: boolean; can_remove: boolean;
+  /** module → action → the roles that allow it ("Team lead in Procurement ops"). */
+  effective: Record<string, Record<string, string[]>>;
+}
+export interface AccessUnit { id: string; name: string; level: AccessLevel; parent: string | null; path: string; child_level: AccessLevel | null; people: number; here: number; can_edit: boolean; can_add: boolean; can_delete: boolean; roles_here: string[] }
+export interface AccessRole { key: string; label: string; level: AccessLevel; system: boolean; about: string; perms: Record<string, string[]>; mask_numbers?: boolean; people: number }
+export interface AccessType { key: string; label: string; who: string; sign_in: string; roles: string[]; mfa: boolean; expiry_days: number; teams_only: boolean; people: number }
+export interface AccessView {
+  actor: string; blocked?: string; note?: string; levels: { key: AccessLevel; label: string }[]; actions: { key: string; label: string }[];
+  modules: { key: string; label: string; actions: Record<string, string> }[]; people_to_preview: { id: string; name: string; summary: string }[];
+  can_manage_roles: boolean; can_invite: boolean; units: AccessUnit[]; users: AccessUser[]; roles: AccessRole[]; types: AccessType[];
+}
+export type AccessKind = 'unit' | 'user' | 'grant' | 'role' | 'type';
+/** `as` is the person to preview the screen as ('' = the signed-in person). Every call returns the whole screen again. */
+export interface AccessSource {
+  load(as: string): Promise<AccessView>; create(kind: AccessKind, body: Record<string, unknown>, as: string): Promise<AccessView>;
+  update(kind: AccessKind, id: string, body: Record<string, unknown>, as: string): Promise<AccessView>; remove(kind: AccessKind, id: string, as: string): Promise<AccessView>;
+}
+type AccessTab = 'structure' | 'people' | 'roles' | 'types';
+@Component({
+  selector: 'app-access',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .ax { display: grid; gap: 12px; }
+    .ax input, .ax select { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .ax-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .ax-split { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .ax-tree { display: grid; gap: 2px; padding: 6px; }
+    .ax-node { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; border: 0; background: none; color: var(--s-text); text-align: left; padding: 6px 8px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+    .ax-node:hover { background: var(--s-soft); } .ax-node.on { background: var(--s-soft); font-weight: 600; } .ax-node small { color: var(--s-muted); font-size: 11.5px; font-weight: 400; white-space: nowrap; }
+    .ax-panel { display: grid; gap: 12px; padding: 14px 16px; }
+    .ax-panel h3 { margin: 0; font-size: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .ax-panel h4 { margin: 4px 0 0; font-size: 13px; }
+    .ax-lv { font-size: 11.5px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; font-weight: 400; color: var(--s-muted); }
+    .ax-g { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 4px 1px 9px; margin: 2px 4px 2px 0; white-space: nowrap; }
+    .ax-g b { font-weight: 600; } .ax-g button { border: 0; background: none; color: var(--s-muted); cursor: pointer; padding: 0 4px; font-size: 13px; line-height: 1; }
+    .ax-g.inh { border-style: dashed; color: var(--s-muted); padding-right: 9px; }
+    .ax-st { font-size: 12px; } .ax-st.suspended, .ax-st.expired { color: #b91c1c; } .ax-st.invited { color: #b45309; }
+    tr.ax-open > td { background: var(--s-soft); white-space: normal; padding: 12px 14px; }
+    .ax-m { width: auto; min-width: 520px; background: var(--s-bg); border: 1px solid var(--s-line); border-radius: 8px; }
+    .ax-m th, .ax-m td { padding: 5px 10px; text-align: center; font-size: 12.5px; } .ax-m th:first-child, .ax-m td:first-child { text-align: left; }
+    .ax-m td.y { color: var(--s-good); font-weight: 600; } .ax-m td.na { color: var(--s-line); }
+    .ax-m input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--s-accent); cursor: pointer; }
+    .ax-roles { display: grid; gap: 2px; padding: 6px; } .ax-roles h5 { margin: 8px 8px 2px; font-size: 11.5px; color: var(--s-muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+    .ax-tog { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-muted); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: 12px; margin: 2px 4px 2px 0; cursor: pointer; }
+    .ax-tog.on { color: var(--s-text); border-color: var(--s-text); } .ax-tog:disabled { cursor: default; }
+    .ax-ok { color: var(--s-good); font-size: 13px; } .ax-bad { color: #b91c1c; font-size: 13px; }
+    .ax-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 12px 14px; } .ax-form label { display: grid; gap: 3px; font-size: 12px; color: var(--s-muted); }
+    @media (max-width: 760px) { .ax-split { grid-template-columns: minmax(0, 1fr); } }
+  `],
+  template: `
+    <div class="ax">
+      <div class="s-head"><div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Team and access</h2>
+        <p class="s-sub">Who is in each sub-org and team, and what they can do there. A role given in a unit also works in every unit under it.</p></div>
+        <span class="s-grow"></span>
+        @if (v(); as x) { <label class="s-muted">Preview as <select [value]="viewAs()" (change)="preview($any($event.target).value)" aria-label="Preview as">
+          <option value="">Me</option>@for (p of x.people_to_preview; track p.id) { <option [value]="p.id">{{ p.name }} · {{ p.summary }}</option> }</select></label> }
+      </div>
+      @if (viewAs()) { <p class="s-note">You are seeing this screen as {{ actorName() }}. What you change is checked against their access. <button type="button" class="s-link" (click)="preview('')">Back to me</button></p> }
+      @if (v(); as x) {
+        @if (x.blocked) { <p class="s-note">{{ x.blocked }}</p> } @else {
+        <div class="ax-row"><div class="s-seg" role="tablist">
+          @for (t of TABS; track t[0]) { <button type="button" role="tab" [class.on]="tab() === t[0]" [attr.aria-selected]="tab() === t[0]" (click)="tab.set(t[0])">{{ t[1] }}@if (t[0] === 'people') { ({{ x.users.length }}) }</button> }
+        </div><span class="s-grow"></span>@if (msg()) { <span [class.ax-ok]="!bad()" [class.ax-bad]="bad()" role="status">{{ msg() }}</span> }</div>
+
+        @if (tab() === 'structure') {
+          <div class="ax-split">
+            <nav class="s-card ax-tree" aria-label="Units">
+              @for (u of tree(); track u.id) { <button type="button" class="ax-node" [class.on]="u.id === unit()?.id" [style.padding-left.px]="8 + u.depth * 16" (click)="unitId.set(u.id)" [title]="u.people + ' with access here, ' + u.here + ' given a role here'"><span>{{ u.name }}</span><small>{{ levelName(u.level) }} · {{ u.people }}</small></button> }
+            </nav>
+            @if (unit(); as u) {
+              <section class="s-card ax-panel">
+                <h3>@if (u.can_edit) { <input [value]="u.name" (change)="rename(u, $any($event.target).value)" aria-label="Name" style="font-size: 15px; font-weight: 600"> } @else { {{ u.name }} }
+                  <span class="ax-lv">{{ levelName(u.level) }}</span><span class="s-grow"></span>
+                  @if (u.can_delete) { <button type="button" class="s-btn s-danger" (click)="removeUnit(u)">Delete {{ levelName(u.level).toLowerCase() }}</button> }</h3>
+                @if (u.parent) { <span class="s-muted">{{ u.path }}</span> }
+                @if (u.can_add && u.child_level) { <div class="ax-row"><input #child [placeholder]="'New ' + levelName(u.child_level).toLowerCase() + ' name'" (keydown.enter)="addUnit(u, child)" [attr.aria-label]="'New ' + levelName(u.child_level)">
+                  <button type="button" class="s-btn" (click)="addUnit(u, child)">Add {{ levelName(u.child_level).toLowerCase() }}</button></div> }
+                <h4>Roles given here</h4>
+                <div class="s-card s-scroll"><table><thead><tr><th>Person</th><th>Type</th><th>Role</th><th></th></tr></thead><tbody>
+                  @for (r of hereRows(); track r.g.id) { <tr><td>{{ r.p.name }}<small>{{ r.p.email }}</small></td><td>{{ typeName(r.p.type) }}</td><td>{{ r.g.role_label }}</td>
+                    <td class="num">@if (r.g.can_remove) { <button type="button" class="s-link" (click)="removeGrant(r.g)">Take away</button> }</td></tr> }
+                  @empty { <tr><td colspan="4" class="s-muted">Nobody holds a role here yet.</td></tr> }
+                </tbody></table></div>
+                @if (u.roles_here.length) { <div class="ax-row">
+                  <select (change)="grantFor.set($any($event.target).value)" aria-label="Person"><option value="">Give a role to…</option>@for (p of x.users; track p.id) { <option [value]="p.id">{{ p.name }}</option> }</select>
+                  <select #gr aria-label="Role">@for (r of rolesFor(grantFor(), u); track r.key) { <option [value]="r.key">{{ r.label }}</option> }</select>
+                  <button type="button" class="s-btn" [disabled]="!grantFor() || !rolesFor(grantFor(), u).length" (click)="grant(grantFor(), u.id, gr.value)">Give role</button>
+                  @if (grantFor() && !rolesFor(grantFor(), u).length) { <span class="s-muted">No role you can give fits this person here.</span> }</div> }
+                @if (fromAbove().length) { <h4>Also have access here from above</h4>
+                  <div>@for (r of fromAbove(); track r.g.id) { <span class="ax-g inh" [title]="r.p.email">{{ r.p.name }} · <b>{{ r.g.role_label }}</b> in {{ r.g.unit_name }}</span> }</div> }
+              </section>
+            }
+          </div>
+        }
+
+        @if (tab() === 'people') {
+          <div class="ax-row">
+            <input type="search" class="s-search" [value]="q()" (input)="q.set($any($event.target).value)" placeholder="Search name or email" aria-label="Search people">
+            <select (change)="fType.set($any($event.target).value)" aria-label="User type"><option value="all">All types</option>@for (t of x.types; track t.key) { <option [value]="t.key">{{ t.label }}</option> }</select>
+            <select (change)="fUnit.set($any($event.target).value)" aria-label="Unit"><option value="all">Everywhere</option>@for (u of tree(); track u.id) { <option [value]="u.id">{{ indent(u.depth) }}{{ u.name }}</option> }</select>
+            <span class="s-grow"></span>@if (x.can_invite) { <button type="button" class="s-btn s-primary" (click)="inviting.set(!inviting())">Invite person</button> }
+          </div>
+          @if (inviting()) {
+            <div class="s-card ax-form">
+              <label>Email<input #ie type="email" placeholder="name@company.com" style="width: 220px"></label>
+              <label>Name<input #iname placeholder="Optional" style="width: 150px"></label>
+              <label>Type<select (change)="inv.set({ type: $any($event.target).value, unit: '' })">@for (t of x.types; track t.key) { <option [value]="t.key" [selected]="t.key === inv().type">{{ t.label }}</option> }</select></label>
+              <label>Where<select (change)="inv.set({ type: inv().type, unit: $any($event.target).value })"><option value="">Pick a unit</option>@for (u of inviteUnits(); track u.id) { <option [value]="u.id">{{ u.name }}</option> }</select></label>
+              <label>Role<select #ir>@for (r of inviteRoles(); track r.key) { <option [value]="r.key">{{ r.label }}</option> }</select></label>
+              <button type="button" class="s-btn s-primary" [disabled]="!inv().unit || !inviteRoles().length" (click)="invite(ie.value, iname.value, ir.value)">{{ inv().type === 'service' ? 'Make account' : 'Send invite' }}</button>
+              <button type="button" class="s-link" (click)="inviting.set(false)">Cancel</button>
+              @if (typeOf(inv().type); as t) { <span class="s-muted" style="flex-basis: 100%">{{ t.label }}: {{ t.who }}. {{ t.sign_in }}.{{ t.expiry_days ? ' Access ends after ' + t.expiry_days + ' days.' : '' }}{{ t.teams_only ? ' Roles in teams only.' : '' }}</span> }
+            </div>
+          }
+          <div class="s-card s-scroll"><table class="s-stack"><thead><tr><th>Person</th><th>Type</th><th>Roles</th><th>Status</th><th>Last active</th></tr></thead><tbody>
+            @for (p of people(); track p.id) {
+              <tr class="click" (click)="openUser.set(openUser() === p.id ? '' : p.id)" (keydown.enter)="openUser.set(openUser() === p.id ? '' : p.id)" tabindex="0" [attr.aria-expanded]="openUser() === p.id">
+                <td data-l="Person">{{ p.name }}<small>{{ p.email }}</small></td><td data-l="Type">{{ typeName(p.type) }}</td>
+                <td data-l="Roles" style="white-space: normal">@for (g of p.grants; track g.id) { <span class="ax-g" style="padding-right: 9px"><b>{{ g.role_label }}</b> · {{ g.unit_name }}</span> } @empty { <span class="s-muted">No roles</span> }</td>
+                <td data-l="Status"><span [class]="'ax-st ' + p.state">{{ stateText(p) }}</span></td><td data-l="Last active" class="s-muted">{{ ago(p.last_active) }}</td>
+              </tr>
+              @if (openUser() === p.id) {
+                <tr class="ax-open"><td colspan="5"><div style="display: grid; gap: 12px">
+                  <div class="ax-row">
+                    <label class="s-muted">Type <select [disabled]="!p.can_edit" (change)="update('user', p.id, { type: $any($event.target).value })">@for (t of x.types; track t.key) { <option [value]="t.key" [selected]="t.key === p.type">{{ t.label }}</option> }</select></label>
+                    @if (p.state !== 'invited') { <label class="s-muted">Status <select [disabled]="!p.can_edit" (change)="update('user', p.id, { status: $any($event.target).value })"><option value="active" [selected]="p.status === 'active'">Active</option><option value="suspended" [selected]="p.status === 'suspended'">Suspended</option></select></label> }
+                    @if (p.expires || typeOf(p.type)?.expiry_days) { <label class="s-muted">Access ends <input type="date" [disabled]="!p.can_edit" [value]="(p.expires || '').slice(0, 10)" (change)="update('user', p.id, { expires: $any($event.target).value })"></label> }
+                    @if (p.state === 'invited' && p.can_edit) { <button type="button" class="s-btn" (click)="update('user', p.id, { resend: true }, 'Invite sent again.')">Resend invite</button> }
+                    <span class="s-grow"></span>
+                    @if (p.can_remove) { <button type="button" class="s-btn s-danger" (click)="removeUser(p)">Remove from organization</button> }
+                    @if (!p.can_edit) { <span class="s-muted">{{ p.id === x.actor ? 'This is you: another admin changes your access.' : 'You can only change roles in the units you manage.' }}</span> }
+                  </div>
+                  <div><b style="font-size: 13px">Roles</b><div>
+                    @for (g of p.grants; track g.id) { <span class="ax-g"><b>{{ g.role_label }}</b> in {{ g.unit_name }}@if (g.can_remove) { <button type="button" (click)="removeGrant(g)" [attr.aria-label]="'Take away ' + g.role_label + ' in ' + g.unit_name">✕</button> } @else { <span style="width: 5px"></span> }</span> }
+                  </div>
+                  @if (grantUnits().length) { <div class="ax-row" style="margin-top: 6px">
+                    <select (change)="grantUnit.set($any($event.target).value)" aria-label="Unit"><option value="">Add a role in…</option>@for (u of grantUnits(); track u.id) { <option [value]="u.id">{{ u.name }}</option> }</select>
+                    @if (unitById(grantUnit()); as gu) { <select #pr aria-label="Role">@for (r of rolesFor(p.id, gu); track r.key) { <option [value]="r.key">{{ r.label }}</option> }</select>
+                      <button type="button" class="s-btn" [disabled]="!rolesFor(p.id, gu).length" (click)="grant(p.id, gu.id, pr.value)">Add role</button>
+                      @if (!rolesFor(p.id, gu).length) { <span class="s-muted">No role you can give fits a {{ typeName(p.type).toLowerCase() }} here.</span> } }
+                  </div> }</div>
+                  <div class="s-scroll"><b style="font-size: 13px">What they can do</b>
+                    <table class="ax-m" style="margin-top: 6px"><thead><tr><th>Area</th>@for (a of x.actions; track a.key) { <th>{{ a.label }}</th> }</tr></thead><tbody>
+                      @for (m of x.modules; track m.key) { <tr><td>{{ m.label }}</td>
+                        @for (a of x.actions; track a.key) { @if (m.actions[a.key]) { @if (p.effective[m.key]?.[a.key]; as why) { <td class="y" [title]="m.actions[a.key] + ': ' + why.join(', ')">✓</td> } @else { <td [title]="m.actions[a.key] + ': no'"></td> } } @else { <td class="na">·</td> } }
+                      </tr> }
+                    </tbody></table>
+                    <span class="s-muted">Hover a tick to see which role allows it. Each role works only in the unit it was given in and the units under it.</span>
+                  </div>
+                </div></td></tr>
+              }
+            } @empty { <tr><td colspan="5" class="s-muted">Nobody matches.</td></tr> }
+          </tbody></table></div>
+        }
+
+        @if (tab() === 'roles') {
+          <div class="ax-split">
+            <nav class="s-card ax-roles" aria-label="Roles">
+              @for (lv of roleGroups(); track lv.label) { <h5>{{ lv.label }}</h5>
+                @for (r of lv.roles; track r.key) { <button type="button" class="ax-node" [class.on]="r.key === roleKey()" (click)="pickRole(r)"><span>{{ r.label }}</span><small>{{ r.people }}</small></button> } }
+            </nav>
+            @if (draft(); as r) {
+              <section class="s-card ax-panel">
+                <h3>@if (!r.system && x.can_manage_roles) { <input [value]="r.label" (input)="edit({ label: $any($event.target).value })" aria-label="Role name" style="font-size: 15px; font-weight: 600"> } @else { {{ r.label }} }
+                  <span class="ax-lv">{{ r.system ? 'System role' : 'Custom role' }}</span><span class="s-grow"></span>
+                  @if (x.can_manage_roles) { <button type="button" class="s-btn" (click)="duplicate(r)">Duplicate</button> }
+                  @if (!r.system && x.can_manage_roles) { <button type="button" class="s-btn s-danger" (click)="removeRole(r)">Delete</button> }</h3>
+                @if (!r.system && x.can_manage_roles) { <input [value]="r.about" (input)="edit({ about: $any($event.target).value })" aria-label="What this role is for" placeholder="What this role is for"> } @else { <span>{{ r.about }}</span> }
+                <div class="ax-row s-muted"><span>Can be given in: {{ givenIn(r.level) }}</span><span>·</span><span>{{ r.people }} {{ r.people === 1 ? 'person holds' : 'people hold' }} it</span><span>·</span><span>Allowed for: {{ typesAllowing(r.key) || 'no user type' }}</span>
+                  @if (!r.system && x.can_manage_roles) { <label>Lowest unit <select (change)="edit({ level: $any($event.target).value })">@for (l of x.levels; track l.key) { <option [value]="l.key" [selected]="l.key === r.level">{{ l.label }}</option> }</select></label>
+                    <label class="ax-row" style="gap: 4px"><input type="checkbox" [checked]="r.mask_numbers" (change)="edit({ mask_numbers: $any($event.target).checked })"> Mask phone numbers</label> }
+                  @else if (r.mask_numbers) { <span>·</span><span>Phone numbers masked</span> }</div>
+                <div class="s-scroll"><table class="ax-m"><thead><tr><th>Area</th>@for (a of x.actions; track a.key) { <th>{{ a.label }}</th> }</tr></thead><tbody>
+                  @for (m of x.modules; track m.key) { <tr><td>{{ m.label }}</td>
+                    @for (a of x.actions; track a.key) { @if (m.actions[a.key]) { <td [title]="m.actions[a.key]">
+                      @if (!r.system && x.can_manage_roles) { <input type="checkbox" [checked]="has(r, m.key, a.key)" (change)="toggle(m.key, a.key)" [attr.aria-label]="m.label + ': ' + m.actions[a.key]"> }
+                      @else if (has(r, m.key, a.key)) { <span style="color: var(--s-good); font-weight: 600">✓</span> }</td> } @else { <td class="na">·</td> } }
+                  </tr> }
+                </tbody></table></div>
+                @if (r.system) { <span class="s-muted">System roles are fixed so everyone means the same thing by them. Duplicate one to make your own.</span> }
+                @else if (x.can_manage_roles) { <div class="ax-row"><span class="s-grow"></span><button type="button" class="s-btn" (click)="pickRole(r)" [disabled]="!roleDirty()">Undo</button>
+                  <button type="button" class="s-btn s-primary" [disabled]="!roleDirty()" (click)="saveRole(r)">Save role</button></div> }
+              </section>
+            }
+          </div>
+        }
+
+        @if (tab() === 'types') {
+          <p class="s-muted" style="margin: 0">A user type sets which roles a person may ever hold, how they sign in and how long their access lasts.</p>
+          <div class="s-card s-scroll"><table class="s-stack"><thead><tr><th>Type</th><th>Sign-in</th><th>Roles they can hold</th><th>Two-step sign-in</th><th>Access ends after</th><th class="num">People</th></tr></thead><tbody>
+            @for (t of x.types; track t.key) { <tr>
+              <td data-l="Type" style="white-space: normal"><b>{{ t.label }}</b><small>{{ t.who }}{{ t.teams_only ? ' · roles in teams only' : '' }}</small></td>
+              <td data-l="Sign-in" class="s-muted" style="white-space: normal">{{ t.sign_in }}</td>
+              <td data-l="Roles" style="white-space: normal; min-width: 260px">@for (r of x.roles; track r.key) { @if (x.can_manage_roles || t.roles.includes(r.key)) {
+                <button type="button" class="ax-tog" [class.on]="t.roles.includes(r.key)" [disabled]="!x.can_manage_roles" [attr.aria-pressed]="t.roles.includes(r.key)" (click)="toggleTypeRole(t, r.key)">{{ r.label }}</button> } }</td>
+              <td data-l="Two-step sign-in"><input type="checkbox" class="s-check" style="width: 18px; height: 18px" [checked]="t.mfa" [disabled]="!x.can_manage_roles || t.key === 'service'" (change)="update('type', t.key, { mfa: $any($event.target).checked })" [attr.aria-label]="'Two-step sign-in for ' + t.label"></td>
+              <td data-l="Access ends after"><input type="number" min="0" max="730" style="width: 70px" [value]="t.expiry_days" [disabled]="!x.can_manage_roles" (change)="update('type', t.key, { expiry_days: +$any($event.target).value })" [attr.aria-label]="'Days of access for ' + t.label"> <span class="s-muted">{{ t.expiry_days ? 'days' : 'never' }}</span></td>
+              <td data-l="People" class="num">{{ t.people }}</td>
+            </tr> }
+          </tbody></table></div>
+        }
+        }
+      } @else { <p class="s-empty">{{ msg() || 'Loading team and access…' }}</p> }
+    </div>
+  `,
+})
+export class AccessComponent {
+  readonly source = input.required<AccessSource>();
+  readonly page = input(false);
+  protected readonly TABS: [AccessTab, string][] = [['structure', 'Org structure'], ['people', 'People'], ['roles', 'Roles'], ['types', 'User types']];
+  protected readonly v = signal<AccessView | null>(null); protected readonly viewAs = signal(''); protected readonly tab = signal<AccessTab>('structure');
+  protected readonly msg = signal(''); protected readonly bad = signal(false);
+  protected readonly unitId = signal(''); protected readonly grantFor = signal(''); protected readonly openUser = signal(''); protected readonly grantUnit = signal('');
+  protected readonly q = signal(''); protected readonly fType = signal('all'); protected readonly fUnit = signal('all');
+  protected readonly inviting = signal(false); protected readonly inv = signal<{ type: string; unit: string }>({ type: 'employee', unit: '' });
+  protected readonly roleKey = signal(''); protected readonly draft = signal<AccessRole | null>(null);
+  constructor() { effect(() => { const s = this.source(); const as = this.viewAs(); untracked(() => this.load(s, as)); }); }
+  private async load(s = this.source(), as = this.viewAs(), again = true): Promise<void> {
+    try { this.take(await s.load(as)); } catch { if (again) setTimeout(() => this.load(s, as, false), 1200); else this.say('Could not load team and access.', true); }
+  }
+  private take(v: AccessView): void {
+    this.v.set(v);
+    if (!v.units.some((u) => u.id === this.unitId())) this.unitId.set(this.tree()[0]?.id || '');
+    const r = v.roles.find((x) => x.key === this.roleKey()) || v.roles[0];
+    if (r && (!this.draft() || !this.roleDirty() || this.draft()!.key !== r.key)) this.pickRole(r);
+  }
+  private say(m: string, bad = false): void { this.msg.set(m); this.bad.set(bad); }
+  private async run(p: Promise<AccessView>, done: string): Promise<boolean> {
+    try { const v = await p; this.take(v); this.say(v.note || done); return true; }
+    catch (e) { this.say(errText(e, (e as Error)?.message || 'Could not save.'), true); return false; }
+  }
+  protected preview(id: string): void { this.viewAs.set(id); this.openUser.set(''); this.msg.set(''); }
+  protected actorName(): string { const x = this.v(); return x?.people_to_preview.find((p) => p.id === x.actor)?.name || 'them'; }
+
+  // Structure
+  protected readonly tree = computed(() => {
+    const units = this.v()?.units || []; const ids = new Set(units.map((u) => u.id)); const out: (AccessUnit & { depth: number })[] = [];
+    const walk = (u: AccessUnit, depth: number) => { out.push({ ...u, depth }); units.filter((k) => k.parent === u.id).forEach((k) => walk(k, depth + 1)); };
+    units.filter((u) => !u.parent || !ids.has(u.parent)).forEach((u) => walk(u, 0)); return out;
+  });
+  protected readonly unit = computed(() => this.v()?.units.find((u) => u.id === this.unitId()) || null);
+  protected unitById(id: string): AccessUnit | null { return this.v()?.units.find((u) => u.id === id) || null; }
+  protected readonly hereRows = computed(() => (this.v()?.users || []).flatMap((p) => p.grants.filter((g) => g.unit === this.unitId()).map((g) => ({ p, g }))));
+  protected readonly fromAbove = computed(() => {
+    const units = this.v()?.units || []; const above: string[] = [];
+    for (let u = this.unit(); u?.parent; u = units.find((k) => k.id === u!.parent) || null) above.push(u.parent);
+    return (this.v()?.users || []).flatMap((p) => p.grants.filter((g) => above.includes(g.unit)).map((g) => ({ p, g })));
+  });
+  protected indent(d: number): string { return '   '.repeat(d); }
+  protected levelName(l: string): string { return this.v()?.levels.find((x) => x.key === l)?.label || l; }
+  protected typeOf(k: string): AccessType | undefined { return this.v()?.types.find((t) => t.key === k); }
+  protected typeName(k: string): string { return this.typeOf(k)?.label || k; }
+  /** The roles the viewer may give this person in this unit: allowed here, by the person's type, and not already held. */
+  protected rolesFor(userId: string, u: AccessUnit): AccessRole[] {
+    const x = this.v(); const p = x?.users.find((y) => y.id === userId); if (!x || !p) return [];
+    return this.rolesForType(p.type, u).filter((r) => !p.grants.some((g) => g.role === r.key && g.unit === u.id));
+  }
+  private rolesForType(type: string, u: AccessUnit): AccessRole[] {
+    const t = this.typeOf(type); if (!t || (t.teams_only && u.level !== 'team')) return [];
+    return (this.v()?.roles || []).filter((r) => u.roles_here.includes(r.key) && t.roles.includes(r.key));
+  }
+  protected rename(u: AccessUnit, name: string): void { if (name.trim() && name.trim() !== u.name) this.run(this.source().update('unit', u.id, { name: name.trim() }, this.viewAs()), `Renamed to ${name.trim()}.`); }
+  protected async addUnit(u: AccessUnit, el: HTMLInputElement): Promise<void> {
+    const name = el.value.trim(); if (!name) return;
+    if (await this.run(this.source().create('unit', { parent: u.id, name }, this.viewAs()), `Added ${name}.`)) el.value = '';
+  }
+  protected removeUnit(u: AccessUnit): void { if (confirm(`Delete ${u.name}?`)) { this.unitId.set(u.parent || ''); this.run(this.source().remove('unit', u.id, this.viewAs()), `Deleted ${u.name}.`); } }
+  protected async grant(user: string, unit: string, role: string): Promise<void> {
+    if (await this.run(this.source().create('grant', { user, unit, role }, this.viewAs()), 'Role given.')) { this.grantFor.set(''); this.grantUnit.set(''); }
+  }
+  protected removeGrant(g: AccessGrant): void { this.run(this.source().remove('grant', g.id, this.viewAs()), `Took away ${g.role_label} in ${g.unit_name}.`); }
+
+  // People
+  protected readonly people = computed(() => {
+    const t = this.q().trim().toLowerCase(); const units = this.v()?.units || [];
+    const under = (id: string) => { const out = [id]; for (const u of units) if (u.parent && out.includes(u.parent)) out.push(u.id); return out; };
+    const inUnit = this.fUnit() === 'all' ? null : under(this.fUnit());
+    return (this.v()?.users || []).filter((p) => (this.fType() === 'all' || p.type === this.fType()) && (!inUnit || p.grants.some((g) => inUnit.includes(g.unit)))
+      && (!t || `${p.name} ${p.email}`.toLowerCase().includes(t)));
+  });
+  protected readonly grantUnits = computed(() => this.tree().filter((u) => u.roles_here.length));
+  protected readonly inviteUnits = computed(() => this.tree().filter((u) => this.rolesForType(this.inv().type, u).length));
+  protected readonly inviteRoles = computed(() => { const u = this.unitById(this.inv().unit); return u ? this.rolesForType(this.inv().type, u) : []; });
+  protected async invite(email: string, name: string, role: string): Promise<void> {
+    if (await this.run(this.source().create('user', { email: email.trim(), name: name.trim(), type: this.inv().type, unit: this.inv().unit, role }, this.viewAs()), 'Invited.')) this.inviting.set(false);
+  }
+  protected update(kind: AccessKind, id: string, body: Record<string, unknown>, done = 'Saved.'): void { this.run(this.source().update(kind, id, body, this.viewAs()), done).then((ok) => { if (!ok) this.load(); }); }
+  protected removeUser(p: AccessUser): void { if (confirm(`Remove ${p.name} from the organization? They lose every role and cannot sign in.`)) { this.openUser.set(''); this.run(this.source().remove('user', p.id, this.viewAs()), `Removed ${p.name}.`); } }
+  protected stateText(p: AccessUser): string {
+    if (p.state === 'active' && p.expires) { const d = Math.ceil((Date.parse(p.expires) - Date.now()) / 864e5); return d <= 30 ? `Active · ends in ${d} day${d === 1 ? '' : 's'}` : 'Active'; }
+    return ({ active: 'Active', invited: 'Invited, not joined', suspended: 'Suspended', expired: 'Access ended' } as Record<string, string>)[p.state] || p.state;
+  }
+  protected ago(iso: string | null): string {
+    if (!iso) return 'Never'; const h = (Date.now() - Date.parse(iso)) / 3600e3;
+    return h < 1 ? 'Just now' : h < 24 ? `${Math.floor(h)} h ago` : h < 48 ? 'Yesterday' : h < 24 * 60 ? `${Math.floor(h / 24)} days ago` : when(iso);
+  }
+
+  // Roles
+  protected readonly roleGroups = computed(() => {
+    const x = this.v(); if (!x) return [];
+    const sys = (l: string) => x.roles.filter((r) => r.system && r.level === l);
+    return [{ label: 'Organization roles', roles: sys('org') }, { label: 'Sub-org roles', roles: sys('sub_org') }, { label: 'Team roles', roles: sys('team') }, { label: 'Custom roles', roles: x.roles.filter((r) => !r.system) }].filter((g) => g.roles.length);
+  });
+  protected readonly roleDirty = computed(() => { const d = this.draft(); const r = this.v()?.roles.find((x) => x.key === d?.key); return !!d && !!r && JSON.stringify({ ...d, people: 0 }) !== JSON.stringify({ ...r, people: 0 }); });
+  protected pickRole(r: AccessRole): void { this.roleKey.set(r.key); this.draft.set(structuredClone(this.v()?.roles.find((x) => x.key === r.key) || r)); }
+  protected edit(part: Partial<AccessRole>): void { const d = this.draft(); if (d) this.draft.set({ ...d, ...part }); }
+  protected has(r: AccessRole, m: string, a: string): boolean { return !!r.perms[m]?.includes(a); }
+  protected toggle(m: string, a: string): void {
+    const d = this.draft(); if (!d) return; const cur = d.perms[m] || [];
+    // Doing anything in an area needs seeing it: ticking an action ticks View, unticking View clears the area.
+    const next = cur.includes(a) ? (a === 'view' ? [] : cur.filter((x) => x !== a)) : [...new Set([...cur, a, 'view'])];
+    this.edit({ perms: { ...d.perms, [m]: next } });
+  }
+  protected givenIn(l: AccessLevel): string { return l === 'org' ? 'the whole organization only' : l === 'sub_org' ? 'a sub-org or the whole organization' : 'a team, a sub-org or the whole organization'; }
+  protected typesAllowing(k: string): string { return (this.v()?.types || []).filter((t) => t.roles.includes(k)).map((t) => t.label).join(', '); }
+  protected async duplicate(r: AccessRole): Promise<void> {
+    const before = new Set(this.v()?.roles.map((x) => x.key));
+    if (await this.run(this.source().create('role', { from: r.key, label: `${r.label} (custom)` }, this.viewAs()), `Made a copy of ${r.label}. Change it and save.`)) {
+      const made = this.v()?.roles.find((x) => !before.has(x.key)); if (made) this.pickRole(made);
+    }
+  }
+  protected saveRole(r: AccessRole): void { this.run(this.source().update('role', r.key, { label: r.label, about: r.about, level: r.level, mask_numbers: !!r.mask_numbers, perms: r.perms }, this.viewAs()), `Saved ${r.label}.`); }
+  protected removeRole(r: AccessRole): void { if (confirm(`Delete the role ${r.label}?`)) { this.roleKey.set(''); this.run(this.source().remove('role', r.key, this.viewAs()), `Deleted ${r.label}.`); } }
+
+  // User types
+  protected toggleTypeRole(t: AccessType, k: string): void { this.update('type', t.key, { roles: t.roles.includes(k) ? t.roles.filter((x) => x !== k) : [...t.roles, k] }); }
+}

@@ -163,6 +163,11 @@ export const routes: Routes = [
         title: 'Security | Clarix'
       },
       {
+        path: 'admin/access',
+        loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixAccessPage),
+        title: 'Team and access | Clarix'
+      },
+      {
         path: 'admin/audit-log',
         loadComponent: () => import('./modules/workflows/pages/shared-screens/shared-screen-routes').then((m) => m.ClarixAuditPage),
         title: 'Audit log | Clarix'

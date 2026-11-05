@@ -20,6 +20,7 @@ import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { PEOPLE, auditRequest, auditView, AUDIT_COLUMNS, securityView, saveSecurity, testSso, newScimToken, deleteContact, isDeleted, supplierView } from './wave4.mjs';
+import { accessView, accessCreate, accessUpdate, accessRemove, accessActorFor } from './access.mjs';
 import { liveCalls, liveAction, BUYER_LIST, telephonyView, testCarrier, connectCarrier, disconnectCarrier, saveSlots, copilotAnswer, COPILOT_SUGGESTIONS } from './wave3.mjs';
 import { qaScorecard, saveQa, testsView, runTests, scenariosFromCalls, versionsView, saveDraft, publishDraft, setSplit, memoryOf } from './wave2.mjs';
 import { dncScan, dncView, dncAdd, dncRemove, dncSettings, onDnc, alertsView, saveAlerts, resumeCampaign, handlingOf, saveHandling, rerunAnswers, diagnosticsOf } from './wave1.mjs';
@@ -982,6 +983,13 @@ on('GET', '/api/v1/reports/calling/supplier/:phone', (ctx) => { const all = scop
   const acts = ['you', 'agent'].flatMap((lane) => actionNeeded(all, { lane, q: String(ctx.p.phone).replace(/\D/g, '').slice(-10), me: ME() }).rows);
   const v = supplierView(all, ctx.p.phone, acts); v ? ok(v) : fail(404, 'No calls to this number'); });
 on('GET', '/api/v1/reports/calling/security', (ctx) => ok({ ...securityView(), people: PEOPLE }));
+// Team and access: org, sub-orgs, teams, people and roles. ?as= previews the screen as another person.
+const accessAs = (q) => q.get('as') || accessActorFor(USER);
+const accessReply = (ctx, r) => (r.error ? fail(400, r.error) : ok({ ...accessView(accessAs(ctx.q)), note: r.note || '' }));
+on('GET', '/api/v1/reports/calling/access', (ctx) => ok(accessView(accessAs(ctx.q))));
+on('POST', '/api/v1/reports/calling/access/:kind', (ctx) => accessReply(ctx, accessCreate(ctx.p.kind, ctx.body || {}, accessAs(ctx.q))));
+on('PUT', '/api/v1/reports/calling/access/:kind/:id', (ctx) => accessReply(ctx, accessUpdate(ctx.p.kind, ctx.p.id, ctx.body || {}, accessAs(ctx.q))));
+on('DELETE', '/api/v1/reports/calling/access/:kind/:id', (ctx) => accessReply(ctx, accessRemove(ctx.p.kind, ctx.p.id, accessAs(ctx.q))));
 on('PUT', '/api/v1/reports/calling/security', (ctx) => ok(saveSecurity(ctx.body || {})));
 on('POST', '/api/v1/reports/calling/security/sso/test', (ctx) => ok(testSso(ctx.body || {})));
 on('POST', '/api/v1/reports/calling/security/scim/token', (ctx) => ok(newScimToken()));

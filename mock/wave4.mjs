@@ -45,6 +45,7 @@ const AREA = [
   [/\/telephony\/[^/]+\/disconnect$/, 'Telephony', () => 'Disconnected a carrier'],
   [/\/telephony\/slots$/, 'Telephony', () => 'Changed slots or number rotation'],
   [/\/live\/[^/]+\/[a-z]+$/, 'Live calls', (b, m) => `Live call: ${m.input.split('/').pop()}`],
+  [/\/access\/(unit|user|grant|role|type)(\/[^/]+)?$/, 'Team and access', (b, m) => `${m.method === 'DELETE' ? 'Removed' : m.method === 'POST' ? 'Added' : 'Changed'} ${{ unit: 'a sub-org or team', user: 'a person', grant: 'a role for a person', role: 'a role', type: 'a user type' }[m[1]]}${b.name || b.email || b.label ? ': ' + (b.name || b.email || b.label) : b.status ? ': ' + b.status : ''}`],
   [/\/security\/delete-contact$/, 'Security', (b) => (b.confirm ? `Deleted all data for ${b.phone}: ${b.reason || ''}` : `Previewed deleting ${b.phone}`)],
   [/\/security\/scim\/token$/, 'Security', () => 'Generated a new SCIM token'],
   [/\/security\/sso\/test$/, 'Security', () => 'Tested single sign-on'],
@@ -65,7 +66,7 @@ export function auditRequest(method, path, body = {}, who = 'you') {
   const isExport = method === 'GET' && /export|\.xlsx$|\.csv$|template/.test(path);
   if (method === 'GET' && !isExport) return;
   if (method === 'GET') { audit.unshift({ at: nowIso(), who, area: 'Exports', action: `Downloaded ${decodeURIComponent(path.split('/').pop())}`, target: '' }); return; }
-  for (const [re, area, say] of AREA) { const m = re.exec(path); if (!m) continue; m.input = path;
+  for (const [re, area, say] of AREA) { const m = re.exec(path); if (!m) continue; m.input = path; m.method = method;
     audit.unshift({ at: nowIso(), who, area, action: String(say(body || {}, m)).slice(0, 200), target: targetOf(path) }); break; }
   if (audit.length > 2000) audit.length = 2000;
 }

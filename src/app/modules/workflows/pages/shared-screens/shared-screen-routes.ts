@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ReportService } from '../../../dashboard/services/report.service';
 import { CallingReportComponent, CallingReportSource } from '../../../dashboard/components/calling-report/calling-report.component';
-import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, SupplierPageComponent, SupplierSource, SecurityCenterComponent, SecuritySource, AuditLogComponent, AuditSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, SupplierPageComponent, SupplierSource, SecurityCenterComponent, SecuritySource, AuditLogComponent, AuditSource, AccessComponent, AccessSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
 
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
@@ -123,4 +123,14 @@ export class ClarixAuditPage {
   private r = inject(ReportService);
   /** Every change and export, with who did it. */
   readonly source: AuditSource = { load: (p) => firstValueFrom(this.r.auditLog(p)), exportXlsx: (p) => firstValueFrom(this.r.auditExport(p)) };
+}
+
+@Component({ selector: 'app-clarix-access', standalone: true, imports: [AccessComponent], template: `<div class="rx-page"><app-access [source]="source" [page]="true"></app-access></div>` })
+export class ClarixAccessPage {
+  private r = inject(ReportService);
+  /** Org, sub-orgs, teams, people, roles and user types. */
+  readonly source: AccessSource = {
+    load: (as) => firstValueFrom(this.r.access(as)), create: (k, b, as) => firstValueFrom(this.r.accessSend('POST', k, b, as)),
+    update: (k, id, b, as) => firstValueFrom(this.r.accessSend('PUT', `${k}/${encodeURIComponent(id)}`, b, as)), remove: (k, id, as) => firstValueFrom(this.r.accessSend('DELETE', `${k}/${encodeURIComponent(id)}`, {}, as)),
+  };
 }

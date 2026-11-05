@@ -105,6 +105,9 @@ export class ReportService {
   testSso(s: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/security/sso/test`, s)); }
   scimToken(): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/security/scim/token`, {})); }
   deleteContact(b: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/security/delete-contact`, b)); }
+  // Team and access: org, sub-orgs, teams, people, roles and user types. `as` previews the screen as another person.
+  access(as: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/access`, { params: as ? { as } : {} })); }
+  accessSend(method: 'POST' | 'PUT' | 'DELETE', path: string, body: any, as: string): Observable<any> { return this.data(this.http.request<{ data: any }>(method, `${this.callingBase}/access/${path}`, { body: method === 'DELETE' ? undefined : body, params: as ? { as } : {} })); }
   auditLog(p: any): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/audit`, { params: p })); }
   auditExport(p: any): Observable<Blob> { return this.http.get(`${this.callingBase}/audit/export.xlsx`, { params: p, responseType: 'blob' }); }
   actionAct(id: string, a: any): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/follow-ups/actions/${encodeURIComponent(id)}`, a)); }
