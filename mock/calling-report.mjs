@@ -469,26 +469,33 @@ export const FOLLOW_COLUMNS = [['caller_name', 'Caller'], ['phone', 'Phone'], ['
 
 /** The dashboard's small box: what needs a person, what the agent will call again, and the work still running. */
 export function tasksSummary(rows) {
-  const a = actionNeeded(rows); const camps = campaignSummaries(rows);
-  return { follow_ups: a.counts.you, queued: a.counts.agent, overdue: a.counts.overdue, callbacks: a.counts.by_group.you.callback || 0, follow_up_required: a.counts.by_group.you.follow_up || 0,
+  const a = actionNeeded(rows); const camps = campaignSummaries(rows); const by = a.counts.by_kind || {};
+  return { follow_ups: a.counts.you, queued: a.counts.agent, overdue: a.counts.overdue, callbacks: by.callback || 0, follow_up_required: a.counts.by_group.you.follow_up || 0,
     running_campaigns: camps.filter((c) => ['Running', 'Paused'].includes(c.status)).length, not_finished: rows.filter(BOX.in_progress).length };
 }
 
-// ── Action needed: one list of what a person must do, beside what the agent will call again ──
-// Lanes: "you" (manual), "agent" (queued for the agent: retries, callbacks, first calls), "done".
-// Groups: fix_data (not planned: bad data), not_reached (no answer / voicemail / silent / DND / system, retries used up),
-// not_successful (answered but not successful: wrong number, hung up early on every try), follow_up (follow-up required, partial),
-// callback (callback asked: queued with the agent, or needs a person when no time was given or it was missed).
+// ── Action needed: what a person must do, beside what the agent is still calling ──
+// Lanes: "you" (a person acts; shown together under All), "agent" (retries and reschedules, tracking only), "done" (done or rejected).
+// Groups in "you": follow_up (callback tries used up, pending query, escalation, missing info),
+// manual (may need a manual call and a nudge to save our number: not picked up, picked up with no conversation, not successful),
+// fix_data (bad data). Group "agent" has kinds retry and reschedule.
 export const ACTION_GROUPS = [
-  { key: 'fix_data', label: 'Fix the data', hint: 'Not planned: the row could not be called' },
-  { key: 'not_reached', label: 'Not reached', hint: 'No answer, voicemail, silent or blocked after every try' },
-  { key: 'not_successful', label: 'Not successful', hint: 'Answered, but the call could not do its job' },
-  { key: 'follow_up', label: 'Follow-up required', hint: 'The supplier answered; a person acts on it' },
-  { key: 'callback', label: 'Callback', hint: 'The supplier asked to be called back' },
-  { key: 'first_call', label: 'First call', hint: 'Not called yet in a running campaign' },
+  { key: 'follow_up', label: 'Follow up required', hint: 'The supplier needs a person: a missed callback, a pending query, an escalation or missing details', kinds: [
+    { key: 'callback', label: 'Callback missed' }, { key: 'pendency', label: 'Pending query' }, { key: 'escalation', label: 'Escalation' }, { key: 'info', label: 'Missing info' }] },
+  { key: 'manual', label: 'Manual callback', hint: 'The agent could not get through: call from your phone and ask them to save our number', kinds: [
+    { key: 'not_picked', label: 'Not picked up' }, { key: 'no_conversation', label: 'Picked up, no conversation' }, { key: 'not_successful', label: 'Not successful' }] },
+  { key: 'fix_data', label: 'Fix the data', hint: 'The row could not be called', kinds: [{ key: 'bad_data', label: 'Bad data' }] },
+  { key: 'agent', label: 'With the agent', hint: 'Retries and reschedules the agent runs on its own', kinds: [{ key: 'retry', label: 'Retry' }, { key: 'reschedule', label: 'Reschedule' }] },
 ];
+const KIND_LABEL = Object.fromEntries(ACTION_GROUPS.flatMap((g) => g.kinds.map((k) => [k.key, k.label])));
 const DAY_MS = 864e5;
-const fmtAt = (ms) => new Date(ms).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+/** What kind of follow-up an answer needs, from what the supplier said. */
+function followKind(r) {
+  const s = `${r.summary || ''} ${r.status_reason || ''}`.toLowerCase();
+  if (/reject|price|rate|revised|escalat|complain|cannot supply|unavailab|not able to supply|manager|dispute|will not quote|payment terms|not aligned/.test(s)) return 'escalation';
+  if (/mail|email|copy|whatsapp|po number|details|missing|contact|left the company|person|document|invoice|hung up before answering|not covered|answer read/.test(s)) return 'info';
+  return 'pendency';
+}
 /** One row of the list, before a person's own changes. */
 function actionOf(r) {
   const st = callSteps(r); const now = Date.now(); const tries = Number(r.retries) || 0;
@@ -498,76 +505,83 @@ function actionOf(r) {
   const since = r.call_date || r.uploaded_at || null;
   const base = { id: r.id, caller: r.caller_name || r.phone, phone: r.phone, email: r.email || '', campaign: r.campaign, agent: r.agent, owner: r.uploaded_by || '—', last_call: r.call_date || null,
     status: r.call_status, reason: r.status_reason || r.call_status, summary: r.summary || '', made, total, next_at: null, since, row: r };
-  const you = (group, title, detail, extra = {}) => ({ ...base, lane: 'you', group, title, detail, ...extra });
-  const agent = (group, state, title, at = next) => ({ ...base, lane: 'agent', group, state, title, detail: '', next_at: at ? new Date(at).toISOString() : null });
+  const you = (group, kind, title, detail, extra = {}) => ({ ...base, lane: 'you', group, kind, title, detail, ...extra });
+  const agent = (kind, state, title, at = next) => ({ ...base, lane: 'agent', group: 'agent', kind, state, title, detail: '', next_at: at ? new Date(at).toISOString() : null });
   if (st.dnc) return null; // On the do-not-call list: nothing more to do.
   const s = r.call_status, why = r.status_reason || '';
-  if (s === 'Bad data') return you('fix_data', 'Fix the row and upload it again', why || 'It failed the upload check', { made: 0, total: 0 });
-  if (BOX.in_progress(r)) return agent('first_call', 'Waiting', 'First call in a running campaign', null);
+  if (s === 'Bad data') return you('fix_data', 'bad_data', 'Fix the row in the sheet and upload it again', why || 'It failed the upload check', { made: 0, total: 0 });
+  if (BOX.in_progress(r)) return null; // First calls of a running campaign are not retries or reschedules: they stay in Call logs.
   if (why === 'Success: Accepted' || s === 'Internal test call' || s === 'Stopped') return null;
   if (why === 'Success: Callback requested') {
     // The agent places callbacks itself. A person steps in only when the callback tries are used up.
     const rule = (retryRuleOf(r.agent_key || r.agent).by_result || {}).callback || { tries: 1 };
     const left = Math.max(0, (Number(rule.tries) || 1) + 1 - tries);
-    if (left > 0) { const at = Date.parse(r.callback_at || '') || null; return agent('callback', 'Callback booked', at && at > now ? 'Calls back at the time the supplier asked' : 'Calls back at the next free slot', at && at > now ? at : now); }
-    return you('callback', 'Callback missed', `The agent tried ${tries + 1} time${tries ? 's' : ''} at the agreed time and could not reach them. Call them yourself or close this.`);
+    const at = Date.parse(r.callback_at || '') || null;
+    // Agreed time more than a day gone and still not reached: the agent's callback tries are spent.
+    if (left > 0 && !(at && now - at > DAY_MS)) { return agent('reschedule', 'Rescheduled', at && at > now ? 'Calls back at the time the supplier asked' : 'Calls back at the next free slot', at && at > now ? at : now); }
+    return you('follow_up', 'callback', 'Call back: the agent could not reach them at the agreed time', `The agent tried ${tries + 1} time${tries ? 's' : ''} at the agreed time and could not reach them.`);
   }
-  if (why === 'Success: Follow-up required') return you('follow_up', followTask(r), r.summary || 'The supplier answered; read the answer and act on it.');
+  if (why === 'Success: Follow-up required') return you('follow_up', followKind(r), followTask(r), r.summary || 'The supplier answered; read the answer and act on it.');
   if (why === 'Success: Partial') {
-    if (next) return agent('follow_up', 'Calling again', 'Asks again for the POs not confirmed');
-    return you('follow_up', 'Get the remaining POs confirmed', r.summary || 'Some POs were confirmed on the call; the rest were not.');
+    if (next) return agent('retry', 'Retrying', 'Asks again for the POs not confirmed');
+    return you('follow_up', 'pendency', 'Get the remaining POs confirmed', r.summary || 'Some POs were confirmed on the call; the rest were not.');
   }
-  if (why === 'Wrong number') return you('not_successful', 'Wrong number', `Get the right number for ${base.caller} from the buyer, then fix it in the next upload.`);
-  const early = s === 'Answered' && /not given time|left before/i.test(why);
-  if (s === 'Answered' && !early) return you('not_successful', 'Decide the next step', r.summary || why);
-  // Not picked up, or hung up early: the agent retries while tries are left; after that a person takes over.
-  const group = early ? 'not_successful' : 'not_reached';
-  if (next) return agent(group, 'Retrying', `Retry ${made + 1} of ${total}`);
-  const how = s === 'DND' ? 'The number blocks unknown callers. Send our contact card on WhatsApp, or call from your phone.'
-    : early ? 'They hung up early on every try. Call from your phone or send the PO details on WhatsApp.'
-    : `No answer after ${made} call${made === 1 ? '' : 's'}. Try WhatsApp or email, call from your phone, or ask the buyer for another number.`;
-  return you(group, s === 'DND' ? 'Blocked number' : early ? 'Hung up every time' : 'Not reached', how);
+  if (why === 'Wrong number') return you('manual', 'not_successful', 'Get the right number from the buyer and fix it in the next upload', `Wrong number for ${base.caller}.`);
+  const early = s === 'Answered' && /not given time|left before|silent|no response/i.test(why);
+  if (s === 'Answered' && !early) return you('manual', 'not_successful', 'Call them yourself and settle what the agent could not', r.summary || why);
+  // Not picked up, or picked up with no conversation: the agent retries while tries are left; after that a person takes over.
+  const kind = early ? 'no_conversation' : 'not_picked';
+  if (next) return agent('retry', 'Retrying', `Retry ${made + 1} of ${total}`);
+  const how = s === 'DND' ? 'Their number blocks unknown callers. Call from your phone, ask them to save our number, or send our contact card on WhatsApp.'
+    : early ? 'They picked up but did not talk on any try. Call from your phone and ask them to save our number so the agent gets through next time.'
+    : `No answer after ${made} call${made === 1 ? '' : 's'}. Call from your phone and ask them to save our number, or ask the buyer for another number.`;
+  return you('manual', kind, early ? 'Call them yourself: picked up but did not talk' : s === 'DND' ? 'Call them yourself: the number blocks unknown callers' : 'Call them yourself: not picked up', how);
 }
-/** The list for one lane, with counts, filtered by group, owner and text. */
-export function actionNeeded(rows, { lane = 'you', group = 'all', owner = 'all', q = '', me = '' } = {}) {
+/** The list for one lane, with counts, filtered by group, kind, uploader and text. */
+export function actionNeeded(rows, { lane = 'you', group = 'all', kind = 'all', owner = 'all', q = '', me = '' } = {}) {
   dncScan(rows); // numbers on the do-not-call list drop out of every list
   const now = Date.now(); const all = [];
   for (const r of rows) {
     if (isDeleted(r.phone)) continue;
     const a0 = actionOf(r); if (!a0) continue; const f = followState.get(r.id);
-    // Who does it: the person it was assigned to, else whoever uploaded the sheet. Only manual work is assigned.
-    const asg = assigneeOf(r.id); const a = { ...a0, assignee: a0.lane === 'you' ? (asg?.to || (a0.owner !== '—' ? a0.owner : '')) : '', assigned_by: asg?.by || '' };
+    const asg = assigneeOf(r.id); const a = { ...a0, kind_label: KIND_LABEL[a0.kind] || '', assignee: a0.lane === 'you' ? (asg?.to || (a0.owner !== '—' ? a0.owner : '')) : '', assigned_by: asg?.by || '' };
     if (f?.state === 'done' || f?.state === 'dismissed') { all.push({ ...a, lane: 'done', closed: f.state, closed_by: f.by, closed_at: f.at, note: f.note || '' }); continue; }
-    if (f?.state === 'queued' && a.lane === 'you') { all.push({ ...a, lane: 'agent', state: 'Sent back', title: `Sent back by ${f.by}`, next_at: f.next_at, assignee: '' }); continue; }
+    if (f?.state === 'queued' && a.lane === 'you') { all.push({ ...a, lane: 'agent', group: 'agent', kind: 'retry', kind_label: 'Retry', state: 'Retrying', title: `Sent back by ${f.by}`, next_at: f.next_at, assignee: '' }); continue; }
     all.push(a);
   }
-  const counts = { you: 0, agent: 0, done: 0, overdue: 0, by_group: { you: {}, agent: {}, done: {} } };
-  for (const a of all) { counts[a.lane]++; counts.by_group[a.lane][a.group] = (counts.by_group[a.lane][a.group] || 0) + 1; if (a.lane === 'you' && a.since && now - Date.parse(a.since) > 2 * DAY_MS) counts.overdue++; }
+  const counts = { you: 0, agent: 0, done: 0, overdue: 0, by_group: { you: {}, agent: {}, done: {} }, by_kind: {} };
+  for (const a of all) {
+    counts[a.lane]++; counts.by_group[a.lane][a.group] = (counts.by_group[a.lane][a.group] || 0) + 1;
+    if (a.lane !== 'done') counts.by_kind[a.kind] = (counts.by_kind[a.kind] || 0) + 1;
+    if (a.lane === 'you' && a.since && now - Date.parse(a.since) > 2 * DAY_MS) counts.overdue++;
+  }
   const t = String(q).trim().toLowerCase();
+  // Owner is who uploaded the sheet: "mine" is the signed-in person's uploads.
   const who = owner === 'mine' ? me : owner;
-  counts.mine = all.filter((a) => a.lane === 'you' && a.assignee === me).length;
-  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (lane !== 'you' || who === 'all' || (who === '' ? !a.assignee : a.assignee === who))
-    && (!t || [a.caller, a.phone, a.campaign, a.title, a.detail, a.reason, a.summary].join(' ').toLowerCase().includes(t)));
+  counts.mine = all.filter((a) => a.lane === 'you' && a.owner === me).length;
+  const list = all.filter((a) => a.lane === lane && (group === 'all' || a.group === group) && (kind === 'all' || a.kind === kind) && (who === 'all' || a.owner === who)
+    && (!t || [a.caller, a.phone, a.campaign, a.title, a.detail, a.reason, a.summary, a.owner].join(' ').toLowerCase().includes(t)));
   const order = Object.fromEntries(ACTION_GROUPS.map((g, i) => [g.key, i]));
-  // To do: oldest first inside each type, so nothing waits forever. Agent: soonest call first. Closed: newest first.
+  // Action needed: oldest first inside each group, so nothing waits forever. Agent: soonest call first. Closed: newest first.
   list.sort((a, b) => (lane === 'agent' ? String(a.next_at || '9').localeCompare(String(b.next_at || '9'))
     : lane === 'done' ? String(b.closed_at).localeCompare(String(a.closed_at))
     : (order[a.group] - order[b.group]) || String(a.since || '').localeCompare(String(b.since || ''))));
-  return { rows: list.map(({ row, ...a }) => a), counts, groups: ACTION_GROUPS, owners: [...new Set([...PEOPLE, ...all.map((a) => a.assignee)])].filter(Boolean).sort(), me, now: new Date(now).toISOString() };
+  const owners = [...new Set(all.map((a) => a.owner))].filter((o) => o && o !== '—').sort();
+  return { rows: list.map(({ row, ...a }) => a), counts, groups: ACTION_GROUPS, owners, me, now: new Date(now).toISOString() };
 }
-/** A person's action on one row: done, dismissed (will not be done, with a reason), reopen, assign, or send back to the agent. */
+/** A person's action on one row: done, rejected (will not be done), reopen, assign, or send back to the agent. */
 export function actionAct(id, { action, note = '', to = '' } = {}, by = 'you') {
   const at = new Date().toISOString();
   if (action === 'done') followState.set(id, { state: 'done', by, at, note: String(note || '').slice(0, 200) });
-  else if (action === 'dismiss') followState.set(id, { state: 'dismissed', by, at, note: String(note || '').slice(0, 200) });
+  else if (action === 'dismiss' || action === 'reject') followState.set(id, { state: 'dismissed', by, at, note: String(note || '').slice(0, 200) });
   else if (action === 'reopen') followState.delete(id);
   else if (action === 'assign') { const r = assign([id], to, by); if (r.error) return r; }
   else if (action === 'requeue') followState.set(id, { state: 'queued', by, at, next_at: new Date(Date.now() + 30 * 60000).toISOString() });
   else return { error: 'Unknown action' };
   return { ok: true };
 }
-export const ACTION_COLUMNS = [['lane', 'List'], ['group', 'Type'], ['title', 'What to do'], ['detail', 'Details'], ['reason', 'Call result'], ['closed', 'Closed as'], ['caller', 'Caller'], ['phone', 'Phone'], ['email', 'Email'], ['campaign', 'Campaign'], ['agent', 'Agent'],
-  ['assignee', 'Assigned to'], ['owner', 'Uploaded by'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['made', 'Calls made'], ['summary', 'Call summary']];
+export const ACTION_COLUMNS = [['lane', 'List'], ['group', 'Status'], ['kind_label', 'Type'], ['title', 'What to do'], ['summary', 'Call summary'], ['reason', 'Call result'], ['closed', 'Closed as'], ['caller', 'Supplier'], ['phone', 'Phone'], ['email', 'Email'],
+  ['campaign', 'Campaign'], ['agent', 'Agent'], ['owner', 'Uploaded by'], ['since', 'Waiting since'], ['last_call', 'Last call'], ['next_at', 'Next call'], ['made', 'Calls made']];
 
 // ── Upload check (ideas doc 2.1): fix what can be fixed, warn on doubtful, reject only what cannot be called ──
 const LIST_SPLIT = /\s*[,;]\s*/;

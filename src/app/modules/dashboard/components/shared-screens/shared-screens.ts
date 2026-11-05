@@ -724,11 +724,15 @@ export class NewCampaignComponent {
 // ── Action needed: what a person must do after the calls, beside what the agent is already handling ──
 export interface ActionRow {
   id: string; caller: string; phone: string; email: string; campaign: string; agent: string; owner: string; last_call: string | null; status: string; reason: string; summary: string;
-  made: number; total: number; since: string | null; next_at: string | null; lane: 'you' | 'agent' | 'done'; group: string; title: string; detail: string; state?: string;
+  made: number; total: number; since: string | null; next_at: string | null; lane: 'you' | 'agent' | 'done'; group: string; kind: string; kind_label: string; title: string; detail: string; state?: string;
   assignee: string; assigned_by?: string; closed?: 'done' | 'dismissed'; closed_by?: string; closed_at?: string; note?: string;
 }
-export interface ActionList { rows: ActionRow[]; counts: { you: number; agent: number; done: number; mine?: number; overdue?: number; by_group: Record<string, Record<string, number>> }; groups: { key: string; label: string; hint: string }[]; owners: string[]; me?: string }
-export interface ActionQuery { lane: string; group: string; owner: string; q: string }
+export interface ActionGroup { key: string; label: string; hint: string; kinds: { key: string; label: string }[] }
+export interface ActionList {
+  rows: ActionRow[]; counts: { you: number; agent: number; done: number; mine?: number; overdue?: number; by_group: Record<string, Record<string, number>>; by_kind?: Record<string, number> };
+  groups: ActionGroup[]; owners: string[]; me?: string;
+}
+export interface ActionQuery { lane: string; group: string; kind: string; owner: string; q: string }
 export type ActionVerb = 'done' | 'dismiss' | 'reopen' | 'requeue' | 'assign';
 export interface FollowUpsSource {
   list(p: ActionQuery): Promise<ActionList>;
@@ -744,141 +748,150 @@ export interface FollowUpsSource {
 function remembered(key: string, fallback: string): string { try { return localStorage.getItem('echo.' + key) ?? fallback; } catch { return fallback; } }
 function remember(key: string, v: string): void { try { localStorage.setItem('echo.' + key, v); } catch { /* storage blocked */ } }
 const DAY = 864e5;
+/** The tabs: All holds the three lists a person acts on; With the agent and Closed sit apart. */
+const AN_TABS = [
+  { key: 'all', lane: 'you', group: 'all', label: 'All' },
+  { key: 'follow_up', lane: 'you', group: 'follow_up', label: 'Follow up required' },
+  { key: 'manual', lane: 'you', group: 'manual', label: 'Manual callback' },
+  { key: 'fix_data', lane: 'you', group: 'fix_data', label: 'Fix the data' },
+  { key: 'agent', lane: 'agent', group: 'all', label: 'With the agent' },
+  { key: 'done', lane: 'done', group: 'all', label: 'Closed' },
+] as const;
 
 @Component({
   selector: 'app-follow-ups-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:click)': 'menuId.set("")', '(document:keydown.escape)': 'menuId.set("")' },
   styles: [CSS + `
-    .an-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-    .an-tab { text-align: left; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 12px; padding: 10px 14px; font: inherit; cursor: pointer; display: grid; gap: 2px; }
-    .an-tab b { font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; } .an-tab span { font-size: 13px; color: var(--s-muted); }
-    .an-tab.on { border: 2px solid var(--s-accent); padding: 9px 13px; background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); } .an-tab.on span { color: var(--s-text); }
-    .an-tab small { color: #b91c1c; font-size: 12px; font-weight: 600; }
     :host .s { align-content: start; grid-auto-rows: max-content; }
+    .an-tabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--s-line); }
+    .an-tab { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--s-muted); font: inherit; font-size: 13.5px; padding: 9px 14px 8px; cursor: pointer; display: inline-flex; gap: 7px; align-items: center; margin-bottom: -1px; }
+    .an-tab b { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; background: var(--s-soft); color: var(--s-muted); border-radius: 999px; padding: 1px 8px; }
+    .an-tab:hover { color: var(--s-text); } .an-tab.on { color: var(--s-text); border-bottom-color: var(--s-accent); font-weight: 600; } .an-tab.on b { background: color-mix(in srgb, var(--s-accent) 14%, var(--s-bg)); color: var(--s-accent); }
+    .an-tab.apart { margin-left: 18px; position: relative; } .an-tab.apart::before { content: ''; position: absolute; left: -10px; top: 9px; bottom: 9px; border-left: 1px solid var(--s-line); }
+    .an-tab.apart + .an-tab.apart { margin-left: 0; } .an-tab.apart + .an-tab.apart::before { display: none; }
+    .an-hint { font-size: 13px; color: var(--s-muted); margin: 0; } .an-hint b { color: #b91c1c; font-weight: 600; }
     .an-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow: visible; min-height: max-content; }
     .an-bar select, .an-bar input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
-    .an-bar input[type=search] { flex: 1 1 200px; }
+    .an-bar input[type=search] { flex: 0 1 260px; }
     .an-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
     .an-chip b { font-variant-numeric: tabular-nums; margin-left: 5px; color: var(--s-muted); font-weight: 600; }
     .an-chip.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-bg)); color: var(--s-accent); font-weight: 600; } .an-chip.on b { color: var(--s-accent); }
-    .an-list { display: grid; }
-    .an-h, .an-r { display: grid; grid-template-columns: 28px minmax(160px, 1.1fr) minmax(200px, 1.6fr) 96px 150px 112px; gap: 10px; align-items: center; padding: 9px 14px; }
-    .an-list.agent .an-h, .an-list.agent .an-r { grid-template-columns: minmax(160px, 1.1fr) minmax(150px, 1fr) 150px minmax(120px, .8fr) minmax(140px, 1fr); }
-    .an-list.done .an-h, .an-list.done .an-r { grid-template-columns: minmax(160px, 1.1fr) minmax(200px, 1.5fr) 120px minmax(160px, 1fr) 44px; }
-    .an-h { font-size: 12px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); padding-top: 8px; padding-bottom: 8px; }
+    .an-list { display: grid; overflow-x: auto; }
+    .an-h, .an-r { display: grid; grid-template-columns: 22px minmax(120px, .9fr) minmax(170px, 1.2fr) minmax(190px, 1.7fr) 92px 52px 252px; gap: 10px; align-items: start; padding: 11px 12px; min-width: 990px; }
+    .an-list.agent .an-h, .an-list.agent .an-r { grid-template-columns: minmax(150px, 1fr) minmax(190px, 1.2fr) minmax(240px, 1.9fr) minmax(110px, .7fr) 150px 120px; min-width: 1040px; }
+    .an-list.done .an-h, .an-list.done .an-r { grid-template-columns: minmax(150px, 1fr) minmax(210px, 1.4fr) minmax(240px, 1.6fr) 112px minmax(140px, .8fr) 92px; min-width: 1040px; }
+    .an-h { font-size: 12px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); padding-top: 8px; padding-bottom: 8px; align-items: center; font-weight: 600; }
     .an-r { border-bottom: 1px solid var(--s-line); font-size: 13px; cursor: pointer; }
     .an-r:hover { background: var(--s-soft); } .an-r.picked { background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
-    .an-list.agent .an-r { cursor: default; }
-    .an-who b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-who span { color: var(--s-muted); font-size: 12px; }
-    .an-what b { display: block; font-weight: 600; } .an-what span { color: var(--s-muted); font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .an-r:focus-visible { outline: 2px solid var(--s-accent); outline-offset: -2px; }
+    .an-who b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-who span { color: var(--s-muted); font-size: 12px; display: block; }
+    .an-who button { border: 0; background: none; padding: 0; font: inherit; color: var(--s-accent); font-size: 12px; cursor: pointer; } .an-who button:hover { text-decoration: underline; }
+    .an-what b { display: block; font-weight: 600; line-height: 1.35; } .an-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .an-tag { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; background: var(--s-soft); color: var(--s-muted); white-space: nowrap; }
+    .an-tag.follow_up { background: color-mix(in srgb, #d97706 13%, var(--s-bg)); color: #92400e; } .an-tag.manual { background: color-mix(in srgb, #2563eb 11%, var(--s-bg)); color: #1e40af; }
+    .an-tag.fix_data { background: color-mix(in srgb, #dc2626 10%, var(--s-bg)); color: #991b1b; } .an-tag.agent { background: color-mix(in srgb, var(--s-accent) 12%, var(--s-bg)); color: var(--s-accent); }
+    .an-sum { line-height: 1.45; color: var(--s-text); } .an-sum span { display: block; color: var(--s-muted); font-size: 12px; margin-top: 3px; }
+    .an-up { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-up span { display: block; color: var(--s-muted); font-size: 12px; }
     .an-age { font-size: 12.5px; color: var(--s-muted); } .an-age.late { color: #b91c1c; font-weight: 600; }
-    .an-av { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; min-width: 0; } .an-av i { font-style: normal; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--s-soft); font-size: 11px; font-weight: 600; flex: none; }
-    .an-av span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .an-ic { display: flex; gap: 4px; justify-content: flex-end; position: relative; }
-    .an-ib { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-muted); display: grid; place-items: center; cursor: pointer; padding: 0; }
-    .an-ib:hover { color: var(--s-text); border-color: var(--s-text); } .an-ib.ok:hover { color: var(--s-good); border-color: var(--s-good); } .an-ib.no:hover { color: #b91c1c; border-color: #b91c1c; }
-    .an-ib svg { width: 16px; height: 16px; }
-    .an-menu { position: fixed; z-index: 960; min-width: 220px; background: var(--s-bg); border: 1px solid var(--s-line); border-radius: 10px; box-shadow: 0 12px 32px -12px rgba(0, 0, 0, .35); padding: 4px; display: grid; }
-    .an-menu button, .an-menu label { text-align: left; border: 0; background: none; color: var(--s-text); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
-    .an-menu button:hover { background: var(--s-soft); } .an-menu hr { border: 0; border-top: 1px solid var(--s-line); margin: 4px 0; }
-    .an-menu select { margin: 2px 10px 6px; border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
-    .an-menu small { color: var(--s-muted); font-size: 12px; padding: 4px 10px 0; }
-    .an-more { grid-column: 2 / -1; display: grid; gap: 6px; padding: 2px 0 10px; font-size: 13px; cursor: default; }
-    .an-more p { margin: 0; } .an-kv { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--s-muted); font-size: 12.5px; }
+    .an-ic { display: flex; gap: 6px; justify-content: flex-end; }
+    .an-b { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .an-b svg { width: 14px; height: 14px; flex: none; }
+    .an-b.ok { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 45%, var(--s-line)); } .an-b.ok:hover { background: color-mix(in srgb, var(--s-good) 10%, var(--s-bg)); }
+    .an-b.no { color: #b91c1c; border-color: color-mix(in srgb, #dc2626 35%, var(--s-line)); } .an-b.no:hover { background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); }
+    .an-b:hover { border-color: var(--s-text); }
     .an-state { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; } .an-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--s-accent); }
     .an-dots { display: inline-flex; gap: 3px; align-items: center; } .an-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--s-line); } .an-dots i.on { background: var(--s-accent); }
     .an-dots span { margin-left: 6px; font-size: 12px; color: var(--s-muted); }
-    .an-lock { display: flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); background: var(--s-soft); border-radius: 12px 12px 0 0; }
+    .an-lock { display: flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); background: var(--s-soft); min-width: 1040px; box-sizing: border-box; }
     .an-out { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; border-radius: 999px; padding: 2px 10px; }
     .an-out.done { color: var(--s-good); background: color-mix(in srgb, var(--s-good) 10%, var(--s-bg)); } .an-out.dismissed { color: #b91c1c; background: color-mix(in srgb, #dc2626 9%, var(--s-bg)); }
     .an-bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--s-accent); background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); border-radius: 10px; font-size: 13px; position: sticky; top: 8px; z-index: 5; }
-    .an-bulk select { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
     .an-ok { color: var(--s-good); font-size: 13px; }
-    .an-check { width: 18px; height: 18px; accent-color: var(--s-accent); cursor: pointer; }
+    .an-check { width: 18px; height: 18px; accent-color: var(--s-accent); cursor: pointer; margin: 0; }
     @media (max-width: 860px) {
-      .an-tabs { grid-template-columns: 1fr 1fr 1fr; } .an-tab b { font-size: 20px; }
-      .an-h { display: none; }
-      .an-r, .an-list.agent .an-r, .an-list.done .an-r { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-areas: 'c w i' 'c t t' 'c m m'; row-gap: 4px; }
-      .an-list.agent .an-r, .an-list.done .an-r { grid-template-columns: minmax(0, 1fr) auto; }
-      .an-r > .an-what { grid-column: 2 / -1; } .an-r > .an-age, .an-r > .an-av { grid-column: 2 / -1; }
-      .an-more { grid-column: 1 / -1; }
+      .an-tab { padding: 8px 10px; } .an-tab.apart { margin-left: 0; } .an-tab.apart::before { display: none; }
+      .an-h { display: none; } .an-lock { min-width: 0; }
+      .an-r, .an-list.agent .an-r, .an-list.done .an-r { grid-template-columns: 28px minmax(0, 1fr); min-width: 0; row-gap: 6px; }
+      .an-list.agent .an-r, .an-list.done .an-r { grid-template-columns: minmax(0, 1fr); }
+      .an-r > :not(.an-check) { grid-column: 2 / -1; } .an-list.agent .an-r > *, .an-list.done .an-r > * { grid-column: 1 / -1; }
+      .an-ic { justify-content: flex-start; }
     }
   `],
   template: `
     <div class="s">
       <div class="s-head">
-        <div><h1 class="s-title">Action needed</h1><p class="s-sub">Calls the agent cannot settle on its own, and what it is already handling.</p></div>
+        <div><h1 class="s-title">Action needed</h1><p class="s-sub">Calls the agent could not settle on its own. Mark each one done or rejected; what the agent is still calling is under With the agent.</p></div>
         <span class="s-grow"></span>
         <button type="button" class="s-btn" (click)="exportList()" [title]="'Export the ' + rows().length + ' rows shown'">Export</button>
       </div>
-      <div class="an-tabs" role="tablist" aria-label="List">
-        <button type="button" role="tab" class="an-tab" [class.on]="lane() === 'you'" [attr.aria-selected]="lane() === 'you'" (click)="setLane('you')"><b>{{ count('you') }}</b><span>To do</span>@if (data()?.counts?.overdue) { <small>{{ data()!.counts.overdue }} waiting over 2 days</small> }</button>
-        <button type="button" role="tab" class="an-tab" [class.on]="lane() === 'agent'" [attr.aria-selected]="lane() === 'agent'" (click)="setLane('agent')"><b>{{ count('agent') }}</b><span>With the agent</span></button>
-        <button type="button" role="tab" class="an-tab" [class.on]="lane() === 'done'" [attr.aria-selected]="lane() === 'done'" (click)="setLane('done')"><b>{{ count('done') }}</b><span>Closed</span></button>
+      <div class="an-tabs" role="tablist" aria-label="Status">
+        @for (t of TABS; track t.key) {
+          <button type="button" role="tab" class="an-tab" [class.apart]="t.lane !== 'you'" [class.on]="tab() === t.key" [attr.aria-selected]="tab() === t.key" (click)="setTab(t.key)" [title]="tabHint(t.key)">{{ t.label }}<b>{{ tabCount(t.key) }}</b></button>
+        }
       </div>
+      <p class="an-hint">{{ tabHint(tab()) }}@if (cur().lane === 'you' && data()?.counts?.overdue) { · <b>{{ data()!.counts.overdue }} waiting over 2 days</b> }</p>
       <div class="an-bar">
-        <button type="button" class="an-chip" [class.on]="group() === 'all'" [attr.aria-pressed]="group() === 'all'" (click)="group.set('all')">All<b>{{ count(lane()) }}</b></button>
-        @for (g of groupsHere(); track g.key) { <button type="button" class="an-chip" [class.on]="group() === g.key" [attr.aria-pressed]="group() === g.key" (click)="group.set(g.key)" [title]="g.hint">{{ g.label }}<b>{{ g.count }}</b></button> }
+        @if (kindsHere().length > 1) {
+          <button type="button" class="an-chip" [class.on]="kind() === 'all'" [attr.aria-pressed]="kind() === 'all'" (click)="kind.set('all')">Every type</button>
+          @for (k of kindsHere(); track k.key) { <button type="button" class="an-chip" [class.on]="kind() === k.key" [attr.aria-pressed]="kind() === k.key" (click)="kind.set(k.key)">{{ k.label }}<b>{{ k.count }}</b></button> }
+        }
         <span class="s-grow"></span>
-        @if (lane() === 'you') { <select (change)="setOwner($any($event.target).value)" aria-label="Assigned to"><option value="all" [selected]="owner() === 'all'">Everyone</option><option value="mine" [selected]="owner() === 'mine'">Assigned to me ({{ data()?.counts?.mine ?? 0 }})</option><option value="" [selected]="owner() === ''">Unassigned</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select> }
+        <select (change)="setOwner($any($event.target).value)" aria-label="Uploaded by"><option value="all" [selected]="owner() === 'all'">Uploaded by anyone</option><option value="mine" [selected]="owner() === 'mine'">Uploaded by me</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select>
         <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier, phone, campaign" aria-label="Search">
       </div>
       @if (msg()) { <span class="an-ok" role="status">{{ msg() }}</span> }
       @if (sel().length) {
         <div class="an-bulk"><b>{{ sel().length }} selected</b>
-          <button type="button" class="s-btn s-primary" (click)="bulk('done')">Mark done</button><button type="button" class="s-btn" (click)="bulk('dismiss')">Dismiss</button>
-          <select (change)="bulkTo.set($any($event.target).value)" aria-label="Assign to"><option value="">Assign to…</option>@for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }</select>
-          <button type="button" class="s-btn" [disabled]="!bulkTo()" (click)="bulk('assign')">Assign</button><span class="s-grow"></span><button type="button" class="s-btn" (click)="sel.set([])">Clear</button>
+          <button type="button" class="an-b ok" (click)="bulk('done')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>Mark done</button>
+          <button type="button" class="an-b no" (click)="bulk('dismiss')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>Reject</button>
+          <span class="s-grow"></span><button type="button" class="s-btn" (click)="sel.set([])">Clear</button>
         </div>
       }
 
-      <div class="s-card an-list" [class.agent]="lane() === 'agent'" [class.done]="lane() === 'done'">
-        @if (lane() === 'you') {
-          <div class="an-h"><input type="checkbox" class="an-check" [checked]="allPicked()" (change)="pickAll($any($event.target).checked)" aria-label="Select every row on this page"><span>Supplier</span><span>What to do</span><span>Waiting</span><span>Assigned to</span><span></span></div>
+      <div class="s-card an-list" [class.agent]="cur().lane === 'agent'" [class.done]="cur().lane === 'done'">
+        @if (cur().lane === 'you') {
+          <div class="an-h"><input type="checkbox" class="an-check" [checked]="allPicked()" (change)="pickAll($any($event.target).checked)" aria-label="Select every row on this page"><span>Supplier</span><span>What to do</span><span>Call summary</span><span>Uploaded by</span><span>Waiting</span><span></span></div>
           @for (r of pageRows(); track r.id) {
-            <div class="an-r" [class.picked]="sel().includes(r.id)" (click)="toggleOpen(r.id)">
+            <div class="an-r" tabindex="0" [class.picked]="sel().includes(r.id)" (click)="source().openCall(r)" (keydown.enter)="source().openCall(r)" [title]="'Open the call with ' + r.caller">
               <input type="checkbox" class="an-check" [checked]="sel().includes(r.id)" (click)="$event.stopPropagation()" (change)="pick(r.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + r.caller">
-              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
-              <div class="an-what"><b>{{ r.title }}</b><span>{{ subline(r) }}</span></div>
+              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span>@if (source().openSupplier) { <button type="button" (click)="$event.stopPropagation(); source().openSupplier!(r.phone)">All about this supplier</button> }</div>
+              <div class="an-what"><b>{{ r.title }}</b><div class="an-tags"><span [class]="'an-tag ' + r.group">{{ groupLabel(r.group) }}</span>@if (r.kind_label) { <span class="an-tag">{{ r.kind_label }}</span> }</div></div>
+              <div class="an-sum">{{ r.summary || r.detail }}@if (r.summary && r.detail && r.detail !== r.summary) { <span>{{ r.detail }}</span> }<span>{{ r.campaign }} · {{ r.made ? r.made + (r.made === 1 ? ' call' : ' calls') + ' · last ' + when(r.last_call) : 'not called' }}</span></div>
+              <div class="an-up" [title]="r.owner">{{ r.owner === me() ? 'Me' : short(r.owner) }}</div>
               <span class="an-age" [class.late]="late(r)">{{ age(r.since) }}</span>
-              <span class="an-av" [title]="r.assignee || 'Unassigned'"><i>{{ initials(r.assignee) }}</i><span>{{ r.assignee ? (r.assignee === me() ? 'Me' : short(r.assignee)) : 'Unassigned' }}</span></span>
               <div class="an-ic" (click)="$event.stopPropagation()">
-                <button type="button" class="an-ib ok" (click)="act(r, 'done')" title="Mark done" aria-label="Mark done"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg></button>
-                <button type="button" class="an-ib no" (click)="act(r, 'dismiss')" title="Dismiss: will not be done" aria-label="Dismiss"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
-                <button type="button" class="an-ib" (click)="openMenu($event, r.id)" [attr.aria-expanded]="menuId() === r.id" aria-label="More actions" title="More"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button>
+                <button type="button" class="an-b ok" (click)="act(r, 'done')" [attr.aria-label]="'Mark done: ' + r.caller"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>Done</button>
+                <button type="button" class="an-b no" (click)="act(r, 'dismiss')" [attr.aria-label]="'Reject: ' + r.caller" title="Reject: this will not be done"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>Reject</button>
+                <button type="button" class="an-b" (click)="source().openCall(r)" [attr.aria-label]="'Open the call with ' + r.caller"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h4v4M13 3L7 9M11 9.5V13H3V5h3.5"/></svg>Open call</button>
               </div>
-              @if (openId() === r.id) {
-                <div class="an-more" (click)="$event.stopPropagation()"><p>{{ r.detail }}</p>
-                  <div class="an-kv"><span>Campaign: {{ r.campaign }}</span><span>Agent: {{ r.agent }}</span>@if (r.made) { <span>Calls made: {{ r.made }}</span> }<span>Last call: {{ r.last_call ? when(r.last_call) : 'not called' }}</span><span>Uploaded by: {{ r.owner }}</span></div>
-                  @if (r.summary && r.summary !== r.detail) { <p class="s-muted">Call summary: {{ r.summary }}</p> }</div>
-              }
             </div>
           } @empty { <p class="s-empty">{{ emptyText() }}</p> }
         }
-        @if (lane() === 'agent') {
-          <div class="an-lock"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>The agent is handling these: retries and booked callbacks run on their own and cannot be changed here. Anything it cannot settle moves to To do.</div>
-          <div class="an-h"><span>Supplier</span><span>The agent is</span><span>Next attempt</span><span>Attempts</span><span>Campaign</span></div>
+        @if (cur().lane === 'agent') {
+          <div class="an-lock"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>For tracking only: the agent runs these retries and reschedules on its own, so nothing here needs you. Anything it cannot settle moves to Action needed.</div>
+          <div class="an-h"><span>Supplier</span><span>The agent is</span><span>Call summary</span><span>Uploaded by</span><span>Next attempt</span><span>Attempts</span></div>
           @for (r of pageRows(); track r.id) {
-            <div class="an-r">
+            <div class="an-r" tabindex="0" (click)="source().openCall(r)" (keydown.enter)="source().openCall(r)" [title]="'Open the call with ' + r.caller">
               <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
-              <div class="an-what"><span class="an-state"><i></i>{{ r.state }}</span><span>{{ r.title }}</span></div>
+              <div class="an-what"><span class="an-state"><i></i>{{ r.kind_label }}</span><span class="an-sum"><span>{{ r.title }}</span></span></div>
+              <div class="an-sum">{{ r.summary || r.reason }}<span>{{ r.campaign }}</span></div>
+              <div class="an-up" [title]="r.owner">{{ r.owner === me() ? 'Me' : short(r.owner) }}</div>
               <span class="an-age">{{ r.next_at ? nextText(r.next_at) : 'In the current run' }}</span>
               <span class="an-dots" [attr.aria-label]="r.made + ' of ' + r.total + ' attempts'">@for (d of dots(r); track $index) { <i [class.on]="d"></i> }<span>{{ r.made }}/{{ r.total }}</span></span>
-              <span class="an-what"><span>{{ r.campaign }}</span></span>
             </div>
-          } @empty { <p class="s-empty">The agent has nothing queued.</p> }
+          } @empty { <p class="s-empty">The agent has no retries or reschedules queued.</p> }
         }
-        @if (lane() === 'done') {
-          <div class="an-h"><span>Supplier</span><span>What it was</span><span>Outcome</span><span>Closed by</span><span></span></div>
+        @if (cur().lane === 'done') {
+          <div class="an-h"><span>Supplier</span><span>What it was</span><span>Call summary</span><span>Outcome</span><span>Closed by</span><span></span></div>
           @for (r of pageRows(); track r.id) {
-            <div class="an-r" (click)="source().openCall(r)">
+            <div class="an-r" tabindex="0" (click)="source().openCall(r)" (keydown.enter)="source().openCall(r)">
               <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
-              <div class="an-what"><b>{{ r.title }}</b><span>{{ groupLabel(r.group) }}</span></div>
-              <span><span class="an-out" [class.done]="r.closed === 'done'" [class.dismissed]="r.closed === 'dismissed'">{{ r.closed === 'done' ? '✓ Done' : '✕ Dismissed' }}</span></span>
+              <div class="an-what"><b>{{ r.title }}</b><div class="an-tags"><span [class]="'an-tag ' + r.group">{{ groupLabel(r.group) }}</span>@if (r.kind_label) { <span class="an-tag">{{ r.kind_label }}</span> }</div></div>
+              <div class="an-sum">{{ r.summary || r.detail }}</div>
+              <span><span class="an-out" [class.done]="r.closed === 'done'" [class.dismissed]="r.closed === 'dismissed'">{{ r.closed === 'done' ? '✓ Done' : '✕ Rejected' }}</span></span>
               <span class="an-age">{{ short(r.closed_by || '') }} · {{ when(r.closed_at || null) }}</span>
-              <div class="an-ic" (click)="$event.stopPropagation()"><button type="button" class="an-ib" (click)="act(r, 'reopen')" title="Reopen" aria-label="Reopen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 109-3"/><path d="M12 2v3H9"/></svg></button></div>
+              <div class="an-ic" (click)="$event.stopPropagation()"><button type="button" class="an-b" (click)="act(r, 'reopen')" [attr.aria-label]="'Reopen ' + r.caller"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 109-3"/><path d="M12 2v3H9"/></svg>Reopen</button></div>
             </div>
           } @empty { <p class="s-empty">Nothing closed yet.</p> }
         }
@@ -888,79 +901,72 @@ const DAY = 864e5;
             <button type="button" class="s-btn" [disabled]="(page() + 1) * PAGE >= rows().length" (click)="page.set(page() + 1)">Next</button></div>
         }
       </div>
-      @if (menuRow(); as r) {
-        <div class="an-menu" role="menu" [style.top.px]="menuAt().y" [style.left.px]="menuAt().x" (click)="$event.stopPropagation()">
-          <button type="button" role="menuitem" (click)="menuId.set(''); source().openCall(r)">Open the call</button>
-          @if (source().openSupplier) { <button type="button" role="menuitem" (click)="menuId.set(''); source().openSupplier!(r.phone)">All about this supplier</button> }
-          @if (r.group === 'not_reached' || r.group === 'not_successful' || r.group === 'callback') { <button type="button" role="menuitem" (click)="act(r, 'requeue')">Let the agent try once more</button> }
-          <hr><small>Assign to</small>
-          <select (change)="assignTo(r, $any($event.target).value)" aria-label="Assign to"><option value="">{{ r.assignee ? (r.assignee === me() ? 'Me' : r.assignee) : 'Unassigned' }}</option>@for (o of owners(); track o) { @if (o !== r.assignee) { <option [value]="o">{{ o === me() ? 'Me (' + o + ')' : o }}</option> } }</select>
-        </div>
-      }
     </div>
   `,
 })
 export class FollowUpsListComponent {
   readonly source = input.required<FollowUpsSource>();
   protected readonly PAGE = 20;
+  protected readonly TABS = AN_TABS;
   protected readonly Math = Math;
   protected readonly when = when;
-  protected readonly lane = signal('you'); protected readonly group = signal('all'); protected readonly owner = signal(remembered('an.owner', 'all')); protected readonly q = signal('');
+  protected readonly tab = signal<string>('all'); protected readonly kind = signal('all'); protected readonly owner = signal(remembered('an.uploader', 'all')); protected readonly q = signal('');
   protected readonly page = signal(0);
   protected readonly data = signal<ActionList | null>(null);
-  protected readonly sel = signal<string[]>([]); protected readonly bulkTo = signal('');
-  protected readonly openId = signal(''); protected readonly menuId = signal(''); protected readonly menuAt = signal({ x: 0, y: 0 });
+  protected readonly sel = signal<string[]>([]);
   protected readonly msg = signal('');
+  protected readonly cur = computed(() => AN_TABS.find((t) => t.key === this.tab()) ?? AN_TABS[0]);
   protected readonly rows = computed(() => this.data()?.rows ?? []);
   protected readonly owners = computed(() => this.data()?.owners ?? []);
   protected readonly me = computed(() => this.data()?.me ?? '');
   protected readonly pageRows = computed(() => this.rows().slice(this.page() * this.PAGE, (this.page() + 1) * this.PAGE));
   protected readonly allPicked = computed(() => this.pageRows().length > 0 && this.pageRows().every((r) => this.sel().includes(r.id)));
-  protected readonly menuRow = computed(() => this.rows().find((r) => r.id === this.menuId()) ?? null);
-  protected readonly groupsHere = computed(() => { const d = this.data(); const by = d?.counts.by_group[this.lane()] ?? {}; return (d?.groups ?? []).filter((g) => by[g.key]).map((g) => ({ ...g, count: by[g.key] })); });
+  /** The types inside the open tab, with counts (All shows every type a person acts on). */
+  protected readonly kindsHere = computed(() => {
+    const d = this.data(); const by = d?.counts.by_kind ?? {}; const t = this.cur(); if (t.lane === 'done') return [];
+    const groups = (d?.groups ?? []).filter((g) => (t.lane === 'agent' ? g.key === 'agent' : g.key !== 'agent' && (t.group === 'all' || g.key === t.group)));
+    return groups.flatMap((g) => g.kinds).filter((k) => by[k.key]).map((k) => ({ ...k, count: by[k.key] }));
+  });
   private t: ReturnType<typeof setTimeout> | null = null;
-  constructor() { effect(() => { this.lane(); this.group(); this.owner(); untracked(() => { this.page.set(0); this.load(); }); }); }
-  private query(): ActionQuery { return { lane: this.lane(), group: this.group(), owner: this.owner(), q: this.q().trim() }; }
+  constructor() { effect(() => { this.tab(); this.kind(); this.owner(); untracked(() => { this.page.set(0); this.load(); }); }); }
+  private query(): ActionQuery { const t = this.cur(); return { lane: t.lane, group: t.group, kind: this.kind(), owner: this.owner(), q: this.q().trim() }; }
   private async load(again = true): Promise<void> {
     try { this.data.set(await this.source().list(this.query())); if (this.page() * this.PAGE >= this.rows().length) this.page.set(0); }
     catch { if (again) setTimeout(() => this.load(false), 1200); }
   }
-  protected count(l: string): number { const c = this.data()?.counts as unknown as Record<string, number> | undefined; return c?.[l] ?? 0; }
-  protected setLane(l: string): void { this.lane.set(l); this.group.set('all'); this.msg.set(''); this.sel.set([]); this.openId.set(''); }
-  protected setOwner(o: string): void { this.owner.set(o); remember('an.owner', o); this.sel.set([]); }
+  protected tabCount(key: string): number {
+    const c = this.data()?.counts; if (!c) return 0; const t = AN_TABS.find((x) => x.key === key)!;
+    return t.lane !== 'you' ? c[t.lane] : t.group === 'all' ? c.you : c.by_group['you']?.[t.group] ?? 0;
+  }
+  protected tabHint(key: string): string {
+    if (key === 'all') return 'Everything a person has to act on: follow ups, manual callbacks and rows to fix. Open a row for the full call.';
+    if (key === 'done') return 'Rows marked done or rejected. Reopen one to put it back.';
+    return this.data()?.groups.find((g) => g.key === key)?.hint ?? '';
+  }
+  protected setTab(k: string): void { this.tab.set(k); this.kind.set('all'); this.msg.set(''); this.sel.set([]); }
+  protected setOwner(o: string): void { this.owner.set(o); remember('an.uploader', o); this.sel.set([]); }
   protected setQ(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => { this.page.set(0); this.load(); }, 200); }
   protected pick(id: string, on: boolean): void { this.sel.set(on ? [...this.sel(), id] : this.sel().filter((x) => x !== id)); }
   protected pickAll(on: boolean): void { const ids = this.pageRows().map((r) => r.id); this.sel.set(on ? [...new Set([...this.sel(), ...ids])] : this.sel().filter((x) => !ids.includes(x))); }
-  protected toggleOpen(id: string): void { this.openId.set(this.openId() === id ? '' : id); }
-  protected openMenu(ev: MouseEvent, id: string): void {
-    ev.stopPropagation(); if (this.menuId() === id) { this.menuId.set(''); return; }
-    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); const w = 240, h = 220;
-    this.menuAt.set({ x: Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)), y: r.bottom + h > window.innerHeight ? Math.max(8, r.top - h) : r.bottom + 4 });
-    this.menuId.set(id);
-  }
-  /** Type, then the call result only when it adds something ("Follow-up required" twice says nothing). */
-  protected subline(r: ActionRow): string { const g = this.groupLabel(r.group); const why = r.reason.replace(/^Success: /, ''); return why && why.toLowerCase() !== g.toLowerCase() && why !== r.title ? `${g} · ${why}` : g; }
   protected groupLabel(k: string): string { return this.data()?.groups.find((g) => g.key === k)?.label ?? k; }
-  protected initials(e: string): string { if (!e) return '–'; const n = e.split('@')[0].split(/[._-]/).filter(Boolean); return ((n[0]?.[0] || '') + (n[1]?.[0] || '')).toUpperCase() || e[0].toUpperCase(); }
   protected short(e: string): string { return e.split('@')[0]; }
   protected late(r: ActionRow): boolean { return !!r.since && Date.now() - Date.parse(r.since) > 2 * DAY; }
   protected age(iso: string | null): string { if (!iso) return '—'; const m = Math.max(0, Date.now() - Date.parse(iso)) / 60000; return m < 60 ? `${Math.round(m)} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; }
   protected nextText(iso: string): string { const t = Date.parse(iso); return t <= Date.now() + 60000 ? 'Next free slot' : when(iso); }
   protected dots(r: ActionRow): boolean[] { const n = Math.min(10, Math.max(r.total, r.made)); return Array.from({ length: n }, (_, i) => i < r.made); }
-  protected emptyText(): string { return this.q() || this.owner() !== 'all' || this.group() !== 'all' ? 'Nothing matches these filters.' : `Nothing needs a person right now. The agent is handling ${this.count('agent')} call${this.count('agent') === 1 ? '' : 's'}.`; }
+  protected emptyText(): string { return this.q() || this.owner() !== 'all' || this.kind() !== 'all' ? 'Nothing matches these filters.' : `Nothing needs a person here. The agent is handling ${this.tabCount('agent')} call${this.tabCount('agent') === 1 ? '' : 's'}.`; }
   protected async act(r: ActionRow, action: ActionVerb): Promise<void> {
-    this.menuId.set(''); await this.source().act(r.id, { action });
-    this.msg.set({ done: `✓ Done: ${r.caller}.`, dismiss: `✕ Dismissed: ${r.caller}. Reopen it from Closed if needed.`, reopen: `${r.caller} is back in To do.`, requeue: `${r.caller}: the agent tries once more in about 30 minutes.`, assign: '' }[action]);
-    this.load();
+    await this.source().act(r.id, { action });
+    this.msg.set({ done: `✓ Done: ${r.caller}.`, dismiss: `✕ Rejected: ${r.caller}. Reopen it from Closed if needed.`, reopen: `${r.caller} is back in Action needed.`, requeue: '', assign: '' }[action]);
+    this.sel.set(this.sel().filter((x) => x !== r.id)); this.load();
   }
-  protected async assignTo(r: ActionRow, to: string): Promise<void> { if (!to) return; this.menuId.set(''); await this.source().act(r.id, { action: 'assign', to }); this.msg.set(`${r.caller} assigned to ${to === this.me() ? 'you' : to}.`); this.load(); }
-  protected async bulk(action: 'done' | 'dismiss' | 'assign'): Promise<void> {
-    const ids = this.sel(); if (!ids.length) return; const to = this.bulkTo();
-    if (this.source().bulk) await this.source().bulk!(ids, { action, to }); else for (const id of ids) await this.source().act(id, { action, to });
-    this.msg.set(action === 'done' ? `✓ ${ids.length} marked done.` : action === 'dismiss' ? `✕ ${ids.length} dismissed.` : `${ids.length} assigned to ${to === this.me() ? 'you' : to}.`);
-    this.sel.set([]); this.bulkTo.set(''); this.load();
+  protected async bulk(action: 'done' | 'dismiss'): Promise<void> {
+    const ids = this.sel(); if (!ids.length) return;
+    if (this.source().bulk) await this.source().bulk!(ids, { action }); else for (const id of ids) await this.source().act(id, { action });
+    this.msg.set(action === 'done' ? `✓ ${ids.length} marked done.` : `✕ ${ids.length} rejected.`);
+    this.sel.set([]); this.load();
   }
-  protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.query()), `action-needed-${this.lane()}.xlsx`); }
+  protected async exportList(): Promise<void> { save(await this.source().exportXlsx(this.query()), `action-needed-${this.tab()}.xlsx`); }
 }
 
 // ── Agent metrics: what an agent's campaigns can be counted in, beside calls ──
