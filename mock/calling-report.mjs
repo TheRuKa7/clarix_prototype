@@ -519,7 +519,7 @@ function actionOf(r) {
     const at = Date.parse(r.callback_at || '') || null;
     // Agreed time more than a day gone and still not reached: the agent's callback tries are spent.
     if (left > 0 && !(at && now - at > DAY_MS)) { return agent('reschedule', 'Rescheduled', at && at > now ? 'Calls back at the time the supplier asked' : 'Calls back at the next free slot', at && at > now ? at : now); }
-    return you('follow_up', 'callback', 'Call back: the agent could not reach them at the agreed time', `The agent tried ${tries + 1} time${tries ? 's' : ''} at the agreed time and could not reach them.`);
+    return you('follow_up', 'callback', 'Call them back yourself', `The agent tried ${tries + 1} time${tries ? 's' : ''} at the agreed time and could not reach them.`);
   }
   if (why === 'Success: Follow-up required') return you('follow_up', followKind(r), followTask(r), r.summary || 'The supplier answered; read the answer and act on it.');
   if (why === 'Success: Partial') {

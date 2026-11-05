@@ -770,15 +770,12 @@ const AN_TABS = [
     .an-tab:hover { color: var(--s-text); } .an-tab.on { color: var(--s-text); border-bottom-color: var(--s-accent); font-weight: 600; } .an-tab.on b { background: color-mix(in srgb, var(--s-accent) 14%, var(--s-bg)); color: var(--s-accent); }
     .an-tab.apart { margin-left: 18px; position: relative; } .an-tab.apart::before { content: ''; position: absolute; left: -10px; top: 9px; bottom: 9px; border-left: 1px solid var(--s-line); }
     .an-tab.apart + .an-tab.apart { margin-left: 0; } .an-tab.apart + .an-tab.apart::before { display: none; }
-    .an-hint { font-size: 13px; color: var(--s-muted); margin: 0; } .an-hint b { color: #b91c1c; font-weight: 600; }
-    .an-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow: visible; min-height: max-content; }
+    .an-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow: visible; min-height: max-content; background: none; padding: 0; border: 0; }
+    .an-clear { border: 0; background: none; color: var(--s-accent); font: inherit; font-size: 13px; cursor: pointer; padding: 4px 6px; }
     .an-bar select, .an-bar input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
-    .an-bar input[type=search] { flex: 0 1 260px; }
-    .an-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
-    .an-chip b { font-variant-numeric: tabular-nums; margin-left: 5px; color: var(--s-muted); font-weight: 600; }
-    .an-chip.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-bg)); color: var(--s-accent); font-weight: 600; } .an-chip.on b { color: var(--s-accent); }
+    .an-bar input[type=search] { flex: 0 1 240px; }
     .an-list { display: grid; overflow-x: auto; }
-    .an-h, .an-r { display: grid; grid-template-columns: 22px minmax(120px, .9fr) minmax(170px, 1.2fr) minmax(190px, 1.7fr) 92px 52px 252px; gap: 10px; align-items: start; padding: 11px 12px; min-width: 990px; }
+    .an-h, .an-r { display: grid; grid-template-columns: 22px minmax(120px, .9fr) minmax(170px, 1.2fr) minmax(190px, 1.7fr) 92px 52px 252px; gap: 10px; align-items: center; padding: 10px 12px; min-width: 990px; }
     .an-list.agent .an-h, .an-list.agent .an-r { grid-template-columns: minmax(150px, 1fr) minmax(190px, 1.2fr) minmax(240px, 1.9fr) minmax(110px, .7fr) 150px 120px; min-width: 1040px; }
     .an-list.done .an-h, .an-list.done .an-r { grid-template-columns: minmax(150px, 1fr) minmax(210px, 1.4fr) minmax(240px, 1.6fr) 112px minmax(140px, .8fr) 92px; min-width: 1040px; }
     .an-h { font-size: 12px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); padding-top: 8px; padding-bottom: 8px; align-items: center; font-weight: 600; }
@@ -787,11 +784,11 @@ const AN_TABS = [
     .an-r:focus-visible { outline: 2px solid var(--s-accent); outline-offset: -2px; }
     .an-who b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-who span { color: var(--s-muted); font-size: 12px; display: block; }
     .an-who button { border: 0; background: none; padding: 0; font: inherit; color: var(--s-accent); font-size: 12px; cursor: pointer; } .an-who button:hover { text-decoration: underline; }
-    .an-what b { display: block; font-weight: 600; line-height: 1.35; } .an-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .an-what b { display: block; font-weight: 600; line-height: 1.35; } .an-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .an-tag { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; background: var(--s-soft); color: var(--s-muted); white-space: nowrap; }
     .an-tag.follow_up { background: color-mix(in srgb, #d97706 13%, var(--s-bg)); color: #92400e; } .an-tag.manual { background: color-mix(in srgb, #2563eb 11%, var(--s-bg)); color: #1e40af; }
     .an-tag.fix_data { background: color-mix(in srgb, #dc2626 10%, var(--s-bg)); color: #991b1b; } .an-tag.agent { background: color-mix(in srgb, var(--s-accent) 12%, var(--s-bg)); color: var(--s-accent); }
-    .an-sum { line-height: 1.45; color: var(--s-text); } .an-sum span { display: block; color: var(--s-muted); font-size: 12px; margin-top: 3px; }
+    .an-sum { line-height: 1.45; color: var(--s-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .an-sum span { display: block; color: var(--s-muted); font-size: 12px; margin-top: 3px; }
     .an-up { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-up span { display: block; color: var(--s-muted); font-size: 12px; }
     .an-age { font-size: 12.5px; color: var(--s-muted); } .an-age.late { color: #b91c1c; font-weight: 600; }
     .an-ic { display: flex; gap: 6px; justify-content: flex-end; }
@@ -830,15 +827,11 @@ const AN_TABS = [
           <button type="button" role="tab" class="an-tab" [class.apart]="t.lane !== 'you'" [class.on]="tab() === t.key" [attr.aria-selected]="tab() === t.key" (click)="setTab(t.key)" [title]="tabHint(t.key)">{{ t.label }}<b>{{ tabCount(t.key) }}</b></button>
         }
       </div>
-      <p class="an-hint">{{ tabHint(tab()) }}@if (cur().lane === 'you' && data()?.counts?.overdue) { · <b>{{ data()!.counts.overdue }} waiting over 2 days</b> }</p>
       <div class="an-bar">
-        @if (kindsHere().length > 1) {
-          <button type="button" class="an-chip" [class.on]="kind() === 'all'" [attr.aria-pressed]="kind() === 'all'" (click)="kind.set('all')">Every type</button>
-          @for (k of kindsHere(); track k.key) { <button type="button" class="an-chip" [class.on]="kind() === k.key" [attr.aria-pressed]="kind() === k.key" (click)="kind.set(k.key)">{{ k.label }}<b>{{ k.count }}</b></button> }
-        }
-        <span class="s-grow"></span>
+        <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier or phone" aria-label="Search">
+        @if (kindsHere().length > 1) { <select (change)="kind.set($any($event.target).value)" aria-label="Type"><option value="all" [selected]="kind() === 'all'">All types</option>@for (k of kindsHere(); track k.key) { <option [value]="k.key" [selected]="kind() === k.key">{{ k.label }} ({{ k.count }})</option> }</select> }
         <select (change)="setOwner($any($event.target).value)" aria-label="Uploaded by"><option value="all" [selected]="owner() === 'all'">Uploaded by anyone</option><option value="mine" [selected]="owner() === 'mine'">Uploaded by me</option>@for (o of owners(); track o) { <option [value]="o" [selected]="o === owner()">{{ o }}</option> }</select>
-        <input type="search" [value]="q()" (input)="setQ($any($event.target).value)" placeholder="Search supplier, phone, campaign" aria-label="Search">
+        @if (kind() !== 'all' || owner() !== 'all' || q()) { <button type="button" class="an-clear" (click)="clearFilters()">Clear</button> }
       </div>
       @if (msg()) { <span class="an-ok" role="status">{{ msg() }}</span> }
       @if (sel().length) {
@@ -855,9 +848,9 @@ const AN_TABS = [
           @for (r of pageRows(); track r.id) {
             <div class="an-r" tabindex="0" [class.picked]="sel().includes(r.id)" (click)="source().openCall(r)" (keydown.enter)="source().openCall(r)" [title]="'Open the call with ' + r.caller">
               <input type="checkbox" class="an-check" [checked]="sel().includes(r.id)" (click)="$event.stopPropagation()" (change)="pick(r.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + r.caller">
-              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span>@if (source().openSupplier) { <button type="button" (click)="$event.stopPropagation(); source().openSupplier!(r.phone)">All about this supplier</button> }</div>
-              <div class="an-what"><b>{{ r.title }}</b><div class="an-tags"><span [class]="'an-tag ' + r.group">{{ groupLabel(r.group) }}</span>@if (r.kind_label) { <span class="an-tag">{{ r.kind_label }}</span> }</div></div>
-              <div class="an-sum">{{ r.summary || r.detail }}@if (r.summary && r.detail && r.detail !== r.summary) { <span>{{ r.detail }}</span> }<span>{{ r.campaign }} · {{ r.made ? r.made + (r.made === 1 ? ' call' : ' calls') + ' · last ' + when(r.last_call) : 'not called' }}</span></div>
+              <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
+              <div class="an-what"><b>{{ r.title }}</b><div class="an-tags"><span [class]="'an-tag ' + r.group" [title]="groupLabel(r.group)">{{ r.kind_label || groupLabel(r.group) }}</span></div></div>
+              <div class="an-sum" [title]="r.summary || r.detail">{{ r.summary || r.detail }}</div>
               <div class="an-up" [title]="r.owner">{{ r.owner === me() ? 'Me' : short(r.owner) }}</div>
               <span class="an-age" [class.late]="late(r)">{{ age(r.since) }}</span>
               <div class="an-ic" (click)="$event.stopPropagation()">
@@ -875,7 +868,7 @@ const AN_TABS = [
             <div class="an-r" tabindex="0" (click)="source().openCall(r)" (keydown.enter)="source().openCall(r)" [title]="'Open the call with ' + r.caller">
               <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
               <div class="an-what"><span class="an-state"><i></i>{{ r.kind_label }}</span><span class="an-sum"><span>{{ r.title }}</span></span></div>
-              <div class="an-sum">{{ r.summary || r.reason }}<span>{{ r.campaign }}</span></div>
+              <div class="an-sum" [title]="r.summary || r.reason">{{ r.summary || r.reason }}</div>
               <div class="an-up" [title]="r.owner">{{ r.owner === me() ? 'Me' : short(r.owner) }}</div>
               <span class="an-age">{{ r.next_at ? nextText(r.next_at) : 'In the current run' }}</span>
               <span class="an-dots" [attr.aria-label]="r.made + ' of ' + r.total + ' attempts'">@for (d of dots(r); track $index) { <i [class.on]="d"></i> }<span>{{ r.made }}/{{ r.total }}</span></span>
@@ -887,7 +880,7 @@ const AN_TABS = [
           @for (r of pageRows(); track r.id) {
             <div class="an-r" tabindex="0" (click)="source().openCall(r)" (keydown.enter)="source().openCall(r)">
               <div class="an-who"><b>{{ r.caller }}</b><span>{{ r.phone }}</span></div>
-              <div class="an-what"><b>{{ r.title }}</b><div class="an-tags"><span [class]="'an-tag ' + r.group">{{ groupLabel(r.group) }}</span>@if (r.kind_label) { <span class="an-tag">{{ r.kind_label }}</span> }</div></div>
+              <div class="an-what"><b>{{ r.title }}</b><div class="an-tags"><span [class]="'an-tag ' + r.group" [title]="groupLabel(r.group)">{{ r.kind_label || groupLabel(r.group) }}</span></div></div>
               <div class="an-sum">{{ r.summary || r.detail }}</div>
               <span><span class="an-out" [class.done]="r.closed === 'done'" [class.dismissed]="r.closed === 'dismissed'">{{ r.closed === 'done' ? '✓ Done' : '✕ Rejected' }}</span></span>
               <span class="an-age">{{ short(r.closed_by || '') }} · {{ when(r.closed_at || null) }}</span>
@@ -944,6 +937,7 @@ export class FollowUpsListComponent {
     return this.data()?.groups.find((g) => g.key === key)?.hint ?? '';
   }
   protected setTab(k: string): void { this.tab.set(k); this.kind.set('all'); this.msg.set(''); this.sel.set([]); }
+  protected clearFilters(): void { this.kind.set('all'); this.setOwner('all'); this.q.set(''); this.load(); }
   protected setOwner(o: string): void { this.owner.set(o); remember('an.uploader', o); this.sel.set([]); }
   protected setQ(v: string): void { this.q.set(v); if (this.t) clearTimeout(this.t); this.t = setTimeout(() => { this.page.set(0); this.load(); }, 200); }
   protected pick(id: string, on: boolean): void { this.sel.set(on ? [...this.sel(), id] : this.sel().filter((x) => x !== id)); }
