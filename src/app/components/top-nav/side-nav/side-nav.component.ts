@@ -6,7 +6,8 @@ import { AuthService } from '../../../core/auth/services/auth.service';
 import { MicrosoftGraphService } from '../../../core/auth/services/microsoft-graph.service';
 import { PermissionsService } from '../../../core/permissions/services/permissions.service';
 import { ThemeService } from '../../../services/theme.service';
-import { NAV_GROUPS, NavItem } from '../app-modules';
+import { NAV_GROUPS, NavItem, pageNeed } from '../app-modules';
+import { previewCan } from '../../../modules/dashboard/components/shared-screens/preview';
 
 /**
  * Side bar for every Clarix page. Closed it shows icons only; hover or keyboard
@@ -53,7 +54,7 @@ export class SideNavComponent {
     (this.auth.getCurrentUser()?.name ?? '').split(' ').slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?'
   );
 
-  private allowed(i: NavItem): boolean { return !i.requiresAnyPermission?.length || this.permissions.hasAny(...i.requiresAnyPermission); }
+  private allowed(i: NavItem): boolean { return (!i.requiresAnyPermission?.length || this.permissions.hasAny(...i.requiresAnyPermission)) && (!pageNeed(i.route) || previewCan(pageNeed(i.route))); }
   protected hoverIn(): void {
     if (this.suppress || this.pinned()) return;
     clearTimeout(this.timer);

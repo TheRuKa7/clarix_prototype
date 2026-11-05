@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { NeedDirective } from '../shared-screens/preview';
 import { ActivatedRoute, Router } from '@angular/router';
 
 /**
@@ -102,6 +103,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
 @Component({
   selector: 'app-calling-report',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:click)': 'onDocClick($event)', '(document:keydown.escape)': 'onEscape()' },
   template: `
@@ -243,7 +245,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             @if (source().openCallLogs && mode() === 'dashboard') { <button type="button" class="cr-link" (click)="source().openCallLogs!(scope(), box()?.key ?? 'uploaded')">Open in Call logs</button> }
             @if (source().rerun && drillTotal()) {
               <div class="cr-drop">
-                <button type="button" class="cr-btn" [attr.aria-expanded]="rerunOpen()" (click)="place($event, true, 320); rerunOpen.set(!rerunOpen()); rerunMsg.set('')" title="Work out the answers again from the transcripts, without calling">Re-run answers</button>
+                <button need="calls:edit" type="button" class="cr-btn" [attr.aria-expanded]="rerunOpen()" (click)="place($event, true, 320); rerunOpen.set(!rerunOpen()); rerunMsg.set('')" title="Work out the answers again from the transcripts, without calling">Re-run answers</button>
                 @if (rerunOpen()) {
                   <div class="cr-menu cr-rerun" role="dialog" aria-label="Re-run answers" [style]="menuStyle()">
                     <b>Re-run answers for {{ num(drillTotal()) }} call{{ drillTotal() === 1 ? '' : 's' }}?</b>
@@ -255,7 +257,7 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
                 }
               </div>
             }
-            <button type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
+            <button need="calls:export" type="button" class="cr-btn" (click)="exportBox()" [title]="'Export the ' + drillTotal() + ' calls shown, with these filters'">Export</button>
           </div>
           @if (campaign()) { <p class="cr-hint">One line per row of the uploaded sheet: what was uploaded, how its call ended and what the agent captured. Open a line for the call and its recording.</p> }
           <div class="cr-scroll">

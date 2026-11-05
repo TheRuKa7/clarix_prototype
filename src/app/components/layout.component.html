@@ -10,6 +10,7 @@
       <span class="tb-title">{{ here()?.label ?? 'Clarix' }}</span>
     </header>
 
+    <app-preview-bar [load]="loadPreview"></app-preview-bar>
     <main class="main-content">
       <div class="content-container">
         @if (tabs().length > 1) {
@@ -20,7 +21,7 @@
             }
           </nav>
         }
-        <router-outlet></router-outlet>
+        @if (previewAs() && !previewMe()) { } @else if (blockedPage(); as page) { <app-preview-blocked [page]="page"></app-preview-blocked> } @else { <router-outlet></router-outlet> }
       </div>
     </main>
   </div>

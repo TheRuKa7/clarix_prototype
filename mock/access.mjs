@@ -306,3 +306,97 @@ export function accessRemove(kind, key, aid) {
 
 /** The signed-in person's id, from their email; the first owner when they are not in the list. */
 export const accessActorFor = (email) => users.find((u) => u.email === email)?.id || owners()[0]?.id || 'u1';
+
+// ── Preview as: the rest of the app follows the person picked in Team and access ──
+// The app sends the picked person on every request (x-preview-as). The mock then hides what they cannot see, refuses what
+// they cannot do and masks numbers for Viewers. With nobody picked, nothing changes.
+let previewId = null;
+const previewer = () => (previewId ? users.find((u) => u.id === previewId) || null : null);
+/** Picks the person for this request; returns them, or null when nobody (or the signed-in person) is picked. */
+export function setPreview(aid, realId) { previewId = aid && aid !== realId && users.some((u) => u.id === aid) ? aid : null; return previewer(); }
+
+// Campaigns belong to a team. Demo data has no owner team, so it is spread over the four seed teams by its id;
+// a campaign started while previewing goes to the first team where that person may start campaigns.
+const SEED_TEAMS = ['t_ops', 't_rfx', 't_pay', 't_uae'];
+const campaignUnits = new Map();
+export function campaignUnit(key) {
+  const k = String(key || ''); if (campaignUnits.has(k)) return campaignUnits.get(k);
+  if (!k || k === 'console') return 't_ops';
+  let h = 0; for (const ch of k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const t = SEED_TEAMS[h % SEED_TEAMS.length]; return unitOf(t) ? t : 'org';
+}
+/** Call when a campaign is created, so it lands in the previewed person's team. */
+export function claimCampaign(key) { const p = previewer(); if (!p) return; const u = unitsWhere(p, 'campaigns', 'create').sort((a, b) => RANK[unitOf(b).level] - RANK[unitOf(a).level])[0]; if (u) campaignUnits.set(String(key), u); }
+const SEE = ['campaigns', 'calls', 'actions'];
+/** Whether the previewed person sees this campaign (and its calls). */
+export function seesCampaign(key) { const p = previewer(); if (!p) return true; const u = campaignUnit(key); return SEE.some((m) => can(p, u, m, 'view')); }
+
+// Which area each request belongs to (Echo /api/... and Clarix /api/v1/... paths). First match wins; null = not checked here.
+const AREAS = [
+  [/\/access(\/|$)|\/auth\/|\/api\/me$|\/health$|\/__local/, null],
+  [/\/audit/, 'audit'],
+  [/\/credits|\/wallet|\/billing/, 'billing'],
+  [/\/data-sources|\/admin\/data-functions|\/integrations|\/sync-platforms/, 'data'],
+  [/\/follow-ups/, 'actions'],
+  [/\/new-campaign|\/campaigns|\/workflows\/sheets|\/workflows\/trigger|\/workflows\/reports/, 'campaigns'],
+  [/\/call\/|\/calls(\/|$|\.)|\/live(\/|$)|\/conversations|\/copilot|\/supplier|^\/api\/v1\/workflows(\/[^/]+)?(\/events|\/cancel|\/stop|\/execute-now|\/sync-status)?$|\/ozonetel\/start_call|\/webrtc\/(start_call|recording)/, 'calls'],
+  [/\/agents|\/agent-stats|\/versions\/|\/tests\/|\/quality\/|\/call-handling|\/workflow-templates|\/retry-rules|\/transformation-catalog/, 'agents'],
+  [/\/orgs\/[^/]+\/(users|groups)|\/admin\/users/, 'people'],
+  [/\/settings|\/security|\/telephony|\/calling-rules|\/dnc|\/alerts|\/test-numbers|\/data-policy|\/admin\/|\/call-providers/, 'settings'],
+  [/\/report$|\/reports\/calling$|\/metrics|\/tasks|\/dashboard/, 'dashboard'],
+];
+const READ_LIKE = /\/preview$|\/copilot$|\/messages$|\/test$|\/check$|\/recheck$|\/refresh$/;
+const CREATE_AT = /\/api\/campaigns$|\/new-campaign\/start$|\/workflows\/trigger\/bulk$|\/api\/agents$|\/workflow-templates$|\/data-functions$/;
+function areaOf(method, path) {
+  const hit = AREAS.find(([re]) => re.test(path)); if (!hit || !hit[1]) return null;
+  const mod = MOD[hit[1]];
+  let act = method === 'GET' ? (/export|\.xlsx|download|transcript\.txt/.test(path) ? 'export' : 'view')
+    : READ_LIKE.test(path) ? 'view' : method === 'DELETE' ? 'delete' : CREATE_AT.test(path) || /\/new-campaign\//.test(path) ? 'create' : 'edit';
+  if (!mod.actions[act]) act = mod.actions.edit && act !== 'export' ? 'edit' : 'view';
+  return { mod: mod.key, act };
+}
+/** Why the previewed person may not make this request, or '' when they may (or nobody is previewed). */
+export function previewBlock(method, path) {
+  const p = previewer(); if (!p) return '';
+  const a = areaOf(method, path); if (!a) return '';
+  // Settings and credits are read by every page (limits, wallet); only their own pages and changes are checked.
+  if (method === 'GET' && (a.mod === 'settings' || a.mod === 'billing') && a.act === 'view') return '';
+  if (!live(p)) return `${p.name} cannot sign in: their access is ${statusOf(p)}. You are previewing as them.`;
+  if (p.type === 'service') return `${p.name} is a service account: it uses the API and cannot sign in. You are previewing as them.`;
+  const camp = /\/campaigns\/([^/]+)/.exec(path)?.[1] || /\/sheets\/([^/]+)/.exec(path)?.[1];
+  const ok = camp && a.mod !== 'agents' ? can(p, campaignUnit(decodeURIComponent(camp)), a.mod, a.act) : unitsWhere(p, a.mod, a.act).length > 0;
+  if (ok) return '';
+  const what = MOD[a.mod].actions[a.act]; return `${p.name} cannot ${what[0].toLowerCase()}${what.slice(1)}. You are previewing as them.`;
+}
+/** Viewers (and anyone who only sees calls through a role that masks numbers) get masked phone numbers. */
+const masksVia = (gs) => { const via = gs.filter((g) => roleOf(g.role)?.perms.calls?.includes('view')); return via.length > 0 && via.every((g) => roleOf(g.role).mask_numbers); };
+const masks = (p) => masksVia(live(p) ? p.grants : []);
+const PHONE_KEY = /phone|mobile|msisdn|called_?number|caller_?number|customer_?number/i;
+const maskOne = (v) => { const s = String(v); const d = s.replace(/\D/g, ''); return d.length >= 7 ? '•'.repeat(Math.max(0, d.length - 4)) + d.slice(-4) : v; };
+const CAMP_KEY = ['campaign_id', 'batchId', 'batch_id', 'sheetId'];
+/** Drops list items from campaigns the previewed person does not see, and masks numbers when their role says so. */
+export function previewShape(body) {
+  const p = previewer(); if (!p) return body;
+  // Masking follows the campaign: Rahul is a Member in RFX desk (numbers shown) and a Viewer in Payables (numbers masked).
+  const walk = (x, key, mask) => {
+    if (Array.isArray(x)) return x.filter((it) => !(it && typeof it === 'object' && !Array.isArray(it) && CAMP_KEY.some((k) => it[k] != null && !seesCampaign(it[k])))).map((it) => walk(it, key, mask));
+    if (x && typeof x === 'object') {
+      const ck = CAMP_KEY.find((k) => x[k] != null); const m = ck ? masksVia(grantsReaching(p, campaignUnit(x[ck]))) : mask;
+      const o = {}; for (const [k, v] of Object.entries(x)) o[k] = walk(v, k, m); return o;
+    }
+    if (mask && key && PHONE_KEY.test(key) && (typeof x === 'string' || typeof x === 'number')) return maskOne(x);
+    return x;
+  };
+  return walk(body, '', masks(p));
+}
+/** What the app needs to show menus and buttons for the previewed person (or the signed-in person when nobody is picked). */
+export function accessMe(aid, realId) {
+  const p = users.find((u) => u.id === aid) || actorOf(realId); const real = actorOf(realId);
+  const canDo = Object.fromEntries(MODULES.map((m) => [m.key, Object.keys(m.actions).filter((a) => unitsWhere(p, m.key, a).length)]));
+  const teams = units.filter((u) => SEE.some((m) => can(p, u.id, m, 'view')));
+  const blocked = !live(p) ? `${p.name} cannot sign in: their access is ${statusOf(p)}.` : p.type === 'service' ? `${p.name} is a service account. It uses the API and cannot sign in.` : '';
+  return { id: p.id, name: p.name, email: p.email, type: typeOf(p.type)?.label || p.type, previewing: p.id !== real.id, blocked,
+    roles: p.grants.map((g) => `${roleOf(g.role)?.label} in ${unitOf(g.unit)?.name}`), can: blocked ? {} : canDo, mask_numbers: masks(p),
+    units: teams.some((u) => u.id === 'org') ? ['the whole organization'] : teams.filter((u) => !teams.some((x) => x.id === u.parent)).map((u) => u.name),
+    people: users.filter((u) => u.id !== real.id).map((u) => ({ id: u.id, name: u.name, summary: u.grants.map((g) => `${roleOf(g.role)?.label} · ${unitOf(g.unit)?.name}`).join(', ') || typeOf(u.type)?.label, state: statusOf(u) })) };
+}

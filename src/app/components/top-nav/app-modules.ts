@@ -23,6 +23,20 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: 'Admin', items: [{ label: 'Calling rules', icon: 'clock', route: '/admin/calling-rules' }, { label: 'Telephony', icon: 'phone', route: '/admin/telephony' }, { label: 'Do-not-call list', icon: 'phone-off', route: '/admin/do-not-call' }, { label: 'Alerts', icon: 'bell', route: '/admin/alerts' }, { label: 'Team and access', icon: 'users', route: '/admin/access' }, { label: 'Security', icon: 'lock', route: '/admin/security' }, { label: 'Audit log', icon: 'scroll-text', route: '/admin/audit-log' }, { label: 'Permissions', icon: 'shield-check', route: '/admin/permissions', requiresAnyPermission: ['manage-permissions:menuvisibility'] }] },
 ];
 
+// Preview as (Team and access): what each page needs. A page none of the previewed person's roles reach is left out of
+// the side bar and shows a notice instead. Longest prefix wins.
+const PAGE_NEED: [string, string][] = [
+  ['/dashboard', 'dashboard:view'], ['/workflows/agents', 'agents:view'], ['/workflows/campaigns', 'campaigns:view'], ['/workflows/calls', 'calls:view'],
+  ['/workflows/follow-ups', 'actions:view'], ['/workflows/build/agents', 'agents:create|agents:edit'], ['/workflows/build/data', 'data:view'],
+  ['/workflows/build/orchestration', 'agents:edit'], ['/workflows/reports', 'campaigns:export|calls:export'], ['/workflows', 'campaigns:view'],
+  ['/admin/access', 'people:view'], ['/admin/audit-log', 'audit:view'], ['/admin/permissions', 'settings:edit'], ['/admin', 'settings:view'],
+];
+/** What a URL needs ('' when nothing). */
+export function pageNeed(url: string): string {
+  const path = url.split('?')[0];
+  return PAGE_NEED.filter(([r]) => path === r || path.startsWith(r + '/')).sort((a, b) => b[0].length - a[0].length)[0]?.[1] ?? '';
+}
+
 const ALL = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label })));
 
 /** The side bar entry a URL belongs to (longest matching route wins). */

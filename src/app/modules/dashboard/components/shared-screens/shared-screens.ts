@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnDestroy, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { NeedDirective, PreviewMe, previewAs, previewMe, sendPreviewHeader, setPreviewAs } from './preview';
+export { NeedDirective, previewAs, previewCan, previewMe, setPreviewAs } from './preview';
+export type { PreviewMe } from './preview';
 import { CallingReportComponent, CallingReportSource, CampaignColumns, ReportCallRow } from '../calling-report/calling-report.component';
 
 /**
@@ -203,9 +206,82 @@ function save(blob: Blob, name: string): void { const a = document.createElement
 
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'today', label: 'Today', days: 1 }, { key: '7d', label: 'Last 7 days', days: 7 }, { key: '30d', label: 'Last 30 days', days: 30 }];
+/** The bar across the top while previewing: who, what they hold, where they see, and the way back. */
+@Component({
+  selector: 'app-preview-bar',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .pv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 16px; background: color-mix(in srgb, var(--s-accent) 12%, var(--s-bg)); border-bottom: 1px solid color-mix(in srgb, var(--s-accent) 30%, var(--s-line)); font-size: 13px; }
+    .pv b { font-weight: 600; }
+    .pv .pv-who { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; min-width: 0; flex: 1 1 320px; }
+    .pv .pv-tag { color: var(--s-muted); }
+    .pv select { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); max-width: 220px; }
+    .pv-stop { margin: 0; }
+  `],
+  template: `
+    @if (me(); as m) {
+      @if (m.previewing) {
+        <div class="pv" role="status">
+          <span class="pv-who"><span>Previewing as <b>{{ m.name }}</b></span>
+            <span class="pv-tag">{{ m.blocked ? m.blocked : (m.roles.join(', ') || m.type) }}</span>
+            @if (!m.blocked) { <span class="pv-tag">Sees {{ m.units.length ? m.units.join(', ') : 'no campaigns' }}{{ m.mask_numbers ? ' · numbers masked' : '' }}</span> }
+          </span>
+          <label class="s-muted">Switch <select (change)="pick($any($event.target).value)" aria-label="Preview as">
+            @for (p of m.people; track p.id) { <option [value]="p.id" [selected]="p.id === m.id">{{ p.name }}{{ p.summary ? ' · ' + p.summary : '' }}{{ p.state !== 'active' ? ' (' + p.state + ')' : '' }}</option> }
+          </select></label>
+          <button type="button" class="s-btn pv-stop" (click)="pick('')">Back to me</button>
+        </div>
+      }
+    }
+  `,
+})
+export class PreviewBarComponent {
+  /** Reads the previewed person from the mock (GET .../access/me). */
+  readonly load = input.required<() => Promise<PreviewMe>>();
+  protected readonly me = previewMe;
+  constructor() {
+    sendPreviewHeader();
+    effect(() => { const id = previewAs(); const l = this.load(); untracked(() => this.refresh(l, id)); });
+  }
+  private async refresh(l: () => Promise<PreviewMe>, id: string): Promise<void> {
+    // If the person cannot be read (removed, say), drop the preview rather than leave the page waiting.
+    try { const m = await l(); if (id === previewAs()) previewMe.set(m); } catch { if (id === previewAs()) { if (id) setPreviewAs(''); else previewMe.set(null); } }
+  }
+  /** Switching person reloads the page so every list is read again as them. */
+  protected pick(id: string): void { setPreviewAs(id); location.reload(); }
+}
+
+/** Shown in place of a page the previewed person cannot open. */
+@Component({
+  selector: 'app-preview-blocked',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [CSS + `
+    .pv-block { margin: 24px auto; max-width: 560px; display: grid; gap: 10px; padding: 20px; border: 1px solid var(--s-line); border-radius: 10px; background: var(--s-bg); }
+    .pv-block h2 { margin: 0; font-size: 16px; }
+    .pv-block p { margin: 0; }
+  `],
+  template: `
+    @if (previewMe(); as m) {
+      <div class="pv-block" role="alert">
+        <h2>{{ m.name }} cannot open {{ page() }}</h2>
+        <p class="s-muted">{{ m.blocked || 'None of their roles include it, so it is not in their menu.' }} Roles: {{ m.roles.join(', ') || 'none' }}.</p>
+        <p><button type="button" class="s-btn" (click)="back()">Back to me</button></p>
+      </div>
+    }
+  `,
+})
+export class PreviewBlockedComponent {
+  readonly page = input('this page');
+  protected readonly previewMe = previewMe;
+  protected back(): void { setPreviewAs(''); location.reload(); }
+}
+
 @Component({
   selector: 'app-campaigns-list',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS],
   template: `
@@ -213,7 +289,7 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
       <div class="s-head">
         <div><h1 class="s-title">Campaigns</h1><p class="s-sub">Each uploaded sheet is one campaign. Open one to see its funnel, call status and every call.</p></div>
         <span class="s-grow"></span>
-        <button type="button" class="s-btn s-primary" (click)="source().newCampaign()">New campaign</button>
+        <button need="campaigns:create" type="button" class="s-btn s-primary" (click)="source().newCampaign()">New campaign</button>
       </div>
       <div class="s-head">
         <div class="s-seg" role="group" aria-label="Created">@for (p of PERIODS; track p.key) { <button type="button" [class.on]="period() === p.key" (click)="period.set(p.key); reset()">{{ p.label }}</button> }</div>
@@ -236,8 +312,8 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
                   <td class="num" data-l="Uploaded">{{ c.uploaded }}</td><td class="num" data-l="Planned">{{ c.planned }}</td><td class="num" data-l="Picked up">{{ c.picked_up }}</td><td class="num" data-l="Answered">{{ c.answered }}</td><td class="num" data-l="Success rate">{{ pct(c.success_rate) }}</td>
                   <td data-l="Coverage">@for (st of c.stats ?? []; track st.field) { <div class="s-cov" [title]="st.label + ': ' + st.covered + ' of ' + st.total + ' on answered calls, ' + st.accepted + ' accepted'">{{ st.label }} <b>{{ st.covered }}/{{ st.total }}</b> <small>{{ st.accepted }} accepted</small></div> } @empty { <span class="s-muted">—</span> }</td>
                   <td><div class="s-actions">
-                    <button type="button" class="s-btn" (click)="$event.stopPropagation(); results(c)">Results</button>
-                    @if (c.status === 'Running') { <button type="button" class="s-btn s-danger" (click)="$event.stopPropagation(); stop(c)">Stop</button> }
+                    <button need="campaigns:export" type="button" class="s-btn" (click)="$event.stopPropagation(); results(c)">Results</button>
+                    @if (c.status === 'Running') { <button need="campaigns:edit" type="button" class="s-btn s-danger" (click)="$event.stopPropagation(); stop(c)">Stop</button> }
                   </div></td>
                 </tr>
               }
@@ -295,7 +371,7 @@ export class CampaignsListComponent {
   selector: 'app-campaign-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CallingReportComponent],
+  imports: [NeedDirective, CallingReportComponent],
   styles: [CSS + `
     .cp-paused { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border: 1px solid #fca5a5; background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; }
     .cp-paused b { color: #b91c1c; }
@@ -318,12 +394,12 @@ export class CampaignsListComponent {
             <p class="s-sub">{{ camp.agent }} · uploaded by {{ camp.uploaded_by || '—' }} · {{ when(camp.created_at) }} · {{ camp.uploaded }} rows</p>
           </div>
           <span class="s-grow"></span>
-          <button type="button" class="s-btn" (click)="results(camp)">Results (.xlsx)</button>
-          @if (camp.status === 'Running') { <button type="button" class="s-btn s-danger" (click)="stop(camp)">Stop calls</button> }
+          <button need="campaigns:export" type="button" class="s-btn" (click)="results(camp)">Results (.xlsx)</button>
+          @if (camp.status === 'Running') { <button need="campaigns:edit" type="button" class="s-btn s-danger" (click)="stop(camp)">Stop calls</button> }
         </div>
         @if (camp.paused; as pz) {
           <div class="cp-paused" role="alert"><b>Paused by an alert</b><span>{{ pz.reason }} · {{ when(pz.at) }}. Calls still waiting are held; nothing is lost.</span>
-            @if (source().resume) { <button type="button" class="s-btn s-primary" (click)="resume(camp)">Resume calls</button> }</div>
+            @if (source().resume) { <button need="campaigns:edit" type="button" class="s-btn s-primary" (click)="resume(camp)">Resume calls</button> }</div>
         }
         @if (note()) { <p class="s-note">{{ note() }}</p> }
         <!-- Where the campaign stands, before any detail: rows done, still dialling, not dialled, and the result so far. -->
@@ -761,6 +837,7 @@ const AN_TABS = [
 @Component({
   selector: 'app-follow-ups-list',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     :host .s { align-content: start; grid-auto-rows: max-content; }
@@ -820,7 +897,7 @@ const AN_TABS = [
       <div class="s-head">
         <div><h1 class="s-title">Action needed</h1><p class="s-sub">Calls the agent could not settle on its own. Mark each one done or rejected; what the agent is still calling is under With the agent.</p></div>
         <span class="s-grow"></span>
-        <button type="button" class="s-btn" (click)="exportList()" [title]="'Export the ' + rows().length + ' rows shown'">Export</button>
+        <button need="actions:export" type="button" class="s-btn" (click)="exportList()" [title]="'Export the ' + rows().length + ' rows shown'">Export</button>
       </div>
       <div class="an-tabs" role="tablist" aria-label="Status">
         @for (t of TABS; track t.key) {
@@ -836,8 +913,8 @@ const AN_TABS = [
       @if (msg()) { <span class="an-ok" role="status">{{ msg() }}</span> }
       @if (sel().length) {
         <div class="an-bulk"><b>{{ sel().length }} selected</b>
-          <button type="button" class="an-b ok" (click)="bulk('done')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>Mark done</button>
-          <button type="button" class="an-b no" (click)="bulk('dismiss')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>Reject</button>
+          <button need="actions:edit" type="button" class="an-b ok" (click)="bulk('done')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>Mark done</button>
+          <button need="actions:edit" type="button" class="an-b no" (click)="bulk('dismiss')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>Reject</button>
           <span class="s-grow"></span><button type="button" class="s-btn" (click)="sel.set([])">Clear</button>
         </div>
       }
@@ -854,8 +931,8 @@ const AN_TABS = [
               <div class="an-up" [title]="r.owner">{{ r.owner === me() ? 'Me' : short(r.owner) }}</div>
               <span class="an-age" [class.late]="late(r)">{{ age(r.since) }}</span>
               <div class="an-ic" (click)="$event.stopPropagation()">
-                <button type="button" class="an-b ok" (click)="act(r, 'done')" [attr.aria-label]="'Mark done: ' + r.caller"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>Done</button>
-                <button type="button" class="an-b no" (click)="act(r, 'dismiss')" [attr.aria-label]="'Reject: ' + r.caller" title="Reject: this will not be done"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>Reject</button>
+                <button need="actions:edit" type="button" class="an-b ok" (click)="act(r, 'done')" [attr.aria-label]="'Mark done: ' + r.caller"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.2 3L13 4.5"/></svg>Done</button>
+                <button need="actions:edit" type="button" class="an-b no" (click)="act(r, 'dismiss')" [attr.aria-label]="'Reject: ' + r.caller" title="Reject: this will not be done"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>Reject</button>
                 <button type="button" class="an-b" (click)="source().openCall(r)" [attr.aria-label]="'Open the call with ' + r.caller"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h4v4M13 3L7 9M11 9.5V13H3V5h3.5"/></svg>Open call</button>
               </div>
             </div>
@@ -970,6 +1047,7 @@ export interface AgentMetricsSource { load(): Promise<AgentMetricsRow[]>; save(a
 @Component({
   selector: 'app-agent-metrics',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .am { display: grid; gap: 12px; }
@@ -1004,7 +1082,7 @@ export interface AgentMetricsSource { load(): Promise<AgentMetricsRow[]>; save(a
         </div>
         <div class="am-foot">@if (saved()) { <span class="am-ok">Saved</span> }@if (error()) { <span class="s-muted">{{ error() }}</span> }
           <button type="button" class="s-btn" (click)="reset()" [disabled]="!dirty()">Undo changes</button>
-          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save metrics' }}</button></div>
+          <button need="agents:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save metrics' }}</button></div>
       } @else { <p class="s-empty">{{ error() || 'Loading the metrics…' }}</p> }
     </div>
   `,
@@ -1055,6 +1133,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 @Component({
   selector: 'app-calling-rules',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .cr2 { display: grid; gap: 14px; }
@@ -1106,7 +1185,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
             <h3>Holidays: no calls</h3>
             <div class="cr2-hols">@for (h of d.holidays; track h.date) { <span class="cr2-hol">{{ dateText(h.date) }} · {{ h.name }}<button type="button" (click)="removeHoliday(h.date)" [attr.aria-label]="'Remove ' + h.name">✕</button></span> } @empty { <span class="s-muted">None set.</span> }</div>
             <div class="cr2-add"><input type="date" [value]="newDate()" (change)="newDate.set($any($event.target).value)" aria-label="Holiday date"><input type="text" placeholder="Name, e.g. Diwali" [value]="newName()" (input)="newName.set($any($event.target).value)" aria-label="Holiday name">
-              <button type="button" class="s-btn" [disabled]="!newDate()" (click)="addHoliday()">Add holiday</button></div>
+              <button need="settings:edit" type="button" class="s-btn" [disabled]="!newDate()" (click)="addHoliday()">Add holiday</button></div>
             <span class="s-muted">Examples for the coming months. The product loads each country's official list every year.</span>
             <h3>Do-not-call register</h3>
             <span>{{ d.register.name }}</span>
@@ -1124,7 +1203,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
         <div class="cr2-foot">@if (saved()) { <span class="s-muted">Saved. New retries and uploads use these rules.</span> }@if (error()) { <span class="s-muted">{{ error() }}</span> }
           <button type="button" class="s-btn" (click)="resetCountry()" [disabled]="!d.edited && !dirty()">Back to {{ d.name }}'s defaults</button>
           <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button>
-          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save rules' }}</button></div>
+          <button need="settings:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save rules' }}</button></div>
       } @else { <p class="s-empty">{{ error() || 'Loading the calling rules…' }}</p> }
     </div>
   `,
@@ -1218,6 +1297,7 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
 @Component({
   selector: 'app-agent-data-source',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .ds { display: grid; gap: 14px; }
@@ -1454,8 +1534,8 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
           <span class="grow"></span>
           @if (step() > 0) { <button type="button" class="s-btn" (click)="go(step() - 1)">Back</button> }
           @if (step() < STEPS.length - 1) { <button type="button" class="s-btn" (click)="go(step() + 1)" [disabled]="step() === 0 && !test()?.ok && !v.saved">Next</button> }
-          <button type="button" class="s-btn" (click)="runNow()" [disabled]="busy() || !v.saved || dirty()" [title]="!v.saved || dirty() ? 'Save the setup first' : 'Read the rows now and start the calls'">Run now</button>
-          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="busy() || !dirty() || !d().connector">{{ busy() ? 'Saving…' : d().schedule.on ? 'Save and turn on' : 'Save' }}</button>
+          <button need="data:edit" type="button" class="s-btn" (click)="runNow()" [disabled]="busy() || !v.saved || dirty()" [title]="!v.saved || dirty() ? 'Save the setup first' : 'Read the rows now and start the calls'">Run now</button>
+          <button need="data:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="busy() || !dirty() || !d().connector">{{ busy() ? 'Saving…' : d().schedule.on ? 'Save and turn on' : 'Save' }}</button>
         </div>
       } @else { <p class="s-empty">{{ msg() || 'Loading the data source…' }}</p> }
     </div>
@@ -1555,6 +1635,7 @@ export interface DncSource { load(q: string): Promise<DncView>; add(e: { phone: 
 @Component({
   selector: 'app-dnc-list',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .w1 { display: grid; gap: 14px; }
@@ -1583,7 +1664,7 @@ export interface DncSource { load(q: string): Promise<DncView>; add(e: { phone: 
           <label>Number<input [value]="phone()" (input)="phone.set($any($event.target).value)" placeholder="10-digit mobile" inputmode="tel"></label>
           <label>Name (optional)<input [value]="name()" (input)="name.set($any($event.target).value)"></label>
           <label style="flex: 1 1 220px">Why<input [value]="reason()" (input)="reason.set($any($event.target).value)" placeholder="e.g. Asked by email to stop calls"></label>
-          <button type="submit" class="s-btn s-primary" [disabled]="busy()">Add to the list</button>
+          <button need="settings:edit" type="submit" class="s-btn s-primary" [disabled]="busy()">Add to the list</button>
         </form>
         @if (msg()) { <span [class.w1-err]="bad()" [class.w1-ok]="!bad()" role="status">{{ msg() }}</span> }
         <div class="w1-row"><label style="flex: 1 1 260px">Search<input type="search" [value]="q()" (input)="search($any($event.target).value)" placeholder="Number, name or reason"></label><span class="s-muted">{{ view.list.length }} number{{ view.list.length === 1 ? '' : 's' }}</span></div>
@@ -1597,7 +1678,7 @@ export interface DncSource { load(q: string): Promise<DncView>; add(e: { phone: 
               <td>@if (removing() === d.phone) {
                   <div class="w1-row"><input [value]="why()" (input)="why.set($any($event.target).value)" placeholder="Why calls are allowed again" aria-label="Why calls are allowed again">
                     <button type="button" class="s-btn s-primary" (click)="remove(d.phone)" [disabled]="!why().trim()">Remove</button><button type="button" class="s-btn" (click)="removing.set('')">Cancel</button></div>
-                } @else { <button type="button" class="s-btn" (click)="removing.set(d.phone); why.set('')">Remove…</button> }</td></tr>
+                } @else { <button need="settings:edit" type="button" class="s-btn" (click)="removing.set(d.phone); why.set('')">Remove…</button> }</td></tr>
           } @empty { <tr><td colspan="4" class="s-muted">No numbers{{ q() ? ' match' : ' yet' }}.</td></tr> }</tbody>
         </table></div>
         @if (view.removed.length) {
@@ -1643,6 +1724,7 @@ export interface AlertsSource { load(): Promise<AlertsView>; save(rules: AlertRu
 @Component({
   selector: 'app-alerts',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .w1 { display: grid; gap: 14px; }
@@ -1682,7 +1764,7 @@ export interface AlertsSource { load(): Promise<AlertsView>; save(rules: AlertRu
           <button type="button" class="s-btn" (click)="addRule()">+ Add a rule</button><span style="flex: 1"></span>
           @if (msg()) { <span [class.w1-err]="bad()" [class.w1-ok]="!bad()" role="status">{{ msg() }}</span> }
           <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button>
-          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save rules' }}</button>
+          <button need="settings:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save rules' }}</button>
         </div>
         @if (view.live?.length) {
           <b>Running now</b>
@@ -1696,7 +1778,7 @@ export interface AlertsSource { load(): Promise<AlertsView>; save(rules: AlertRu
         <div class="al-ev">
           @for (e of view.events; track e.key + e.at) {
             <div class="al-e" [class.done]="e.cleared"><b>{{ e.campaign }}</b><span>{{ e.message }}</span><span class="s-muted">{{ e.action }}{{ e.channels.length ? ' (' + e.channels.join(', ') + ')' : '' }} · {{ when(e.at) }}</span>
-              @if (!e.cleared && isPaused(e.campaign_id)) { <button type="button" class="s-btn s-primary" (click)="resume(e.campaign_id)">Resume calls</button> }
+              @if (!e.cleared && isPaused(e.campaign_id)) { <button need="campaigns:edit" type="button" class="s-btn s-primary" (click)="resume(e.campaign_id)">Resume calls</button> }
               @if (source().openCampaign) { <button type="button" class="s-btn" (click)="source().openCampaign!(e.campaign_id)">Open campaign</button> }
               @if (e.cleared) { <span class="s-muted">Resumed</span> }</div>
           } @empty { <p class="s-note">No alert has fired. Running campaigns are checked each time their numbers update.</p> }
@@ -1743,6 +1825,7 @@ export interface CallHandlingSource { load(agent: string): Promise<{ agent: stri
 @Component({
   selector: 'app-call-handling',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .w1 { display: grid; gap: 16px; }
@@ -1834,7 +1917,7 @@ export interface CallHandlingSource { load(agent: string): Promise<{ agent: stri
         <div class="ch-row" style="justify-content: flex-end">
           @if (msg()) { <span [class.w1-err]="bad()" [class.w1-ok]="!bad()" role="status">{{ msg() }}</span> }
           <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button>
-          <button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save call handling' }}</button>
+          <button need="agents:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">{{ busy() ? 'Saving…' : 'Save call handling' }}</button>
         </div>
       } @else { <p class="s-empty">{{ msg() || 'Loading…' }}</p> }
     </div>
@@ -1908,6 +1991,7 @@ export interface QualitySource {
 @Component({
   selector: 'app-agent-quality',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .q { display: grid; gap: 14px; }
@@ -1986,7 +2070,7 @@ export interface QualitySource {
             @for (cu of qaDraft().custom; track cu.id; let i = $index) { <div class="q-row"><input type="checkbox" style="width: 20px; height: 20px" [checked]="cu.on" (change)="setCustom(i, { on: $any($event.target).checked })" aria-label="Check on">
               <input style="flex: 1 1 260px" [value]="cu.text" (input)="setCustom(i, { text: $any($event.target).value })" aria-label="Check"><button type="button" class="s-btn" (click)="removeCustom(i)">Remove</button></div> }
             <div class="q-row"><button type="button" class="s-btn" (click)="addCustom()">+ Add a check</button><span class="s-grow"></span>
-              <button type="button" class="s-btn s-primary" (click)="saveQa()" [disabled]="busy() || !qaDirty()">Save and re-grade</button></div>
+              <button need="agents:edit" type="button" class="s-btn s-primary" (click)="saveQa()" [disabled]="busy() || !qaDirty()">Save and re-grade</button></div>
           </details>
         } @else { <p class="s-empty">Grading calls…</p> }
       }
@@ -1995,7 +2079,7 @@ export interface QualitySource {
         @if (tv(); as t) {
           <div class="q-row">
             <label>Test version<select (change)="testVersion.set(+$any($event.target).value)">@for (v of t.versions; track v.v) { <option [value]="v.v" [selected]="v.v === testVersion()">v{{ v.v }} · {{ v.status }}</option> }</select></label>
-            <button type="button" class="s-btn" (click)="fromCalls()" [disabled]="busy()">+ Add scenarios from failing real calls</button><span class="s-grow"></span>
+            <button need="agents:edit" type="button" class="s-btn" (click)="fromCalls()" [disabled]="busy()">+ Add scenarios from failing real calls</button><span class="s-grow"></span>
             <button type="button" class="s-btn s-primary" (click)="run()" [disabled]="busy() || !picked().length">{{ busy() ? 'Running…' : 'Run ' + picked().length + ' test' + (picked().length === 1 ? '' : 's') }}</button>
           </div>
           <span class="s-muted">Each test is an AI caller playing a supplier against the version you pick. Nothing is dialled and no credits are used.</span>
@@ -2029,16 +2113,16 @@ export interface QualitySource {
               <label class="q-row" style="display: grid">Note<input [value]="draftNote()" (input)="draftNote.set($any($event.target).value)"></label>
               <textarea [value]="draftPrompt()" (input)="draftPrompt.set($any($event.target).value)" aria-label="Draft prompt"></textarea>
               <div class="q-row"><span class="s-muted">Edits go to the draft only; live calls keep using v{{ v.published }}.</span><span class="s-grow"></span>
-                <button type="button" class="s-btn" (click)="saveDraft()" [disabled]="busy()">Save draft</button></div>
+                <button need="agents:edit" type="button" class="s-btn" (click)="saveDraft()" [disabled]="busy()">Save draft</button></div>
             </details>
             <div class="q-row"><button type="button" class="s-btn" (click)="go('test'); testVersion.set(dr.v)">Test v{{ dr.v }} first</button><span class="s-grow"></span>
-              <button type="button" class="s-btn s-primary" (click)="publish(dr.v)" [disabled]="busy()">Publish v{{ dr.v }}</button></div>
+              <button need="agents:edit" type="button" class="s-btn s-primary" (click)="publish(dr.v)" [disabled]="busy()">Publish v{{ dr.v }}</button></div>
           } @else { <div class="q-row"><span class="s-muted">No draft. Start one from the live version to change the prompt safely.</span><button type="button" class="s-btn" (click)="newDraft()">Start a draft</button></div> }
           <b>Split live traffic (A/B)</b>
           <div class="q-row" style="align-items: center">
             <label style="display: inline-flex; gap: 6px; align-items: center; color: var(--s-text)"><input type="checkbox" style="width: 20px; height: 20px" [checked]="v.split.on" [disabled]="!v.draft" (change)="setSplit($any($event.target).checked, splitPct())"> Send part of each campaign to the draft</label>
             <label>Share to v{{ v.split.b }} (%)<input type="number" min="5" max="50" style="width: 80px" [value]="splitPct()" (change)="splitPct.set(+$any($event.target).value)"></label>
-            <button type="button" class="s-btn" (click)="setSplit(v.split.on, splitPct())" [disabled]="busy() || !v.draft">Save split</button>
+            <button need="agents:edit" type="button" class="s-btn" (click)="setSplit(v.split.on, splitPct())" [disabled]="busy() || !v.draft">Save split</button>
           </div>
           <div class="q-scroll"><table class="q-tbl"><thead><tr><th>Version</th><th>Calls</th><th>Answered</th><th>Success</th><th>Quality</th><th></th></tr></thead><tbody>
             @for (a of v.arms; track a.v) { <tr><td><b>v{{ a.v }}</b>{{ a.v === v.published ? ' (live)' : ' (draft)' }}</td><td>{{ a.calls }}</td><td>{{ pct(a.answered_pct) }}</td><td>{{ pct(a.success_pct) }}</td><td><b [class]="tone(a.qa)">{{ a.qa ?? '—' }}</b></td><td class="s-muted">{{ a.enough ? '' : 'Fewer than 30 calls: too early to call it' }}</td></tr> }
@@ -2111,6 +2195,7 @@ export interface LiveSource { list(): Promise<{ calls: LiveCall[]; buyers: { key
 @Component({
   selector: 'app-live-calls',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .lv { border: 1px solid var(--s-line); border-radius: 12px; background: var(--s-bg); }
@@ -2149,7 +2234,7 @@ export interface LiveSource { list(): Promise<{ calls: LiveCall[]; buyers: { key
             @if (c.state === 'ai' || c.state === 'human') {
               <div class="lv-acts">
                 <button type="button" class="s-btn" [class.s-primary]="!c.listening" (click)="act('listen')" [disabled]="!!c.listening">{{ c.listening ? 'Listening' : 'Listen' }}</button>
-                @if (c.state === 'ai') { <button type="button" class="s-btn" (click)="act('takeover')">Take over</button> }
+                @if (c.state === 'ai') { <button need="calls:edit" type="button" class="s-btn" (click)="act('takeover')">Take over</button> }
                 <button type="button" class="s-btn" (click)="tfOpen.set(!tfOpen())" [attr.aria-expanded]="tfOpen()">Transfer…</button>
                 <button type="button" class="s-btn" (click)="act('dnc')" title="End the call and add the number to the do-not-call list">Don't call again</button>
                 <button type="button" class="s-btn s-danger" (click)="act('end')">End call</button>
@@ -2205,6 +2290,7 @@ export interface TelephonySource { load(): Promise<TelephonyView>; test(b: { car
 @Component({
   selector: 'app-telephony-hub',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .th { display: grid; gap: 14px; }
@@ -2236,14 +2322,14 @@ export interface TelephonySource { load(): Promise<TelephonyView>; test(b: { car
         <b>Connected carriers</b>
         <div class="th-cards">@for (c of view.carriers; track c.key) {
           <div class="th-card"><b>{{ c.name }}</b><span class="th-ok">● Connected</span><span>{{ c.channels }} calls at once · {{ c.numbers.length }} number{{ c.numbers.length === 1 ? '' : 's' }}</span><span class="s-muted">since {{ when(c.since) }}</span>
-            <div><button type="button" class="s-btn" (click)="disconnect(c.key)">Disconnect</button></div></div>
+            <div><button need="settings:edit" type="button" class="s-btn" (click)="disconnect(c.key)">Disconnect</button></div></div>
         } @empty { <p class="s-note">No carrier connected: calls cannot go out.</p> }</div>
         <details class="th-add" [open]="addOpen()" (toggle)="addOpen.set($any($event.target).open)"><summary><b>+ Connect a carrier</b> <span class="s-muted">bring your own Ozonetel, Exotel, Tata Tele, Plivo, Twilio or SIP trunk</span></summary>
           <div class="th-tiles">@for (c of view.catalog; track c.key) { <button type="button" class="th-tile" [class.on]="pickC() === c.key" (click)="pickC.set(c.key); fields.set({}); test.set(null)">{{ c.name }}<small>{{ c.region }}</small></button> }</div>
           @if (carrier(); as c) {
             <div class="th-form">@for (f of c.fields; track f.key) { <label>{{ f.label }}<input [type]="f.type === 'secret' ? 'password' : 'text'" autocomplete="off" (input)="setF(f.key, $any($event.target).value)"></label> }
               <button type="button" class="s-btn" (click)="runTest()" [disabled]="busy()">Test</button>
-              <button type="button" class="s-btn s-primary" (click)="connect()" [disabled]="busy() || !test()?.ok">Connect</button></div>
+              <button need="settings:edit" type="button" class="s-btn s-primary" (click)="connect()" [disabled]="busy() || !test()?.ok">Connect</button></div>
             @if (test(); as t) { <ul class="th-steps">@for (s of t.steps; track s.label) { <li [class.bad]="!s.ok">{{ s.ok ? '✓' : '✕' }} <b>{{ s.label }}</b> · {{ s.detail }}</li> }</ul> }
           }
         </details>
@@ -2259,7 +2345,7 @@ export interface TelephonySource { load(): Promise<TelephonyView>; test(b: { car
             <td>{{ r.in_use }}</td><td>{{ r.queued }}</td><td>{{ mins(r.queued, slotOf(r)) }}</td></tr> }
           @empty { <tr><td colspan="5" class="s-muted">No campaign is running.</td></tr> }
         </tbody></table></div>
-        <div class="th-form"><span class="s-grow"></span>@if (msg()) { <span class="th-msg" [class.bad]="bad()" role="status">{{ msg() }}</span> }<button type="button" class="s-btn s-primary" (click)="save()" [disabled]="busy()">Save numbers and slots</button></div>
+        <div class="th-form"><span class="s-grow"></span>@if (msg()) { <span class="th-msg" [class.bad]="bad()" role="status">{{ msg() }}</span> }<button need="settings:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="busy()">Save numbers and slots</button></div>
       } @else { <p class="s-empty">{{ msg() || 'Loading telephony…' }}</p> }
     </div>
   `,
@@ -2372,6 +2458,7 @@ export interface SecuritySource {
 @Component({
   selector: 'app-security-center',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .sc { display: grid; gap: 14px; }
@@ -2426,14 +2513,14 @@ export interface SecuritySource {
             <label>Recording links expire after (hours)<input type="number" min="1" max="168" style="width: 80px" [value]="s.recording_link_hours" (change)="set({ recording_link_hours: +$any($event.target).value })"></label></div>
         </section>
         <div class="sc-row"><span class="s-grow"></span>@if (msg()) { <span [class.sc-ok]="!bad()" [class.sc-bad]="bad()" role="status">{{ msg() }}</span> }
-          <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button><button type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">Save security settings</button></div>
+          <button type="button" class="s-btn" (click)="undo()" [disabled]="!dirty()">Undo changes</button><button need="settings:edit" type="button" class="s-btn s-primary" (click)="save()" [disabled]="!dirty() || busy()">Save security settings</button></div>
         <section class="sc-sec"><h3>Delete a contact's data <span class="s-muted">for a privacy request (DPDP, GDPR)</span></h3>
           <div class="sc-row"><label>Number<input [value]="delPhone()" (input)="delPhone.set($any($event.target).value); delPreview.set(null)" inputmode="tel" placeholder="10-digit mobile"></label>
             <button type="button" class="s-btn" (click)="preview()" [disabled]="!delPhone().trim()">See what would be deleted</button></div>
           @if (delPreview(); as p) {
             <span>{{ p.calls }} call{{ p.calls === 1 ? '' : 's' }} in {{ p.campaigns }} campaign{{ p.campaigns === 1 ? '' : 's' }}, {{ p.recordings }} recording{{ p.recordings === 1 ? '' : 's' }}, transcripts and answers.{{ p.on_dnc ? ' The number stays on the do-not-call list.' : '' }}</span>
             <div class="sc-row"><label style="flex: 1 1 260px">Why (request reference)<input [value]="delReason()" (input)="delReason.set($any($event.target).value)"></label>
-              <button type="button" class="s-btn s-danger" (click)="del()" [disabled]="!delReason().trim() || busy()">Delete permanently</button></div>
+              <button need="settings:edit" type="button" class="s-btn s-danger" (click)="del()" [disabled]="!delReason().trim() || busy()">Delete permanently</button></div>
           }
           @if (delNote()) { <span class="sc-ok" role="status">{{ delNote() }}</span> }
         </section>
@@ -2476,6 +2563,7 @@ export interface AuditSource { load(p: AuditQuery): Promise<{ rows: AuditEntry[]
 @Component({
   selector: 'app-audit-log',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .al { display: grid; gap: 12px; }
@@ -2491,7 +2579,7 @@ export interface AuditSource { load(p: AuditQuery): Promise<{ rows: AuditEntry[]
   template: `
     <div class="al">
       <div class="s-head"><div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Audit log</h2><p class="s-muted">Every change and every export in this workspace, with who did it. Entries cannot be edited or deleted.</p></div>
-        <span class="s-grow"></span><button type="button" class="s-btn" (click)="exportList()">Export</button></div>
+        <span class="s-grow"></span><button need="audit:export" type="button" class="s-btn" (click)="exportList()">Export</button></div>
       <div class="al-f">
         <select (change)="days.set($any($event.target).value)" aria-label="Period">@for (p of PERIODS; track p[0]) { <option [value]="p[0]" [selected]="p[0] === days()">{{ p[1] }}</option> }</select>
         <select (change)="who.set($any($event.target).value)" aria-label="Who"><option value="all">Everyone</option>@for (p of people(); track p) { <option [value]="p">{{ p }}</option> }</select>
@@ -2740,7 +2828,7 @@ export class AccessComponent {
   readonly source = input.required<AccessSource>();
   readonly page = input(false);
   protected readonly TABS: [AccessTab, string][] = [['structure', 'Org structure'], ['people', 'People'], ['roles', 'Roles'], ['types', 'User types']];
-  protected readonly v = signal<AccessView | null>(null); protected readonly viewAs = signal(''); protected readonly tab = signal<AccessTab>('structure');
+  protected readonly v = signal<AccessView | null>(null); protected readonly viewAs = previewAs; protected readonly tab = signal<AccessTab>('structure');
   protected readonly msg = signal(''); protected readonly bad = signal(false);
   protected readonly unitId = signal(''); protected readonly grantFor = signal(''); protected readonly openUser = signal(''); protected readonly grantUnit = signal('');
   protected readonly q = signal(''); protected readonly fType = signal('all'); protected readonly fUnit = signal('all');
@@ -2761,7 +2849,7 @@ export class AccessComponent {
     try { const v = await p; this.take(v); this.say(v.note || done); return true; }
     catch (e) { this.say(errText(e, (e as Error)?.message || 'Could not save.'), true); return false; }
   }
-  protected preview(id: string): void { this.viewAs.set(id); this.openUser.set(''); this.msg.set(''); }
+  protected preview(id: string): void { setPreviewAs(id); this.openUser.set(''); this.msg.set(''); }
   protected actorName(): string { const x = this.v(); return x?.people_to_preview.find((p) => p.id === x.actor)?.name || 'them'; }
 
   // Structure

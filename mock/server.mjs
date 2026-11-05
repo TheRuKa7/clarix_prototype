@@ -20,7 +20,7 @@ import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { PEOPLE, auditRequest, auditView, AUDIT_COLUMNS, securityView, saveSecurity, testSso, newScimToken, deleteContact, isDeleted, supplierView } from './wave4.mjs';
-import { accessView, accessCreate, accessUpdate, accessRemove, accessActorFor } from './access.mjs';
+import { accessView, accessCreate, accessUpdate, accessRemove, accessActorFor, accessMe, setPreview, previewBlock, previewShape, seesCampaign, claimCampaign } from './access.mjs';
 import { liveCalls, liveAction, BUYER_LIST, telephonyView, testCarrier, connectCarrier, disconnectCarrier, saveSlots, copilotAnswer, COPILOT_SUGGESTIONS } from './wave3.mjs';
 import { qaScorecard, saveQa, testsView, runTests, scenariosFromCalls, versionsView, saveDraft, publishDraft, setSplit, memoryOf } from './wave2.mjs';
 import { dncScan, dncView, dncAdd, dncRemove, dncSettings, onDnc, alertsView, saveAlerts, resumeCampaign, handlingOf, saveHandling, rerunAnswers, diagnosticsOf } from './wave1.mjs';
@@ -213,7 +213,7 @@ for (const b of S.batches) {
   });
   sheet.failed = failedRows.length;
   sheet.triggered = sheet.total - sheet.failed;
-  sheets.push(sheet);
+  claimCampaign(sheet.id); sheets.push(sheet);
 }
 
 // Older Voxera batch: 6 rows, all completed (live shows 100% answered), with the data Voxera used to return.
@@ -287,7 +287,7 @@ function finishExecution(e, status, extra = {}) {
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 function filterExecutions(q, templateId) {
-  let list = executions.filter((e) => !templateId || e.templateId === templateId);
+  let list = executions.filter((e) => (!templateId || e.templateId === templateId) && seesCampaign(e.batchId));
   if (q.get('status')) list = list.filter((e) => e.status === q.get('status'));
   if (q.get('channelType')) list = list.filter((e) => e.activeChannelType === q.get('channelType'));
   if (q.get('batchId')) list = list.filter((e) => e.batchId === q.get('batchId'));
@@ -524,7 +524,8 @@ const cors = (req) => ({ 'Access-Control-Allow-Origin': req.headers.origin || '*
 const routes = [];
 const on = (method, pattern, fn, opts = {}) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn, ...opts });
 let R = null;
-const send = (status, body) => { R.res.writeHead(status, { ...cors(R.req), 'Content-Type': 'application/json' }); R.res.end(JSON.stringify(body)); };
+// Preview as (Team and access): lists drop other teams' campaigns and Viewers get masked numbers.
+const send = (status, body) => { R.res.writeHead(status, { ...cors(R.req), 'Content-Type': 'application/json' }); R.res.end(JSON.stringify(previewShape(body))); };
 const ok = (data, totalElements) => send(200, { status: true, message: 'Success', data, ...(totalElements !== undefined ? { totalElements } : {}) });
 const fail = (code, message) => send(code, { status: false, message, code, data: null });
 const file = (buf, type, name) => { R.res.writeHead(200, { ...cors(R.req), 'Content-Type': type, 'Content-Length': buf.length, 'Content-Disposition': `attachment; filename="${name}"` }); R.res.end(buf); };
@@ -637,7 +638,7 @@ on('GET', '/api/v1/workflows/by-template/:tid/report', ({ p, q }) => {
 });
 on('GET', '/api/v1/workflows/by-template/:tid', ({ p, q }) => { const l = filterExecutions(q, p.tid); ok(page(l, q).map(withSync), l.length); });
 on('GET', '/api/v1/workflows/sheets', ({ q }) => {
-  let l = sheets.map(sheetView);
+  let l = sheets.filter((x) => seesCampaign(x.id)).map(sheetView);
   if (q.get('templateId')) l = l.filter((s) => s.templateId === q.get('templateId'));
   if (q.get('uploadedBy')) l = l.filter((s) => s.uploadedBy === q.get('uploadedBy'));
   if (q.get('from')) l = l.filter((s) => s.createdAt >= new Date(q.get('from')).toISOString());
@@ -777,7 +778,7 @@ function callingRow(e) {
     inputs: flatValues(e.context), answers: flatValues(out) };
 }
 function callingRows() {
-  const rows = executions.map(callingRow);
+  const rows = executions.filter((e) => seesCampaign(e.batchId)).map(callingRow);
   // Rows that failed the upload check never became executions: they still count as uploaded, Bad data.
   for (const s of sheets) {
     const t = templates.find((x) => x.id === s.templateId);
@@ -908,7 +909,7 @@ on('POST', '/api/v1/reports/calling/new-campaign/start', async ({ q, req, raw })
     total: r.rows.length, triggered: 0, failed: 0, failedRows: r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })), createdAt: nowIso() };
   const good = r.rows.filter((x) => !x.bad && !x.check?.is_dummy).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
   good.forEach((row) => addExecution({ id: row.primary_id, template: t, batch: sheet, row, status: 'IN_PROGRESS', submittedAt: nowIso(), completedAt: null, duration: null, extracted: null, conv: { callStatus: 'QUEUED', attempts: 0 } }));
-  sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; sheets.push(sheet);
+  sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; claimCampaign(sheet.id); sheets.push(sheet);
   const mine = R; if (good.length) await dispatchToEcho(t, sheet, good); R = mine;
   ok({ campaign_id: sheet.id, dialled: good.length });
 });
@@ -918,7 +919,7 @@ async function dsStart(t, csv, filename) {
     total: r.rows.length, triggered: 0, failed: 0, failedRows: r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })), createdAt: nowIso() };
   const good = r.rows.filter((x) => !x.bad && !x.check?.is_dummy).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
   good.forEach((row) => addExecution({ id: row.primary_id, template: t, batch: sheet, row, status: 'IN_PROGRESS', submittedAt: nowIso(), completedAt: null, duration: null, extracted: null, conv: { callStatus: 'QUEUED', attempts: 0 } }));
-  sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; sheets.push(sheet);
+  sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; claimCampaign(sheet.id); sheets.push(sheet);
   const mine = R; if (good.length) await dispatchToEcho(t, sheet, good); R = mine;
   return { campaign_id: sheet.id, dialled: good.length };
 }
@@ -986,6 +987,7 @@ on('GET', '/api/v1/reports/calling/security', (ctx) => ok({ ...securityView(), p
 // Team and access: org, sub-orgs, teams, people and roles. ?as= previews the screen as another person.
 const accessAs = (q) => q.get('as') || accessActorFor(USER);
 const accessReply = (ctx, r) => (r.error ? fail(400, r.error) : ok({ ...accessView(accessAs(ctx.q)), note: r.note || '' }));
+on('GET', '/api/v1/reports/calling/access/me', (ctx) => ok(accessMe(ctx.req.headers['x-preview-as'], accessActorFor(USER))));
 on('GET', '/api/v1/reports/calling/access', (ctx) => ok(accessView(accessAs(ctx.q))));
 on('POST', '/api/v1/reports/calling/access/:kind', (ctx) => accessReply(ctx, accessCreate(ctx.p.kind, ctx.body || {}, accessAs(ctx.q))));
 on('PUT', '/api/v1/reports/calling/access/:kind/:id', (ctx) => accessReply(ctx, accessUpdate(ctx.p.kind, ctx.p.id, ctx.body || {}, accessAs(ctx.q))));
@@ -1166,7 +1168,7 @@ on('POST', '/api/v1/workflows/trigger/bulk', async ({ req, raw }) => {
     results.push({ row: i + 2, status: 'ACCEPTED', reason: '' });
   });
   sheet.failed = sheet.failedRows.length; sheet.triggered = toEcho.length;
-  if (toEcho.length) sheets.push(sheet);
+  if (toEcho.length) claimCampaign(sheet.id); sheets.push(sheet);
   const mine = R; // another request may run while we wait on the Echo mock
   if (toEcho.length) await dispatchToEcho(t, sheet, toEcho);
   R = mine;
@@ -1353,6 +1355,10 @@ function handler(req, res) {
   R = { req, res };
   if (!route) return fail(404, `No mock for ${req.method} ${url.pathname}`);
   if (!route.open && !/^Bearer .+/.test(req.headers.authorization || '')) return fail(401, 'Unauthorized');
+  // Preview as: the person picked in Team and access. Requests they could not make are refused here.
+  setPreview(req.headers['x-preview-as'], accessActorFor(USER));
+  const blocked = route.open ? '' : previewBlock(req.method, url.pathname);
+  if (blocked) return fail(403, blocked);
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
   req.on('end', async () => {

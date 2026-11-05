@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { NeedDirective } from '../shared-screens/preview';
 import { ActivatedRoute, Router } from '@angular/router';
 
 /**
@@ -70,6 +71,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
 @Component({
   selector: 'app-call-page',
   standalone: true,
+  imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="cp" [class.cp-busy]="loading()">
@@ -83,7 +85,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
           }
           <span class="cp-grow"></span>
           @if (audioUrl()) { <a class="cp-btn" [href]="audioUrl()" [download]="'recording-' + c.id + '.wav'">Download audio</a> }
-          <button type="button" class="cp-btn" (click)="exportJson()" title="Every detail of this call in one file, for your IT team">Download details</button>
+          <button need="calls:export" type="button" class="cp-btn" (click)="exportJson()" title="Every detail of this call in one file, for your IT team">Download details</button>
         }
       </div>
 
@@ -117,7 +119,7 @@ const COLORS: Record<string, string> = { success: '#16a34a', not_successful: '#d
               <button type="button" class="cp-btn" (click)="editing.set(false)">Cancel</button>
               <button type="button" class="cp-btn cp-primary" (click)="saveOutcome()">Save</button>
             </div>
-          } @else { <button type="button" class="cp-link" (click)="startEdit()">Change outcome</button> }
+          } @else { <button need="calls:edit" type="button" class="cp-link" (click)="startEdit()">Change outcome</button> }
         }
 
         <div class="cp-grid">
