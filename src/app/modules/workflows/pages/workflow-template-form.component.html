@@ -11,7 +11,7 @@
         <lucide-icon name="git-branch" [size]="20" class="modal-icon"></lucide-icon>
       </span>
       <div>
-        <h2 class="modal-title">{{ isEdit ? (form.get('name')?.value || 'Edit Template') : 'New Workflow Template' }}</h2>
+        <h2 class="modal-title">{{ isEdit ? (form.get('name')?.value || 'Edit template') : 'New workflow template' }}</h2>
         <p class="modal-subtitle">{{ headerSubtitle() }}</p>
       </div>
     </div>
@@ -106,7 +106,7 @@
             </div>
             <div class="config-block-grid three">
               <div class="form-group">
-                <label for="callProviderKey" class="form-label">Call Provider</label>
+                <label for="callProviderKey" class="form-label">Call provider</label>
                 @if (isExchangeTemplate()) {
                   <input
                     id="callProviderKey"
@@ -127,7 +127,7 @@
               </div>
 
               <div class="form-group">
-                <label for="providerAgentId" class="form-label">Provider Agent ID <span class="required">*</span></label>
+                <label for="providerAgentId" class="form-label">Provider agent ID <span class="required">*</span></label>
                 <input
                   id="providerAgentId"
                   type="text"
@@ -140,12 +140,12 @@
                   autocomplete="off"
                 />
                 @if (isFieldInvalid('providerAgentId')) {
-                  <p class="field-error" role="alert">Provider Agent ID is required.</p>
+                  <p class="field-error" role="alert">Provider agent ID is required.</p>
                 }
               </div>
 
               <div class="form-group">
-                <label for="defaultChannelType" class="form-label">Default Channel <span class="required">*</span></label>
+                <label for="defaultChannelType" class="form-label">Default channel <span class="required">*</span></label>
                 <select id="defaultChannelType" formControlName="defaultChannelType" class="form-input form-select">
                   @for (ch of defaultChannelOptions; track ch) {
                     <option [value]="ch">{{ ch }}</option>
@@ -190,7 +190,7 @@
             </div>
 
             <div class="form-group">
-              <label for="triggerEventTypesRaw" class="form-label">Trigger Event Types <span class="required">*</span></label>
+              <label for="triggerEventTypesRaw" class="form-label">Trigger event types <span class="required">*</span></label>
               <input
                 id="triggerEventTypesRaw"
                 type="text"
@@ -206,7 +206,7 @@
 
             <div class="config-block-grid two">
               <div class="form-group">
-                <label for="maxRetries" class="form-label">Max Retries</label>
+                <label for="maxRetries" class="form-label">Max retries</label>
                 <input
                   id="maxRetries"
                   type="number"
@@ -218,7 +218,7 @@
               </div>
 
               <div class="form-group">
-                <label for="retryDelayMinutes" class="form-label">Retry Delay (minutes)</label>
+                <label for="retryDelayMinutes" class="form-label">Retry delay (minutes)</label>
                 <input
                   id="retryDelayMinutes"
                   type="number"
@@ -231,7 +231,7 @@
           </div>
 
           <div class="form-group">
-            <label for="templateKey" class="form-label">Template Key <span class="required">*</span></label>
+            <label for="templateKey" class="form-label">Template key <span class="required">*</span></label>
             <input
               id="templateKey"
               type="text"
@@ -243,7 +243,7 @@
               style="max-width:320px;"
             />
             @if (isFieldInvalid('templateKey')) {
-              <p class="field-error" role="alert">Required. Use UPPERCASE letters, numbers and underscores only.</p>
+              <p class="field-error" role="alert">Required. Use uppercase letters, numbers and underscores only.</p>
             }
             <span class="form-hint">The internal key used by triggers and integrations. Set once, rarely changed.</span>
           </div>
@@ -270,13 +270,13 @@
 
         @if (!isExchangeTemplate()) {
           <div class="section-divider">
-            <span>Contact Extraction Config</span>
+            <span>Contact extraction config</span>
           </div>
           <p class="section-hint">JSON paths used to extract contact info from the event payload.</p>
 
           <div class="form-row">
             <div class="form-group">
-              <label for="contactPhone" class="form-label">Phone JSON Path</label>
+              <label for="contactPhone" class="form-label">Phone JSON path</label>
               <input
                 id="contactPhone"
                 type="text"
@@ -286,7 +286,7 @@
               />
             </div>
             <div class="form-group">
-              <label for="contactEmail" class="form-label">Email JSON Path</label>
+              <label for="contactEmail" class="form-label">Email JSON path</label>
               <input
                 id="contactEmail"
                 type="text"
@@ -298,7 +298,7 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label for="contactName" class="form-label">Name JSON Path</label>
+              <label for="contactName" class="form-label">Name JSON path</label>
               <input
                 id="contactName"
                 type="text"
@@ -330,7 +330,7 @@
             <div class="input-params-table">
               <div class="input-params-row input-params-head">
                 <span>Echo input</span>
-                <span>Sheet Column</span>
+                <span>Sheet column</span>
                 <span>Or fetched by</span>
                 <span class="status-col">Status</span>
               </div>
@@ -397,7 +397,7 @@
 
           <!-- Context Mapping: JSON-path extraction from the trigger payload -->
           <div class="section-divider">
-            <span>Context Mapping</span>
+            <span>Context mapping</span>
           </div>
           <p class="section-hint">
             Field name → JSON path. Required fields must be present in the trigger payload. Data type
@@ -405,7 +405,7 @@
           </p>
 
           @if (contextMappings.controls.length === 0) {
-            <p class="empty-hint">No context mappings yet. Click "Add Mapping" to start.</p>
+            <p class="empty-hint">No context mappings yet. Click "Add mapping" to start.</p>
           }
 
           <div class="fields-list" formArrayName="contextMappings">
@@ -413,7 +413,7 @@
               <div class="field-row" [formGroupName]="i">
                 <div class="field-row-grid">
                   <div class="form-group">
-                    <label [for]="'cmField-' + i" class="form-label">Field Name <span class="required">*</span></label>
+                    <label [for]="'cmField-' + i" class="form-label">Field name <span class="required">*</span></label>
                     <input
                       [id]="'cmField-' + i"
                       type="text"
@@ -435,7 +435,7 @@
                   </div>
 
                   <div class="form-group">
-                    <label [for]="'cmDataType-' + i" class="form-label">Data Type</label>
+                    <label [for]="'cmDataType-' + i" class="form-label">Data type</label>
                     <select [id]="'cmDataType-' + i" formControlName="dataType" class="form-input form-select">
                       @for (dt of fieldDataTypeOptions; track dt) {
                         <option [value]="dt">{{ dt }}</option>
@@ -469,7 +469,7 @@
           <div class="add-row-footer">
             <button type="button" class="add-row-btn" (click)="addContextMapping()">
               <lucide-icon name="plus" [size]="14"></lucide-icon>
-              Add Mapping
+              Add mapping
             </button>
           </div>
         }
@@ -491,7 +491,7 @@
 
         @if (dataFunctions().length === 0) {
           <p class="empty-hint">
-            No data functions are available. Create them under Data Functions (admin), then they can
+            No data functions are available. Create them under Data functions (admin), then they can
             be wired in here.
           </p>
         }
@@ -536,7 +536,7 @@
                   [attr.title]="'Also keep each fetched field\'s own sheet column — a row supplies either the value or the lookup key, never both'">
                   <input type="checkbox" formControlName="acceptInputs" class="form-checkbox"
                     (change)="onEnrichmentAcceptInputsToggle(i, $any($event.target).checked)" />
-                  <span>Accept Inputs</span>
+                  <span>Accept inputs</span>
                 </label>
 
                 <button
@@ -599,18 +599,18 @@
           <!-- Steps & Config: Exchange's own agent runs the call, so there's no Clarix-side step
                tree to author there — this section is Voxera/other-provider only. -->
           <div class="section-divider">
-            <span>Conversation Steps</span>
+            <span>Conversation steps</span>
           </div>
           <div class="tab-toolbar">
             <p class="section-hint">Define the ordered list of steps the workflow will execute.</p>
             <button type="button" class="add-row-btn" (click)="addStep()">
               <lucide-icon name="plus" [size]="14"></lucide-icon>
-              Add Step
+              Add step
             </button>
           </div>
 
           @if (steps.controls.length === 0) {
-            <p class="empty-hint">No steps yet. Click "Add Step" to start.</p>
+            <p class="empty-hint">No steps yet. Click "Add step" to start.</p>
           }
 
           <div class="steps-list" formArrayName="steps">
@@ -679,7 +679,7 @@
                 <div formGroupName="action" class="step-action-section">
                   <div class="form-row">
                     <div class="form-group">
-                      <label [for]="'step-action-type-' + stepIdx" class="form-label">Action Type <span class="required">*</span></label>
+                      <label [for]="'step-action-type-' + stepIdx" class="form-label">Action type <span class="required">*</span></label>
                       <select
                         [id]="'step-action-type-' + stepIdx"
                         formControlName="actionType"
@@ -709,7 +709,7 @@
 
                   @if (isActionFieldVisible(stepIdx, 'questionTemplate')) {
                     <div class="form-group">
-                      <label [for]="'step-question-' + stepIdx" class="form-label">Question / Prompt Template</label>
+                      <label [for]="'step-question-' + stepIdx" class="form-label">Question / Prompt template</label>
                       <textarea
                         [id]="'step-question-' + stepIdx"
                         formControlName="questionTemplate"
@@ -723,7 +723,7 @@
 
                   @if (isActionFieldVisible(stepIdx, 'fieldsToExtract')) {
                     <div class="form-group">
-                      <label [for]="'step-extract-' + stepIdx" class="form-label">Fields To Extract</label>
+                      <label [for]="'step-extract-' + stepIdx" class="form-label">Fields to extract</label>
                       <input
                         [id]="'step-extract-' + stepIdx"
                         type="text"
@@ -736,7 +736,7 @@
 
                   @if (isActionFieldVisible(stepIdx, 'providerAgentId')) {
                     <div class="form-group">
-                      <label [for]="'step-provider-agent-' + stepIdx" class="form-label">Provider Agent ID</label>
+                      <label [for]="'step-provider-agent-' + stepIdx" class="form-label">Provider agent ID</label>
                       <input
                         [id]="'step-provider-agent-' + stepIdx"
                         type="text"
@@ -749,7 +749,7 @@
 
                   @if (isActionFieldVisible(stepIdx, 'jumpToStepId')) {
                     <div class="form-group">
-                      <label [for]="'step-jump-' + stepIdx" class="form-label">Jump To Step ID <span class="required">*</span></label>
+                      <label [for]="'step-jump-' + stepIdx" class="form-label">Jump to step ID <span class="required">*</span></label>
                       <input
                         [id]="'step-jump-' + stepIdx"
                         type="text"
@@ -768,7 +768,7 @@
 
                   @if (isActionFieldVisible(stepIdx, 'childWorkflowTemplateId')) {
                     <div class="form-group">
-                      <label [for]="'step-child-' + stepIdx" class="form-label">Child Workflow Template ID <span class="required">*</span></label>
+                      <label [for]="'step-child-' + stepIdx" class="form-label">Child workflow template ID <span class="required">*</span></label>
                       <input
                         [id]="'step-child-' + stepIdx"
                         type="text"
@@ -790,7 +790,7 @@
                   <!-- @if (isActionFieldVisible(stepIdx, 'providerParams')) {
                     <div formGroupName="providerParams" class="form-row">
                       <div class="form-group">
-                        <label [for]="'step-provider-lang-' + stepIdx" class="form-label">Provider Language</label>
+                        <label [for]="'step-provider-lang-' + stepIdx" class="form-label">Provider language</label>
                         <input
                           [id]="'step-provider-lang-' + stepIdx"
                           type="text"
@@ -801,7 +801,7 @@
                         />
                       </div>
                       <div class="form-group">
-                        <label [for]="'step-provider-voice-' + stepIdx" class="form-label">Provider Voice</label>
+                        <label [for]="'step-provider-voice-' + stepIdx" class="form-label">Provider voice</label>
                         <input
                           [id]="'step-provider-voice-' + stepIdx"
                           type="text"
@@ -826,7 +826,7 @@
                     <p class="section-hint">Gate this step on values already present in execution context.</p>
                     <button type="button" class="add-row-btn" (click)="addCondition(stepIdx)">
                       <lucide-icon name="plus" [size]="14"></lucide-icon>
-                      Add Condition
+                      Add condition
                     </button>
                   </div>
 
@@ -878,11 +878,11 @@
 
                 <!-- Flow control -->
                 <div class="section-divider">
-                  <span>Flow Control</span>
+                  <span>Flow control</span>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label [for]="'step-success-' + stepIdx" class="form-label">On Success</label>
+                    <label [for]="'step-success-' + stepIdx" class="form-label">On success</label>
                     <input
                       [id]="'step-success-' + stepIdx"
                       type="text"
@@ -893,7 +893,7 @@
                     />
                   </div>
                   <div class="form-group">
-                    <label [for]="'step-failure-' + stepIdx" class="form-label">On Failure</label>
+                    <label [for]="'step-failure-' + stepIdx" class="form-label">On failure</label>
                     <input
                       [id]="'step-failure-' + stepIdx"
                       type="text"
@@ -915,7 +915,7 @@
 
                 <div class="form-row">
                   <div class="form-group">
-                    <label [for]="'step-retries-' + stepIdx" class="form-label">Max Retries</label>
+                    <label [for]="'step-retries-' + stepIdx" class="form-label">Max retries</label>
                     <input
                       [id]="'step-retries-' + stepIdx"
                       type="number"
@@ -926,7 +926,7 @@
                     />
                   </div>
                   <div class="form-group">
-                    <label [for]="'step-retry-delay-' + stepIdx" class="form-label">Retry Delay (minutes)</label>
+                    <label [for]="'step-retry-delay-' + stepIdx" class="form-label">Retry delay (minutes)</label>
                     <input
                       [id]="'step-retry-delay-' + stepIdx"
                       type="number"
@@ -994,7 +994,7 @@
                     <input type="text" [value]="fg.get('fieldLabel')?.value" class="form-input" disabled />
                   </div>
                   <div class="form-group">
-                    <label class="form-label">Data Type</label>
+                    <label class="form-label">Data type</label>
                     <input type="text" [value]="fg.get('dataType')?.value" class="form-input" disabled />
                   </div>
                 </div>
@@ -1009,12 +1009,12 @@
             <p class="section-hint">Fields the AI must collect during the conversation.</p>
             <button type="button" class="add-row-btn" (click)="addRequiredField()">
               <lucide-icon name="plus" [size]="14"></lucide-icon>
-              Add Field
+              Add field
             </button>
           </div>
 
           @if (requiredFields.controls.length === 0) {
-            <p class="empty-hint">No required fields yet. Click "Add Field" to start.</p>
+            <p class="empty-hint">No required fields yet. Click "Add field" to start.</p>
           }
 
           <div class="fields-list" formArrayName="requiredFields">
@@ -1045,7 +1045,7 @@
                   </div>
 
                   <div class="form-group">
-                    <label [for]="'dataType-' + i" class="form-label">Data Type</label>
+                    <label [for]="'dataType-' + i" class="form-label">Data type</label>
                     <select [id]="'dataType-' + i" formControlName="dataType" class="form-input form-select">
                       @for (dt of fieldDataTypeOptions; track dt) {
                         <option [value]="dt">{{ dt }}</option>
@@ -1076,7 +1076,7 @@
                 </div>
 
                 <div class="form-group hint-row">
-                  <label [for]="'hint-' + i" class="form-label">AI Extraction Hint</label>
+                  <label [for]="'hint-' + i" class="form-label">AI extraction hint</label>
                   <input
                     [id]="'hint-' + i"
                     type="text"
@@ -1105,7 +1105,7 @@
           Saved reports (Execution Reports page) carry their own independent selection.
         -->
         <div class="section-divider">
-          <span>Report Columns</span>
+          <span>Report columns</span>
         </div>
         <p class="section-hint">
           Pick which columns appear in the downloaded executions report. Unchecked columns are
@@ -1130,7 +1130,7 @@
           </div>
 
           <div class="report-columns-group">
-            <p class="section-sublabel">Execution Details</p>
+            <p class="section-sublabel">Execution details</p>
             <div class="report-columns-grid">
               @for (opt of executionDetailColumnOptions; track opt.key) {
                 <label class="column-toggle">
@@ -1146,7 +1146,7 @@
           </div>
 
           <div class="report-columns-group">
-            <p class="section-sublabel">Context Params</p>
+            <p class="section-sublabel">Context params</p>
             @if (contextParamColumnOptions().length === 0) {
               <p class="empty-hint">No context params defined for this template. Add them under the Input tab.</p>
             } @else {
@@ -1166,9 +1166,9 @@
           </div>
 
           <div class="report-columns-group">
-            <p class="section-sublabel">Data Function Inputs</p>
+            <p class="section-sublabel">Data function inputs</p>
             @if (enrichmentInputColumnOptions().length === 0) {
-              <p class="empty-hint">No Data Function inputs for this template. Add enrichments under the Input tab.</p>
+              <p class="empty-hint">No data function inputs for this template. Add enrichments under the Input tab.</p>
             } @else {
               <div class="report-columns-grid">
                 @for (key of enrichmentInputColumnOptions(); track key) {
@@ -1186,7 +1186,7 @@
           </div>
 
           <div class="report-columns-group">
-            <p class="section-sublabel">Execution Outcome</p>
+            <p class="section-sublabel">Execution outcome</p>
             @if (executionOutcomeColumnOptions().length === 0) {
               <p class="empty-hint">No required fields defined. Add them above.</p>
             } @else {
@@ -1206,16 +1206,16 @@
           </div>
 
           <div class="report-columns-group report-columns-locked">
-            <p class="section-sublabel">Additional Fields</p>
+            <p class="section-sublabel">Additional fields</p>
             <p class="section-hint">
-              All entries in <strong>Additional Report Fields</strong> below are always included in
+              All entries in <strong>Additional report fields</strong> below are always included in
               the report. Edit them in that section if you want to add or remove columns here.
             </p>
           </div>
         </div>
 
         <div class="section-divider">
-          <span>Additional Report Fields</span>
+          <span>Additional report fields</span>
         </div>
         <p class="section-hint">
           Extra columns to attach per execution on bulk CSV trigger. These are not used by the
@@ -1223,7 +1223,7 @@
         </p>
 
         @if (reportFields.controls.length === 0) {
-          <p class="empty-hint">No report fields yet. Click "Add Field" to start.</p>
+          <p class="empty-hint">No report fields yet. Click "Add field" to start.</p>
         }
 
         <div class="fields-list" formArrayName="reportFields">
@@ -1244,7 +1244,7 @@
                 </div>
 
                 <div class="form-group">
-                  <label [for]="'rfDataType-' + i" class="form-label">Data Type</label>
+                  <label [for]="'rfDataType-' + i" class="form-label">Data type</label>
                   <select [id]="'rfDataType-' + i" formControlName="dataType" class="form-input form-select">
                     @for (dt of fieldDataTypeOptions; track dt) {
                       <option [value]="dt">{{ dt }}</option>
@@ -1295,11 +1295,11 @@
         <div class="add-row-footer">
           <button type="button" class="add-row-btn" (click)="addReportField()">
             <lucide-icon name="plus" [size]="14"></lucide-icon>
-            Add Field
+            Add field
           </button>
           <button type="button" class="add-row-btn" (click)="csvHeaderInput.click()">
             <lucide-icon name="cloud-upload" [size]="14"></lucide-icon>
-            Pick From CSV File
+            Pick from CSV file
           </button>
           <input
             #csvHeaderInput
@@ -1311,7 +1311,7 @@
         </div>
 
         <div class="section-divider">
-          <span>Column Order</span>
+          <span>Column order</span>
         </div>
         <p class="section-hint">
           Drag to arrange the order columns appear in the downloaded report, and edit any header to

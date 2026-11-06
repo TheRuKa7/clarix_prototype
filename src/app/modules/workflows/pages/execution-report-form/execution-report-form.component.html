@@ -3,7 +3,7 @@
     <button type="button" class="erf__back" (click)="cancel()" aria-label="Back to reports" title="Back to reports">
       <lucide-icon name="arrow-left" [size]="18"></lucide-icon>
     </button>
-    <h1 class="erf__title">{{ isEdit() ? 'Edit Report' : 'New Report' }}</h1>
+    <h1 class="erf__title">{{ isEdit() ? 'Edit report' : 'New report' }}</h1>
   </div>
 
   @if (error()) {
@@ -15,16 +15,16 @@
     <button type="button" role="tab" class="erf__tab"
       [attr.aria-selected]="activeTab() === 'details'"
       [class.erf__tab--active]="activeTab() === 'details'" (click)="activeTab.set('details')">
-      Basic Details
+      Basic details
     </button>
     <button type="button" role="tab" class="erf__tab" [attr.aria-selected]="activeTab() === 'data'"
       [class.erf__tab--active]="activeTab() === 'data'" (click)="activeTab.set('data')">
-      Report Data
+      Report data
     </button>
     <button type="button" role="tab" class="erf__tab"
       [attr.aria-selected]="activeTab() === 'schedules'"
       [class.erf__tab--active]="activeTab() === 'schedules'" (click)="activeTab.set('schedules')">
-      Mail Schedules
+      Mail schedules
     </button>
   </div>
 
@@ -53,7 +53,7 @@
       </div>
 
       <div class="erf__field">
-        <label class="erf__label" for="erf-date-format">Date Format</label>
+        <label class="erf__label" for="erf-date-format">Date format</label>
         <select id="erf-date-format" class="erf__select"
           (change)="onDateFormat($any($event.target).value)">
           @for (opt of dateFormatOptions; track opt.value) {
@@ -126,7 +126,7 @@
   <section class="erf__card">
     <div class="erf__sched-head">
       <div>
-        <h3 class="erf__section-title">Mail Schedules</h3>
+        <h3 class="erf__section-title">Mail schedules</h3>
         <p class="erf__hint">Automatically email this report on a schedule.</p>
       </div>
       <button type="button" class="erf__add-sched" (click)="openAddSchedule()">
@@ -232,7 +232,7 @@
   <div class="erf__footer">
     <button type="button" class="erf__btn erf__btn--ghost" (click)="cancel()">Cancel</button>
     <button type="button" class="erf__btn erf__btn--primary" (click)="save()" [disabled]="saving()">
-      {{ saving() ? 'Saving…' : (isEdit() ? 'Save Changes' : 'Create Report') }}
+      {{ saving() ? 'Saving…' : (isEdit() ? 'Save changes' : 'Create report') }}
     </button>
   </div>
   }

@@ -3,7 +3,7 @@
   <!-- Header -->
   <div class="page-header">
     <div class="header-content">
-      <h1 class="page-title">Manage Permissions</h1>
+      <h1 class="page-title">Manage permissions</h1>
       <p class="page-description">Define permission keys and group them into modules. Modules map to
         central account-service modules.</p>
     </div>
@@ -12,13 +12,13 @@
       <button *hasPermission="'permissions:add'" class="create-btn" type="button"
         (click)="openCreatePermission()">
         <lucide-icon name="plus" [size]="16"></lucide-icon>
-        New Permission
+        New permission
       </button>
       } @else if (tab() === 'modules') {
       <button *hasPermission="'modules:add'" class="create-btn" type="button"
         (click)="openCreateModule()">
         <lucide-icon name="plus" [size]="16"></lucide-icon>
-        New Module
+        New module
       </button>
       }
     </div>
@@ -35,7 +35,7 @@
     <button class="tab" type="button" role="tab" [class.active]="tab() === 'modules'"
       [attr.aria-selected]="tab() === 'modules'" (click)="switchTab('modules')">
       <lucide-icon name="package" [size]="14"></lucide-icon>
-      Account Service Modules
+      Account service modules
       <span class="tab-count">{{ modulesTotal() }}</span>
     </button>
   </div>
@@ -300,7 +300,7 @@
     <form class="modal-body" [formGroup]="moduleForm" (ngSubmit)="saveModule()">
       <div class="field-row">
         <div class="field">
-          <label for="mod-name">Account Service Module Name</label>
+          <label for="mod-name">Account service module name</label>
           <input id="mod-name" type="text" formControlName="name" placeholder="Workflows" />
           <small class="field-hint">Must match the key in central account-service.</small>
           @if (moduleForm.get('name')?.touched && moduleForm.get('name')?.invalid) {

@@ -143,25 +143,51 @@ export interface NewCampaignSource {
 
 const CSS = `
   :host { display: block; --s-text: var(--ds-text, var(--text, #0c0a09)); --s-muted: var(--ds-text-muted, var(--muted, #5c5752)); --s-line: var(--ds-border, var(--line, #e7e5e2));
-    --s-bg: var(--ds-surface, var(--card, #fff)); --s-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --s-good: var(--ds-success-fg, #146c34); --s-accent: var(--ds-accent, var(--accent, #4c4184)); color: var(--s-text); }
-  .s { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    --s-line-strong: var(--ds-border-strong, var(--s-line)); --s-bg: var(--ds-surface, var(--card, #fff)); --s-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --s-hover: var(--ds-hover, var(--s-soft));
+    --s-good: var(--ds-success-fg, #146c34); --s-accent: var(--ds-accent, var(--accent, #4c4184)); --s-on-accent: var(--ds-on-accent, #fff); --s-danger: var(--ds-danger-fg, #b91c1c);
+    --s-ctl: var(--ds-control, 36px); --s-ctl-sm: var(--ds-control-sm, 30px); --s-r: var(--ds-r-md, 8px); --s-r-lg: var(--ds-r-lg, 10px);
+    color: var(--s-text); font-size: var(--ds-fs-base, 13px); }
+  .s { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .s > * { min-width: 0; }
-  .s-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .s-title { margin: 0; font-size: 22px; font-weight: 700; }
-  .s-sub { margin: 2px 0 0; color: var(--s-muted); font-size: 13px; }
+  .s-head { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+  .s-title[aria-level="2"] { font-size: var(--ds-fs-xl, 20px); }
+  .s-title { margin: 0; font-size: var(--ds-fs-2xl, 24px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.25; }
+  .s-sub { margin: 4px 0 0; color: var(--s-muted); font-size: 13px; max-width: 720px; text-wrap: pretty; }
   .s-grow { flex: 1; }
-  .s-muted { color: var(--s-muted); font-size: 12.5px; }
-  .s-btn { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
-  .s-btn:disabled { opacity: .45; cursor: default; }
-  .s-primary { background: var(--s-text); color: var(--s-bg); border-color: var(--s-text); }
-  .s-danger { color: var(--ds-danger-fg, #b91c1c); }
-  .s-link { border: 0; background: none; color: var(--s-muted); text-decoration: underline; cursor: pointer; font: inherit; font-size: 13px; padding: 0; }
-  .s-seg { display: inline-flex; border: 1px solid var(--s-line); border-radius: 8px; overflow: hidden; }
-  .s-seg button { border: 0; background: var(--s-bg); color: var(--s-text); padding: 6px 11px; font: inherit; font-size: 13px; cursor: pointer; }
-  .s-seg button.on { background: var(--s-text); color: var(--s-bg); }
-  .s-search { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); width: 240px; }
-  .s-card { border: 1px solid var(--s-line); border-radius: 12px; background: var(--s-bg); }
-  .s-pad { padding: 14px 16px; display: grid; gap: 10px; }
+  .s-muted { color: var(--s-muted); font-size: 12px; }
+  .s-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--s-ctl); padding: 0 14px; border: 1px solid var(--s-line-strong); background: var(--s-bg); color: var(--ds-text-2, var(--s-text));
+    border-radius: var(--s-r); font: inherit; font-size: 13px; font-weight: 550; line-height: 1.2; white-space: nowrap; cursor: pointer; text-decoration: none; box-shadow: var(--ds-shadow-sm, none);
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
+  .s-btn:hover:not(:disabled) { background: var(--s-hover); color: var(--s-text); border-color: var(--ds-border-input, var(--s-line-strong)); }
+  .s-btn:disabled { background: var(--ds-input-bg-disabled, var(--s-soft)); color: var(--ds-text-disabled, var(--s-muted)); border-color: var(--s-line); cursor: not-allowed; box-shadow: none; }
+  .s-btn:focus-visible, .s-seg button:focus-visible, .s-link:focus-visible { outline: 2px solid var(--ds-focus, var(--s-accent)); outline-offset: 2px; }
+  .s-primary { background: var(--s-accent); color: var(--s-on-accent); border-color: var(--s-accent); }
+  .s-primary:hover:not(:disabled) { background: var(--ds-accent-hover, var(--s-accent)); border-color: var(--ds-accent-hover, var(--s-accent)); color: var(--s-on-accent); }
+  .s-danger { color: var(--s-danger); border-color: var(--ds-danger-border, var(--s-line-strong)); }
+  .s-danger:hover:not(:disabled) { background: var(--ds-danger-bg, var(--s-soft)); color: var(--s-danger); border-color: var(--ds-danger-border, var(--s-line-strong)); }
+  .s-link { display: inline-flex; align-items: center; min-height: 24px; border: 0; background: none; color: var(--ds-accent-fg, var(--s-accent)); text-decoration: none; cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; padding: 2px 0; border-radius: 4px; }
+  .s-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .s-seg { display: inline-flex; align-items: stretch; gap: 2px; padding: 2px; border: 1px solid var(--s-line); border-radius: var(--s-r); background: var(--s-soft); min-height: var(--s-ctl); }
+  .s-seg button { border: 0; background: transparent; color: var(--s-muted); padding: 0 11px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 6px; white-space: nowrap; }
+  .s-seg button:hover:not(.on) { color: var(--s-text); background: var(--s-hover); }
+  .s-seg button.on { background: var(--s-bg); color: var(--s-text); box-shadow: var(--ds-shadow-sm, 0 1px 2px rgba(0,0,0,.08)); font-weight: 600; }
+  :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), select, textarea) {
+    min-height: var(--s-ctl); padding: 0 10px; border: 1px solid var(--ds-border-input, var(--s-line-strong)); border-radius: var(--s-r); background-color: var(--ds-input-bg, var(--s-bg));
+    color: var(--s-text); font: inherit; font-size: 13px; transition: border-color .12s ease, box-shadow .12s ease; }
+  :where(textarea) { padding: 8px 10px; line-height: 1.5; }
+  :where(select) { appearance: none; max-width: 100%; padding-right: 30px; cursor: pointer; text-overflow: ellipsis; background-repeat: no-repeat !important; background-position: right 10px center !important;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238f877c' stroke-width='1.6' stroke-linecap='round'/></svg>") !important; }
+  :host select:not([multiple]) { padding-right: 30px; }
+  :where(select) option { background: var(--ds-surface-raised, var(--s-bg)); color: var(--s-text); }
+  :where(input, select, textarea)::placeholder { color: var(--ds-text-placeholder, var(--s-muted)); }
+  :where(input:not([type=checkbox]):not([type=radio]), select, textarea):hover:not(:disabled) { border-color: var(--s-muted); }
+  :where(input:not([type=checkbox]):not([type=radio]), select, textarea):focus { outline: none; border-color: var(--s-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft, transparent); }
+  :where(input, select, textarea):disabled { background-color: var(--ds-input-bg-disabled, var(--s-soft)); color: var(--ds-text-disabled, var(--s-muted)); cursor: not-allowed; }
+  :where(input[type=checkbox], input[type=radio]) { accent-color: var(--s-accent); }
+  .s-search { width: 260px; padding-left: 32px; background-repeat: no-repeat; background-position: 10px center;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238f877c' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/></svg>"); }
+  .s-card { border: 1px solid var(--s-line); border-radius: var(--s-r-lg); background: var(--s-bg); box-shadow: var(--ds-shadow-sm, none); overflow: clip; overflow-clip-margin: 3px; }
+  .s-pad { padding: 16px; display: grid; gap: 12px; }
   .s-scroll { overflow-x: auto; }
   @media (max-width: 720px) {
     .s-seg { flex-wrap: wrap; }
@@ -174,30 +200,34 @@ const CSS = `
     table.s-stack td.num { display: inline-block; }
   }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; font-weight: 500; color: var(--s-muted); background: var(--s-soft); padding: 8px 12px; white-space: nowrap; font-size: 12.5px; }
-  td { padding: 9px 12px; border-top: 1px solid var(--s-line); white-space: nowrap; }
+  th { text-align: left; font-weight: 600; color: var(--s-muted); background: var(--s-soft); padding: 9px 12px; white-space: nowrap; font-size: 12px; border-bottom: 1px solid var(--s-line); }
+  td { padding: 10px 12px; border-top: 1px solid var(--ds-border-subtle, var(--s-line)); white-space: nowrap; vertical-align: middle; }
+  tbody tr:first-child td { border-top: 0; }
   tbody tr.click { cursor: pointer; }
-  tbody tr.click:hover { background: var(--s-soft); }
+  tbody tr.click:hover, tbody tr.click:focus-visible { background: var(--s-hover); outline: none; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td small { display: block; color: var(--s-muted); font-size: 12px; }
-  .cut { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-  .s-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 10px; font-size: 12px; border: 1px solid var(--s-line); }
+  td small { display: block; color: var(--s-muted); font-size: 12px; margin-top: 2px; }
+  .cut { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .s-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 500; line-height: 18px; border: 1px solid var(--s-line); background: var(--s-bg); white-space: nowrap; }
   .s-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #a8a29e); }
-  .s-pager { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 10px 12px; font-size: 13px; color: var(--s-muted); }
-  .s-empty { margin: 0; padding: 16px; color: var(--s-muted); font-size: 13px; }
-  .s-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--s-soft); font-size: 13px; }
+  .s-pager { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 10px 12px; font-size: 12px; color: var(--s-muted); border-top: 1px solid var(--s-line); font-variant-numeric: tabular-nums; }
+  .s-pager .s-btn { min-height: var(--s-ctl-sm); padding: 0 10px; font-size: 12px; }
+  .s-empty { margin: 0; padding: 32px 16px; color: var(--s-muted); font-size: 13px; text-align: center; }
+  .s-note { margin: 0; padding: 10px 12px; border-radius: var(--s-r); background: var(--ds-info-bg, var(--s-soft)); border: 1px solid var(--ds-info-border, var(--s-line)); color: var(--ds-info-fg, var(--s-text)); font-size: 13px; }
   .s-actions { display: flex; gap: 6px; justify-content: flex-end; }
-  .s-cov { font-size: 12.5px; }
+  .s-cov { font-size: 12px; line-height: 1.5; }
   .s-cov small { display: inline; color: var(--s-muted); }
-  .s-check { width: 24px; height: 24px; cursor: pointer; accent-color: var(--s-accent); }
+  .s-check { width: 18px; height: 18px; cursor: pointer; accent-color: var(--s-accent); }
   td.s-caller { white-space: normal; min-width: 200px; max-width: 300px; }
   .s-cut { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
-  .s-pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 8px 12px; font-size: 13px; color: var(--s-muted); }
   tr.done td { color: var(--s-muted); }
   tr.done .s-task { text-decoration: line-through; }
   .s-task { font-weight: 500; white-space: normal; min-width: 220px; }
-  td.s-wrap { white-space: normal; min-width: 260px; max-width: 420px; color: var(--s-muted); font-size: 12.5px; }
-  .s-actions .s-btn { padding: 4px 10px; font-size: 12.5px; }
+  td.s-wrap { white-space: normal; min-width: 260px; max-width: 420px; color: var(--s-muted); font-size: 12px; line-height: 1.5; }
+  .s-actions .s-btn { min-height: var(--s-ctl-sm); padding: 0 10px; font-size: 12px; }
+  .ax-pvas, .pv-sw { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .ax-pvas select { width: 260px; max-width: 60vw; }
+  .pv-sw select { min-height: var(--s-ctl-sm); width: 240px; max-width: 50vw; }
 `;
 const STATUS_COLOR: Record<string, string> = { Paused: '#dc2626', Running: '#d97706', Completed: '#16a34a', Stopped: '#a8a29e', Failed: '#dc2626' };
 const pctText = (x: number | null | undefined) => (x == null ? '—' : `${Math.round(x * 100)}%`);
@@ -216,7 +246,6 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
     .pv b { font-weight: 600; }
     .pv .pv-who { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; min-width: 0; flex: 1 1 320px; }
     .pv .pv-tag { color: var(--s-muted); }
-    .pv select { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); max-width: 220px; }
     .pv-stop { margin: 0; }
   `],
   template: `
@@ -227,7 +256,7 @@ const CAMPAIGN_PERIODS = [{ key: 'all', label: 'Any time', days: 0 }, { key: 'to
             <span class="pv-tag">{{ m.blocked ? m.blocked : (m.roles.join(', ') || m.type) }}</span>
             @if (!m.blocked) { <span class="pv-tag">Sees {{ m.units.length ? m.units.join(', ') : 'no campaigns' }}{{ m.mask_numbers ? ' · numbers masked' : '' }}</span> }
           </span>
-          <label class="s-muted">Switch <select (change)="pick($any($event.target).value)" aria-label="Preview as">
+          <label class="s-muted pv-sw">Switch <select (change)="pick($any($event.target).value)" aria-label="Preview as">
             @for (p of m.people; track p.id) { <option [value]="p.id" [selected]="p.id === m.id">{{ p.name }}{{ p.summary ? ' · ' + p.summary : '' }}{{ p.state !== 'active' ? ' (' + p.state + ')' : '' }}</option> }
           </select></label>
           <button type="button" class="s-btn pv-stop" (click)="pick('')">Back to me</button>
@@ -310,7 +339,7 @@ export class PreviewBlockedComponent {
                   <td class="cut" data-l="Agent" [title]="c.agent">{{ c.agent }}</td>
                   <td><span class="s-chip" [style.--c]="color(c.status)"><i></i>{{ c.status }}</span></td>
                   <td class="num" data-l="Uploaded">{{ c.uploaded }}</td><td class="num" data-l="Planned">{{ c.planned }}</td><td class="num" data-l="Picked up">{{ c.picked_up }}</td><td class="num" data-l="Answered">{{ c.answered }}</td><td class="num" data-l="Success rate">{{ pct(c.success_rate) }}</td>
-                  <td data-l="Coverage">@for (st of c.stats ?? []; track st.field) { <div class="s-cov" [title]="st.label + ': ' + st.covered + ' of ' + st.total + ' on answered calls, ' + st.accepted + ' accepted'">{{ st.label }} <b>{{ st.covered }}/{{ st.total }}</b> <small>{{ st.accepted }} accepted</small></div> } @empty { <span class="s-muted">—</span> }</td>
+                  <td data-l="Coverage">@for (st of c.stats ?? []; track st.field) { <div class="s-cov" [title]="st.label + ': ' + st.covered + ' of ' + st.total + ' on answered calls, ' + st.accepted + ' accepted'">{{ st.label }} <b>{{ st.covered }}/{{ st.total }}</b> <small>· {{ st.accepted }} accepted</small></div> } @empty { <span class="s-muted">—</span> }</td>
                   <td><div class="s-actions">
                     <button need="campaigns:export" type="button" class="s-btn" (click)="$event.stopPropagation(); results(c)">Results</button>
                     @if (c.status === 'Running') { <button need="campaigns:edit" type="button" class="s-btn s-danger" (click)="$event.stopPropagation(); stop(c)">Stop</button> }
@@ -373,11 +402,11 @@ export class CampaignsListComponent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NeedDirective, CallingReportComponent],
   styles: [CSS + `
-    .cp-paused { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border: 1px solid #fca5a5; background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; }
-    .cp-paused b { color: #b91c1c; }
+    .cp-paused { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border: 1px solid #fca5a5; background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+    .cp-paused b { color: var(--ds-danger-fg, #b91c1c); }
     .cp-progress { gap: 8px; }
     .cp-line { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
-    .cp-line b { font-size: 15px; }
+    .cp-line b { font-size: 14px; }
     .cp-good { color: var(--s-good, #146c34); font-weight: 600; }
     .cp-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--s-soft); }
     .cp-done { background: #16a34a; } .cp-open { background: #a8a29e; } .cp-bad { background: #d6d3d1; }
@@ -463,7 +492,7 @@ export class CampaignPageComponent {
     .nc-nums div { background: var(--s-soft); border-radius: 8px; padding: 8px 12px; display: grid; }
     .nc-nums span { font-size: 12px; color: var(--s-muted); }
     .nc-nums b { font-size: 20px; }
-    .nc-bad { max-height: 200px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; }
+    .nc-bad { max-height: 200px; overflow: auto; font-size: 12px; display: grid; gap: 4px; }
     .nc-foot { display: flex; gap: 8px; justify-content: flex-end; }
     .nc-stop { color: var(--ds-danger-fg, #b91c1c); }
     .nc-note { border: 1px solid color-mix(in srgb, var(--s-accent) 35%, var(--s-line)); background: color-mix(in srgb, var(--s-accent) 5%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
@@ -471,8 +500,8 @@ export class CampaignPageComponent {
     .nc-note small { color: var(--s-muted); }
     .nc-note-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
     .nc-ai { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--s-accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; }
-    .nc-fixed { max-height: 160px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; color: var(--s-good); }
-    .nc-warn { max-height: 120px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; color: #a16207; }
+    .nc-fixed { max-height: 160px; overflow: auto; font-size: 12px; display: grid; gap: 4px; color: var(--s-good); }
+    .nc-warn { max-height: 120px; overflow: auto; font-size: 12px; display: grid; gap: 4px; color: var(--ds-warning-fg, #a16207); }
     .nc-src { border: 2px solid var(--s-accent); background: color-mix(in srgb, var(--s-accent) 5%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
     .nc-src-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
     .nc-src-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
@@ -481,16 +510,16 @@ export class CampaignPageComponent {
     .nc-retry input[type=number] { width: 72px; } .nc-retry input[type=number], .nc-retry input[type=time] { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; background: var(--s-bg); color: var(--s-text); }
     .nc-retry label { display: inline-flex; gap: 6px; align-items: center; }
     .nc-times { display: flex; flex-wrap: wrap; gap: 6px; }
-    .nc-times span { background: var(--s-soft); border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
+    .nc-times span { background: var(--s-soft); border-radius: 6px; padding: 3px 8px; font-size: 12px; }
     .nc-times small { color: var(--s-muted); font-size: 12px; }
     .nc-sheet { display: grid; gap: 8px; }
-    .nc-grid { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .nc-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
     .nc-grid th, .nc-grid td { border-bottom: 1px solid var(--s-line); padding: 4px 6px; text-align: left; vertical-align: top; }
     .nc-grid th { color: var(--s-muted); font-weight: 600; white-space: nowrap; }
-    .nc-grid input { width: 148px; max-width: 28vw; border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12.5px; background: var(--s-bg); color: var(--s-text); }
+    .nc-grid input { width: 148px; max-width: 28vw; border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px; background: var(--s-bg); color: var(--s-text); }
     .nc-grid tr.bad input { border-color: #fca5a5; }
     .nc-grid tr.dummy { background: var(--s-soft); }
-    .nc-pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11.5px; border: 1px solid var(--s-line); white-space: nowrap; }
+    .nc-pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; border: 1px solid var(--s-line); white-space: nowrap; }
     .nc-more { border-top: 1px solid var(--s-line); padding-top: 8px; display: grid; gap: 8px; }
     .nc-more summary { cursor: pointer; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; list-style: none; }
     .nc-more summary::-webkit-details-marker { display: none; }
@@ -499,18 +528,18 @@ export class CampaignPageComponent {
     .nc-st { white-space: nowrap; } .nc-rm { margin-left: 6px; padding: 2px 8px; font-size: 12px; }
     .s input[type=file], :host input[type=file] { font: inherit; font-size: 13px; color: var(--s-muted); }
     :host input[type=file]::file-selector-button { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 6px 12px; margin-right: 10px; font: inherit; font-size: 13px; cursor: pointer; }
-    .nc-more summary .s-muted { font-weight: 400; font-size: 12.5px; }
+    .nc-more summary .s-muted { font-weight: 400; font-size: 12px; }
     .nc-res { border-collapse: collapse; font-size: 13px; width: 100%; }
     .nc-res th { text-align: left; font-weight: 500; color: var(--s-muted); font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--s-line); }
     .nc-res td { padding: 5px 6px; border-bottom: 1px solid var(--s-line); }
     .nc-res td small { display: block; color: var(--s-muted); font-size: 12px; }
     .nc-res input { width: 76px; } .nc-res select, .nc-res input { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
     .nc-res input:disabled { opacity: .45; }
-    .nc-pill.bad { color: #b91c1c; } .nc-pill.warn, .nc-pill.fixed { color: #a16207; } .nc-pill.ok { color: var(--s-good); } .nc-pill.dummy, .nc-pill.test { color: var(--s-muted); }
+    .nc-pill.bad { color: var(--ds-danger-fg, #b91c1c); } .nc-pill.warn, .nc-pill.fixed { color: var(--ds-warning-fg, #a16207); } .nc-pill.ok { color: var(--s-good); } .nc-pill.dummy, .nc-pill.test { color: var(--s-muted); }
     .nc-hint td { color: var(--s-muted); font-size: 12px; }
     .nc-brand { display: grid; gap: 8px; border-top: 1px solid var(--s-line); padding-top: 8px; }
     .nc-brand input[type=text] { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 8px; font: inherit; min-width: 200px; background: var(--s-bg); color: var(--s-text); }
-    .nc-brand small { display: block; color: var(--s-muted); font-size: 11.5px; }
+    .nc-brand small { display: block; color: var(--s-muted); font-size: 12px; }
   `],
   template: `
     <div class="s">
@@ -842,14 +871,14 @@ const AN_TABS = [
   styles: [CSS + `
     :host .s { align-content: start; grid-auto-rows: max-content; }
     .an-tabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--s-line); }
-    .an-tab { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--s-muted); font: inherit; font-size: 13.5px; padding: 9px 14px 8px; cursor: pointer; display: inline-flex; gap: 7px; align-items: center; margin-bottom: -1px; }
+    .an-tab { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--s-muted); font: inherit; font-size: 13px; padding: 9px 14px 8px; cursor: pointer; display: inline-flex; gap: 7px; align-items: center; margin-bottom: -1px; }
     .an-tab b { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; background: var(--s-soft); color: var(--s-muted); border-radius: 999px; padding: 1px 8px; }
     .an-tab:hover { color: var(--s-text); } .an-tab.on { color: var(--s-text); border-bottom-color: var(--s-accent); font-weight: 600; } .an-tab.on b { background: color-mix(in srgb, var(--s-accent) 14%, var(--s-bg)); color: var(--s-accent); }
     .an-tab.apart { margin-left: 18px; position: relative; } .an-tab.apart::before { content: ''; position: absolute; left: -10px; top: 9px; bottom: 9px; border-left: 1px solid var(--s-line); }
     .an-tab.apart + .an-tab.apart { margin-left: 0; } .an-tab.apart + .an-tab.apart::before { display: none; }
     .an-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow: visible; min-height: max-content; background: none; padding: 0; border: 0; }
     .an-clear { border: 0; background: none; color: var(--s-accent); font: inherit; font-size: 13px; cursor: pointer; padding: 4px 6px; }
-    .an-bar select, .an-bar input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .an-bar select, .an-bar input { min-width: 0; }
     .an-bar input[type=search] { flex: 0 1 240px; }
     .an-list { display: grid; overflow-x: auto; }
     .an-h, .an-r { display: grid; grid-template-columns: 22px minmax(120px, .9fr) minmax(170px, 1.2fr) minmax(190px, 1.7fr) 92px 52px 252px; gap: 10px; align-items: center; padding: 10px 12px; min-width: 990px; }
@@ -859,27 +888,27 @@ const AN_TABS = [
     .an-r { border-bottom: 1px solid var(--s-line); font-size: 13px; cursor: pointer; }
     .an-r:hover { background: var(--s-soft); } .an-r.picked { background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
     .an-r:focus-visible { outline: 2px solid var(--s-accent); outline-offset: -2px; }
-    .an-who b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-who span { color: var(--s-muted); font-size: 12px; display: block; }
+    .an-who b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-who span { color: var(--s-muted); font-size: 12px; display: block; }
     .an-who button { border: 0; background: none; padding: 0; font: inherit; color: var(--s-accent); font-size: 12px; cursor: pointer; } .an-who button:hover { text-decoration: underline; }
     .an-what b { display: block; font-weight: 600; line-height: 1.35; } .an-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-    .an-tag { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; background: var(--s-soft); color: var(--s-muted); white-space: nowrap; }
-    .an-tag.follow_up { background: color-mix(in srgb, #d97706 13%, var(--s-bg)); color: #92400e; } .an-tag.manual { background: color-mix(in srgb, #2563eb 11%, var(--s-bg)); color: #1e40af; }
-    .an-tag.fix_data { background: color-mix(in srgb, #dc2626 10%, var(--s-bg)); color: #991b1b; } .an-tag.agent { background: color-mix(in srgb, var(--s-accent) 12%, var(--s-bg)); color: var(--s-accent); }
+    .an-tag { font-size: 12px; border-radius: 999px; padding: 1px 8px; background: var(--s-soft); color: var(--s-muted); white-space: nowrap; }
+    .an-tag.follow_up { background: var(--ds-warning-bg, #fef3c7); color: var(--ds-warning-fg, #92400e); } .an-tag.manual { background: var(--ds-info-bg, #dbeafe); color: var(--ds-info-fg, #1e40af); }
+    .an-tag.fix_data { background: var(--ds-danger-bg, #fee2e2); color: var(--ds-danger-fg, #991b1b); } .an-tag.agent { background: var(--ds-accent-soft, var(--s-soft)); color: var(--ds-accent-fg, var(--s-accent)); }
     .an-sum { line-height: 1.45; color: var(--s-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .an-sum span { display: block; color: var(--s-muted); font-size: 12px; margin-top: 3px; }
-    .an-up { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-up span { display: block; color: var(--s-muted); font-size: 12px; }
-    .an-age { font-size: 12.5px; color: var(--s-muted); } .an-age.late { color: #b91c1c; font-weight: 600; }
+    .an-up { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .an-up span { display: block; color: var(--s-muted); font-size: 12px; }
+    .an-age { font-size: 12px; color: var(--s-muted); } .an-age.late { color: var(--ds-danger-fg, #b91c1c); font-weight: 600; }
     .an-ic { display: flex; gap: 6px; justify-content: flex-end; }
-    .an-b { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .an-b { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .an-b svg { width: 14px; height: 14px; flex: none; }
     .an-b.ok { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 45%, var(--s-line)); } .an-b.ok:hover { background: color-mix(in srgb, var(--s-good) 10%, var(--s-bg)); }
-    .an-b.no { color: #b91c1c; border-color: color-mix(in srgb, #dc2626 35%, var(--s-line)); } .an-b.no:hover { background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); }
+    .an-b.no { color: var(--ds-danger-fg, #b91c1c); border-color: color-mix(in srgb, #dc2626 35%, var(--s-line)); } .an-b.no:hover { background: color-mix(in srgb, #dc2626 8%, var(--s-bg)); }
     .an-b:hover { border-color: var(--s-text); }
     .an-state { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; } .an-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--s-accent); }
     .an-dots { display: inline-flex; gap: 3px; align-items: center; } .an-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--s-line); } .an-dots i.on { background: var(--s-accent); }
     .an-dots span { margin-left: 6px; font-size: 12px; color: var(--s-muted); }
     .an-lock { display: flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px; color: var(--s-muted); border-bottom: 1px solid var(--s-line); background: var(--s-soft); min-width: 1040px; box-sizing: border-box; }
-    .an-out { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; border-radius: 999px; padding: 2px 10px; }
-    .an-out.done { color: var(--s-good); background: color-mix(in srgb, var(--s-good) 10%, var(--s-bg)); } .an-out.dismissed { color: #b91c1c; background: color-mix(in srgb, #dc2626 9%, var(--s-bg)); }
+    .an-out { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; border-radius: 999px; padding: 2px 10px; }
+    .an-out.done { color: var(--s-good); background: color-mix(in srgb, var(--s-good) 10%, var(--s-bg)); } .an-out.dismissed { color: var(--ds-danger-fg, #b91c1c); background: color-mix(in srgb, #dc2626 9%, var(--s-bg)); }
     .an-bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--s-accent); background: color-mix(in srgb, var(--s-accent) 6%, var(--s-bg)); border-radius: 10px; font-size: 13px; position: sticky; top: 8px; z-index: 5; }
     .an-ok { color: var(--s-good); font-size: 13px; }
     .an-check { width: 18px; height: 18px; accent-color: var(--s-accent); cursor: pointer; margin: 0; }
@@ -1053,10 +1082,10 @@ export interface AgentMetricsSource { load(): Promise<AgentMetricsRow[]>; save(a
     .am { display: grid; gap: 12px; }
     .am-row { display: grid; grid-template-columns: minmax(140px, 1.1fr) minmax(140px, 1fr) minmax(170px, 1.1fr) minmax(150px, 1.2fr) auto; gap: 10px; align-items: end; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; }
     .am-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
-    .am-row input, .am-row select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
-    .am-ex { font-size: 12.5px; color: var(--s-muted); align-self: center; }
+    .am-row input, .am-row select { min-width: 0; }
+    .am-ex { font-size: 12px; color: var(--s-muted); align-self: center; }
     .am-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
-    .am-chip { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .am-chip { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
     .am-chip:hover { border-color: var(--s-accent); color: var(--s-accent); }
     .am-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
     .am-ok { color: var(--s-good); font-size: 13px; }
@@ -1136,7 +1165,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
   imports: [NeedDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
-    .cr2 { display: grid; gap: 14px; }
+    .cr2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
     .cr2-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
     .cr2-tab { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
     .cr2-tab.on { background: var(--s-text); color: var(--s-bg); border-color: var(--s-text); }
@@ -1146,10 +1175,10 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
     .cr2-day { display: grid; grid-template-columns: 130px 1fr; gap: 10px; align-items: center; font-size: 13px; }
     .cr2-day label { display: inline-flex; gap: 8px; align-items: center; min-height: 28px; cursor: pointer; }
     .cr2-day input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--s-accent); cursor: pointer; }
-    .cr2-day input[type=time], .cr2-add input, .cr2 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
+    .cr2-day input[type=time], .cr2-add input, .cr2 select { min-width: 0; }
     .cr2-day input:disabled { opacity: .45; }
     .cr2-hols { display: flex; flex-wrap: wrap; gap: 6px; }
-    .cr2-hol { display: inline-flex; gap: 6px; align-items: center; background: var(--s-soft); border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12.5px; }
+    .cr2-hol { display: inline-flex; gap: 6px; align-items: center; background: var(--s-soft); border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12px; }
     .cr2-hol button { border: 0; background: none; cursor: pointer; color: var(--s-muted); min-width: 26px; min-height: 26px; border-radius: 50%; }
     .cr2-hol button:hover { background: var(--s-line); color: var(--s-text); }
     .cr2-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -1311,9 +1340,9 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
     .ds-sum b { font-variant-numeric: tabular-nums; }
     .ds-sum .ar { color: var(--s-muted); }
     .ds-sec { display: grid; gap: 10px; min-width: 0; }
-    .ds-sec h3 { margin: 4px 0 0; font-size: 15px; }
+    .ds-sec h3 { margin: 4px 0 0; font-size: 14px; }
     .ds-group { display: grid; gap: 6px; }
-    .ds-group > span { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--s-muted); }
+    .ds-group > span { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--s-muted); }
     .ds-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
     .ds-tile { text-align: left; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 10px; padding: 9px 11px; font: inherit; cursor: pointer; display: grid; gap: 2px; }
     .ds-tile small { color: var(--s-muted); font-size: 12px; }
@@ -1321,7 +1350,7 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
     .ds-tile.on { border: 2px solid var(--s-accent); padding: 8px 10px; background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
     .ds-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
     .ds-form label, .ds-l { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
-    .ds input, .ds select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .ds input, .ds select { min-width: 0; }
     .ds-check { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
     .ds-check li { display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; font-size: 13px; }
     .ds-check li i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; color: #fff; background: var(--s-good); grid-row: span 2; }
@@ -1334,29 +1363,29 @@ const CADENCES: [DsSetup['schedule']['cadence'], string][] = [['once', 'Once'], 
     .ds-tbl th { text-align: left; font-weight: 500; color: var(--s-muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
     .ds-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--s-line); vertical-align: middle; }
     .ds-tbl td.v { color: var(--s-muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ds-badge { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); white-space: nowrap; }
+    .ds-badge { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); white-space: nowrap; }
     .ds-badge.high { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 40%, transparent); }
-    .ds-badge.need { color: #b91c1c; border-color: #fca5a5; }
+    .ds-badge.need { color: var(--ds-danger-fg, #b91c1c); border-color: #fca5a5; }
     .ds-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(110px, 1fr) auto; gap: 8px; align-items: center; }
     .ds-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .ds-chips button { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .ds-chips button { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
     .ds-chips button.on { border-color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-bg)); color: var(--s-accent); font-weight: 600; }
     .ds-calls { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
-    .ds-call { border: 1px solid var(--s-line); border-radius: 10px; padding: 9px 11px; display: grid; gap: 4px; align-content: start; font-size: 12.5px; min-width: 0; }
-    .ds-call b { font-size: 13.5px; }
+    .ds-call { border: 1px solid var(--s-line); border-radius: 10px; padding: 9px 11px; display: grid; gap: 4px; align-content: start; font-size: 12px; min-width: 0; }
+    .ds-call b { font-size: 13px; }
     .ds-call dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
     .ds-call dt { color: var(--s-muted); }
     .ds-call dd { margin: 0; overflow-wrap: anywhere; }
     .ds-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
     .ds-modes button { text-align: left; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 10px; padding: 10px 12px; font: inherit; cursor: pointer; display: grid; gap: 3px; }
-    .ds-modes button small { color: var(--s-muted); font-size: 12.5px; }
+    .ds-modes button small { color: var(--s-muted); font-size: 12px; }
     .ds-modes button.on { border: 2px solid var(--s-accent); padding: 9px 11px; background: color-mix(in srgb, var(--s-accent) 7%, var(--s-bg)); }
     .ds-inline { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
     .ds-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-top: 1px solid var(--s-line); padding-top: 10px; }
     .ds-foot .grow { flex: 1; }
     .ds-ok { color: var(--s-good); font-size: 13px; }
-    .ds-err { color: #b91c1c; font-size: 13px; }
-    .ds-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+    .ds-err { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; }
+    .ds-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
     .ds-switch input { width: 18px; height: 18px; }
     .ds-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
     @media (max-width: 640px) { .ds-row { grid-template-columns: 1fr 1fr; } .ds-tbl td.v { max-width: 120px; } }
@@ -1639,24 +1668,24 @@ export interface DncSource { load(q: string): Promise<DncView>; add(e: { phone: 
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .w1 { display: grid; gap: 14px; }
-    .w1 input, .w1 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .w1 input, .w1 select { min-width: 0; }
     .w1-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
     .w1-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
-    .w1-switch { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+    .w1-switch { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13px; cursor: pointer; }
     .w1-switch input { width: 20px; height: 20px; accent-color: var(--s-accent); }
     .w1-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
     .w1-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
     .w1-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--s-line); vertical-align: top; }
-    .w1-tag { font-size: 11.5px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+    .w1-tag { font-size: 12px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
     .w1-tag.auto { color: var(--s-accent); border-color: color-mix(in srgb, var(--s-accent) 40%, transparent); }
-    .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
+    .w1-err { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
     .w1-scroll { overflow-x: auto; }
-    .w1-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
+    .w1-link { border: 0; background: none; padding: 4px 0; min-height: 24px; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
   `],
   template: `
     <div class="w1">
       <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Do-not-call list</h2>
-        <p class="s-muted">Numbers nobody in this workspace calls again: uploads stop them, data source runs skip them and no retry is planned. The country registers (NCPR, DNC Registry…) are checked as well, in Calling rules.</p></div>
+        <p class="s-sub">Numbers nobody in this workspace calls again: uploads stop them, data source runs skip them and no retry is planned. The country registers (NCPR, DNC Registry…) are checked as well, in Calling rules.</p></div>
       @if (v(); as view) {
         <label class="w1-switch"><input type="checkbox" [checked]="view.settings.auto" (change)="setAuto($any($event.target).checked)"> Add a number when the person asks not to be called</label>
         <span class="s-muted">The agent confirms once, closes the call politely and the number joins the list. Listens for: {{ view.settings.phrases.join(', ') }}.</span>
@@ -1728,7 +1757,7 @@ export interface AlertsSource { load(): Promise<AlertsView>; save(rules: AlertRu
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .w1 { display: grid; gap: 14px; }
-    .w1 input, .w1 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .w1 input, .w1 select { min-width: 0; }
     .al-rule { display: grid; grid-template-columns: auto minmax(150px, 1.2fr) auto minmax(90px, .6fr) minmax(110px, .8fr) minmax(170px, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
     .al-rule.off { opacity: .6; }
     .al-rule input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--s-accent); }
@@ -1737,16 +1766,16 @@ export interface AlertsSource { load(): Promise<AlertsView>; save(rules: AlertRu
     .al-live { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
     .al-live th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 5px 8px; border-bottom: 1px solid var(--s-line); }
     .al-live td { padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
-    .al-p { color: #b91c1c; } .w1-scroll { overflow-x: auto; }
+    .al-p { color: var(--ds-danger-fg, #b91c1c); } .w1-scroll { overflow-x: auto; }
     .al-e { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; border-left: 3px solid #dc2626; padding: 6px 10px; background: var(--s-soft); border-radius: 0 8px 8px 0; font-size: 13px; }
     .al-e.done { border-left-color: var(--s-line); opacity: .75; }
-    .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
+    .w1-err { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
     @media (max-width: 900px) { .al-rule { grid-template-columns: auto 1fr 1fr; } }
   `],
   template: `
     <div class="w1">
       <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Alerts</h2>
-        <p class="s-muted">Watch every running campaign. When a rule trips, the campaign owner is told and, if the rule says so, the campaign pauses before a bad line or an empty balance burns the whole sheet.</p></div>
+        <p class="s-sub">Watch every running campaign. When a rule trips, the campaign owner is told and, if the rule says so, the campaign pauses before a bad line or an empty balance burns the whole sheet.</p></div>
       @if (v(); as view) {
         @for (r of draft(); track r.id; let i = $index) {
           <div class="al-rule" [class.off]="!r.on">
@@ -1829,25 +1858,25 @@ export interface CallHandlingSource { load(agent: string): Promise<{ agent: stri
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .w1 { display: grid; gap: 16px; }
-    .w1 input, .w1 select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .w1 input, .w1 select { min-width: 0; }
     .ch-sec { border: 1px solid var(--s-line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
-    .ch-sec h3 { margin: 0; font-size: 15px; display: flex; gap: 10px; align-items: center; }
+    .ch-sec h3 { margin: 0; font-size: 14px; display: flex; gap: 10px; align-items: center; }
     .ch-sec h3 label { margin-left: auto; font-size: 13px; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
     .ch-sec input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--s-accent); }
     .ch-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; font-size: 13px; }
     .ch-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
     .ch-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .ch-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--s-line); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
+    .ch-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--s-line); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; }
     .ch-chip.var { border-style: dashed; color: var(--s-accent); }
     .ch-chip button { border: 0; background: none; color: var(--s-muted); cursor: pointer; min-width: 24px; min-height: 24px; border-radius: 50%; }
-    .ch-add { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-muted); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .ch-add { border: 1px dashed var(--s-line); background: var(--s-bg); color: var(--s-muted); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
     .ch-pr { display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
     .ch-topic { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(160px, 1.2fr) minmax(170px, 1fr) auto; gap: 6px; align-items: center; border-bottom: 1px solid var(--s-line); padding-bottom: 8px; }
     .ch-topic .ch-note { grid-column: 1 / -1; }
     @media (max-width: 760px) { .ch-topic { grid-template-columns: 1fr 1fr; } }
     .ch-hear { background: var(--s-soft); border-radius: 8px; padding: 8px 10px; font-size: 13px; display: grid; gap: 4px; }
     .ch-off { opacity: .55; pointer-events: none; }
-    .w1-err { color: #b91c1c; font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
+    .w1-err { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; } .w1-ok { color: var(--s-good); font-size: 13px; }
   `],
   template: `
     <div class="w1">
@@ -1995,11 +2024,11 @@ export interface QualitySource {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .q { display: grid; gap: 14px; }
-    .q input, .q select, .q textarea { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
-    .q textarea { width: 100%; box-sizing: border-box; min-height: 170px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+    .q input, .q select, .q textarea { min-width: 0; }
+    .q textarea { width: 100%; box-sizing: border-box; min-height: 170px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.5; }
     .q-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-    .q-score { display: grid; gap: 2px; } .q-score b { font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; } .q-score small { color: var(--s-muted); font-size: 12.5px; }
-    .q-good { color: var(--s-good); } .q-mid { color: #b45309; } .q-bad { color: #b91c1c; }
+    .q-score { display: grid; gap: 2px; } .q-score b { font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; } .q-score small { color: var(--s-muted); font-size: 12px; }
+    .q-good { color: var(--s-good); } .q-mid { color: var(--ds-warning-fg, #b45309); } .q-bad { color: var(--ds-danger-fg, #b91c1c); }
     .q-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; font-size: 13px; }
     .q-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
     .q-checks { display: grid; gap: 6px; }
@@ -2011,17 +2040,17 @@ export interface QualitySource {
     .q-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
     .q-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
     .q-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--s-line); vertical-align: top; }
-    .q-fail { display: block; color: #b91c1c; font-size: 12.5px; }
-    .q-pill { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); white-space: nowrap; }
-    .q-pill.pass { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 40%, transparent); } .q-pill.fail { color: #b91c1c; border-color: #fca5a5; }
+    .q-fail { display: block; color: var(--ds-danger-fg, #b91c1c); font-size: 12px; }
+    .q-pill { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); white-space: nowrap; }
+    .q-pill.pass { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 40%, transparent); } .q-pill.fail { color: var(--ds-danger-fg, #b91c1c); border-color: #fca5a5; }
     .q-pill.pub { color: var(--s-good); } .q-pill.draft { color: var(--s-accent); border-color: color-mix(in srgb, var(--s-accent) 40%, transparent); }
     .q-scen { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--s-line); }
     .q-scen input { width: 20px; height: 20px; accent-color: var(--s-accent); grid-row: span 2; }
-    .q-scen small { color: var(--s-muted); font-size: 12.5px; }
+    .q-scen small { color: var(--s-muted); font-size: 12px; }
     .q-res { border: 1px solid var(--s-line); border-radius: 10px; padding: 8px 12px; display: grid; gap: 4px; font-size: 13px; }
     .q-res.fail { border-color: #fca5a5; }
-    .q-tr { display: grid; gap: 3px; margin: 6px 0 0; padding: 8px 10px; background: var(--s-soft); border-radius: 8px; font-size: 12.5px; }
-    .q-diff { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.55; border: 1px solid var(--s-line); border-radius: 8px; overflow: hidden; }
+    .q-tr { display: grid; gap: 3px; margin: 6px 0 0; padding: 8px 10px; background: var(--s-soft); border-radius: 8px; font-size: 12px; }
+    .q-diff { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.55; border: 1px solid var(--s-line); border-radius: 8px; overflow: hidden; }
     .q-diff div { padding: 1px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .q-diff .add { background: color-mix(in srgb, #16a34a 14%, transparent); } .q-diff .del { background: color-mix(in srgb, #dc2626 12%, transparent); text-decoration: line-through; opacity: .85; }
     .q-diff .add::before { content: '+ '; } .q-diff .del::before { content: '− '; } .q-diff .same::before { content: '  '; }
@@ -2031,8 +2060,8 @@ export interface QualitySource {
     .nc-more summary::-webkit-details-marker { display: none; }
     .nc-more summary::before { content: '▸ '; color: var(--s-muted); }
     .nc-more[open] summary::before { content: '▾ '; }
-    .q-err { color: #b91c1c; font-size: 13px; } .q-ok { color: var(--s-good); font-size: 13px; }
-    .q-link { border: 0; background: none; padding: 0; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
+    .q-err { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; } .q-ok { color: var(--s-good); font-size: 13px; }
+    .q-link { border: 0; background: none; padding: 4px 0; min-height: 24px; color: var(--s-accent); text-decoration: underline; font: inherit; cursor: pointer; }
     @media (max-width: 640px) { .q-check { grid-template-columns: auto 1fr; } }
   `],
   template: `
@@ -2199,22 +2228,22 @@ export interface LiveSource { list(): Promise<{ calls: LiveCall[]; buyers: { key
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .lv { border: 1px solid var(--s-line); border-radius: 12px; background: var(--s-bg); }
-    .lv-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; font-size: 13.5px; }
+    .lv-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; font-size: 13px; }
     .lv-dot { width: 9px; height: 9px; border-radius: 50%; background: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, .5); animation: lv-pulse 1.6s infinite; }
     @keyframes lv-pulse { 70% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
     @media (prefers-reduced-motion: reduce) { .lv-dot { animation: none; } }
-    .lv-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+    .lv-chip { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
     .lv-chip.on { border-color: var(--s-accent); color: var(--s-accent); font-weight: 600; }
     .lv-chip.warn { border-color: #f59e0b; }
     .lv-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 14px 14px; }
     .lv-tr { display: grid; gap: 6px; max-height: 260px; overflow: auto; background: var(--s-soft); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
-    .lv-tr p { margin: 0; } .lv-tr .Agent b { color: var(--s-accent); } .lv-tr .You b { color: #b45309; }
+    .lv-tr p { margin: 0; } .lv-tr .Agent b { color: var(--s-accent); } .lv-tr .You b { color: var(--ds-warning-fg, #b45309); }
     .lv-typing { color: var(--s-muted); font-style: italic; }
     .lv-flag { border-left: 3px solid #f59e0b; background: color-mix(in srgb, #f59e0b 10%, var(--s-bg)); padding: 6px 10px; border-radius: 0 8px 8px 0; font-size: 13px; }
     .lv-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .lv-tf { display: grid; gap: 6px; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
-    .lv-tf select, .lv-tf textarea { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
-    .lv-ok { color: var(--s-good); font-size: 13px; } .lv-err { color: #b91c1c; font-size: 13px; }
+    .lv-tf select, .lv-tf textarea { min-width: 0; }
+    .lv-ok { color: var(--s-good); font-size: 13px; } .lv-err { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; }
   `],
   template: `
     @if (calls().length) {
@@ -2294,10 +2323,10 @@ export interface TelephonySource { load(): Promise<TelephonyView>; test(b: { car
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .th { display: grid; gap: 14px; }
-    .th input, .th select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .th input, .th select { min-width: 0; }
     .th-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
     .th-card { border: 1px solid var(--s-line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; font-size: 13px; }
-    .th-card b { font-size: 15px; } .th-ok { color: var(--s-good); font-weight: 600; }
+    .th-card b { font-size: 14px; } .th-ok { color: var(--s-good); font-weight: 600; }
     .th-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
     .th-tile { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
     .th-tile small { display: block; color: var(--s-muted); font-size: 12px; }
@@ -2305,19 +2334,19 @@ export interface TelephonySource { load(): Promise<TelephonyView>; test(b: { car
     .th-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
     .th-form label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
     .th-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
-    .th-steps li.bad { color: #b91c1c; }
+    .th-steps li.bad { color: var(--ds-danger-fg, #b91c1c); }
     .th-meter { height: 10px; border-radius: 5px; background: var(--s-soft); overflow: hidden; display: flex; } .th-meter i { background: var(--s-accent); } .th-meter u { background: color-mix(in srgb, var(--s-accent) 35%, transparent); }
     .th-tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
     .th-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
     .th-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
     .th-tbl input { width: 70px; }
     .th-scroll { overflow-x: auto; }
-    .th-msg { font-size: 13px; color: var(--s-good); } .th-msg.bad { color: #b91c1c; }
+    .th-msg { font-size: 13px; color: var(--s-good); } .th-msg.bad { color: var(--ds-danger-fg, #b91c1c); }
   `],
   template: `
     <div class="th">
       <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Telephony</h2>
-        <p class="s-muted">The carriers your calls go out on, the numbers suppliers see, and how many calls each campaign may run at once.</p></div>
+        <p class="s-sub">The carriers your calls go out on, the numbers suppliers see, and how many calls each campaign may run at once.</p></div>
       @if (v(); as view) {
         <b>Connected carriers</b>
         <div class="th-cards">@for (c of view.carriers; track c.key) {
@@ -2407,7 +2436,7 @@ export interface SupplierSource { load(phone: string): Promise<SupplierView>; op
         <div class="s-head"><div><h1 class="s-title">{{ s.name }}</h1><p class="s-sub">{{ s.phone }}{{ s.email ? ' · ' + s.email : '' }} · called by {{ s.agents.join(', ') }}</p></div></div>
         @if (s.dnc) { <div class="sp-warn" role="alert">On the do-not-call list: {{ s.dnc.reason }}. No agent calls this number.</div> }
         <div class="sp-nums"><div><span>Calls</span><b>{{ s.stats.calls }}</b></div><div><span>Answered</span><b>{{ s.stats.answered }}</b></div><div><span>Successful</span><b>{{ s.stats.success }}</b></div>
-          <div><span>Campaigns</span><b>{{ s.stats.campaigns }}</b></div><div><span>Last call</span><b style="font-size: 15px">{{ when(s.stats.last_call) }}</b></div></div>
+          <div><span>Campaigns</span><b>{{ s.stats.campaigns }}</b></div><div><span>Last call</span><b style="font-size: 14px">{{ when(s.stats.last_call) }}</b></div></div>
         <div class="sp-grid">
           <div class="s" style="gap: 12px">
             <div class="s-card sp-sec"><h2>Open actions ({{ s.open_actions.length }})</h2>
@@ -2462,19 +2491,19 @@ export interface SecuritySource {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .sc { display: grid; gap: 14px; }
-    .sc input, .sc select { border: 1px solid var(--s-line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .sc input, .sc select { min-width: 0; }
     .sc-sec { border: 1px solid var(--s-line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
-    .sc-sec h3 { margin: 0; font-size: 15px; display: flex; gap: 10px; align-items: center; } .sc-sec h3 .s-muted { font-weight: 400; font-size: 12.5px; }
+    .sc-sec h3 { margin: 0; font-size: 14px; display: flex; gap: 10px; align-items: center; } .sc-sec h3 .s-muted { font-weight: 400; font-size: 12px; }
     .sc-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; font-size: 13px; } .sc-row label { display: grid; gap: 4px; font-size: 12px; color: var(--s-muted); }
     .sc-tog { display: inline-flex !important; grid: none; gap: 8px; align-items: center; color: var(--s-text) !important; font-size: 13px !important; cursor: pointer; } .sc-tog input { width: 20px; height: 20px; accent-color: var(--s-accent); }
-    .sc-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; } .sc-steps .bad { color: #b91c1c; }
-    .sc-token { font-family: ui-monospace, Consolas, monospace; background: var(--s-soft); padding: 6px 8px; border-radius: 6px; font-size: 12.5px; overflow-wrap: anywhere; }
-    .sc-ok { color: var(--s-good); font-size: 13px; } .sc-bad { color: #b91c1c; font-size: 13px; } .sc-chip { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); }
+    .sc-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; } .sc-steps .bad { color: var(--ds-danger-fg, #b91c1c); }
+    .sc-token { font-family: ui-monospace, Consolas, monospace; background: var(--s-soft); padding: 6px 8px; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+    .sc-ok { color: var(--s-good); font-size: 13px; } .sc-bad { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; } .sc-chip { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--s-line); }
     .sc-chip.on { color: var(--s-good); border-color: color-mix(in srgb, var(--s-good) 40%, transparent); }
   `],
   template: `
     <div class="sc">
-      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Security</h2><p class="s-muted">Who can sign in and how, where data lives, how long it is kept, and deleting a contact on request.</p></div>
+      <div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Security</h2><p class="s-sub">Who can sign in and how, where data lives, how long it is kept, and deleting a contact on request.</p></div>
       @if (d(); as s) {
         <section class="sc-sec"><h3>Single sign-on <span class="sc-chip" [class.on]="s.sso.enforce">{{ s.sso.enforce ? 'Required' : s.sso.on ? 'On, not required' : 'Off' }}</span></h3>
           <div class="sc-row">
@@ -2568,17 +2597,17 @@ export interface AuditSource { load(p: AuditQuery): Promise<{ rows: AuditEntry[]
   styles: [CSS + `
     .al { display: grid; gap: 12px; }
     .al-f { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .al-f select, .al-f input { border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .al-f select, .al-f input { min-width: 0; }
     .al-f input { flex: 1 1 220px; }
     .al-t { width: 100%; border-collapse: collapse; font-size: 13px; }
     .al-t th { text-align: left; font-weight: 500; font-size: 12px; color: var(--s-muted); padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
     .al-t td { padding: 7px 8px; border-bottom: 1px solid var(--s-line); vertical-align: top; }
-    .al-t td.w { white-space: nowrap; color: var(--s-muted); } .al-area { font-size: 11.5px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+    .al-t td.w { white-space: nowrap; color: var(--s-muted); } .al-area { font-size: 12px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
     .al-scroll { overflow-x: auto; }
   `],
   template: `
     <div class="al">
-      <div class="s-head"><div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Audit log</h2><p class="s-muted">Every change and every export in this workspace, with who did it. Entries cannot be edited or deleted.</p></div>
+      <div class="s-head"><div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Audit log</h2><p class="s-sub">Every change and every export in this workspace, with who did it. Entries cannot be edited or deleted.</p></div>
         <span class="s-grow"></span><button need="audit:export" type="button" class="s-btn" (click)="exportList()">Export</button></div>
       <div class="al-f">
         <select (change)="days.set($any($event.target).value)" aria-label="Period">@for (p of PERIODS; track p[0]) { <option [value]="p[0]" [selected]="p[0] === days()">{{ p[1] }}</option> }</select>
@@ -2642,28 +2671,28 @@ type AccessTab = 'structure' | 'people' | 'roles' | 'types';
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS + `
     .ax { display: grid; gap: 12px; }
-    .ax input, .ax select { border: 1px solid var(--s-line); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); min-width: 0; }
+    .ax input, .ax select { min-width: 0; }
     .ax-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .ax-split { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 12px; align-items: start; }
     .ax-tree { display: grid; gap: 2px; padding: 6px; }
     .ax-node { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; border: 0; background: none; color: var(--s-text); text-align: left; padding: 6px 8px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
-    .ax-node:hover { background: var(--s-soft); } .ax-node.on { background: var(--s-soft); font-weight: 600; } .ax-node small { color: var(--s-muted); font-size: 11.5px; font-weight: 400; white-space: nowrap; }
+    .ax-node:hover { background: var(--s-soft); } .ax-node.on { background: var(--s-soft); font-weight: 600; } .ax-node small { color: var(--s-muted); font-size: 12px; font-weight: 400; white-space: nowrap; }
     .ax-panel { display: grid; gap: 12px; padding: 14px 16px; }
     .ax-panel h3 { margin: 0; font-size: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .ax-panel h4 { margin: 4px 0 0; font-size: 13px; }
-    .ax-lv { font-size: 11.5px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; font-weight: 400; color: var(--s-muted); }
+    .ax-lv { font-size: 12px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 8px; font-weight: 400; color: var(--s-muted); }
     .ax-g { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; border: 1px solid var(--s-line); border-radius: 999px; padding: 1px 4px 1px 9px; margin: 2px 4px 2px 0; white-space: nowrap; }
     .ax-g b { font-weight: 600; } .ax-g button { border: 0; background: none; color: var(--s-muted); cursor: pointer; padding: 0 4px; font-size: 13px; line-height: 1; }
     .ax-g.inh { border-style: dashed; color: var(--s-muted); padding-right: 9px; }
-    .ax-st { font-size: 12px; } .ax-st.suspended, .ax-st.expired { color: #b91c1c; } .ax-st.invited { color: #b45309; }
+    .ax-st { font-size: 12px; } .ax-st.suspended, .ax-st.expired { color: var(--ds-danger-fg, #b91c1c); } .ax-st.invited { color: var(--ds-warning-fg, #b45309); }
     tr.ax-open > td { background: var(--s-soft); white-space: normal; padding: 12px 14px; }
     .ax-m { width: auto; min-width: 520px; background: var(--s-bg); border: 1px solid var(--s-line); border-radius: 8px; }
-    .ax-m th, .ax-m td { padding: 5px 10px; text-align: center; font-size: 12.5px; } .ax-m th:first-child, .ax-m td:first-child { text-align: left; }
+    .ax-m th, .ax-m td { padding: 5px 10px; text-align: center; font-size: 12px; } .ax-m th:first-child, .ax-m td:first-child { text-align: left; }
     .ax-m td.y { color: var(--s-good); font-weight: 600; } .ax-m td.na { color: var(--s-line); }
     .ax-m input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--s-accent); cursor: pointer; }
-    .ax-roles { display: grid; gap: 2px; padding: 6px; } .ax-roles h5 { margin: 8px 8px 2px; font-size: 11.5px; color: var(--s-muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+    .ax-roles { display: grid; gap: 2px; padding: 6px; } .ax-roles h5 { margin: 8px 8px 2px; font-size: 12px; color: var(--s-muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
     .ax-tog { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-muted); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: 12px; margin: 2px 4px 2px 0; cursor: pointer; }
     .ax-tog.on { color: var(--s-text); border-color: var(--s-text); } .ax-tog:disabled { cursor: default; }
-    .ax-ok { color: var(--s-good); font-size: 13px; } .ax-bad { color: #b91c1c; font-size: 13px; }
+    .ax-ok { color: var(--s-good); font-size: 13px; } .ax-bad { color: var(--ds-danger-fg, #b91c1c); font-size: 13px; }
     .ax-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 12px 14px; } .ax-form label { display: grid; gap: 3px; font-size: 12px; color: var(--s-muted); }
     @media (max-width: 760px) { .ax-split { grid-template-columns: minmax(0, 1fr); } }
   `],
@@ -2672,7 +2701,7 @@ type AccessTab = 'structure' | 'people' | 'roles' | 'types';
       <div class="s-head"><div><h2 class="s-title" role="heading" [attr.aria-level]="page() ? 1 : 2">Team and access</h2>
         <p class="s-sub">Who is in each sub-org and team, and what they can do there. A role given in a unit also works in every unit under it.</p></div>
         <span class="s-grow"></span>
-        @if (v(); as x) { <label class="s-muted">Preview as <select [value]="viewAs()" (change)="preview($any($event.target).value)" aria-label="Preview as">
+        @if (v(); as x) { <label class="s-muted ax-pvas">Preview as <select [value]="viewAs()" (change)="preview($any($event.target).value)" aria-label="Preview as">
           <option value="">Me</option>@for (p of x.people_to_preview; track p.id) { <option [value]="p.id">{{ p.name }} · {{ p.summary }}</option> }</select></label> }
       </div>
       @if (viewAs()) { <p class="s-note">You are seeing this screen as {{ actorName() }}. What you change is checked against their access. <button type="button" class="s-link" (click)="preview('')">Back to me</button></p> }
@@ -2689,7 +2718,7 @@ type AccessTab = 'structure' | 'people' | 'roles' | 'types';
             </nav>
             @if (unit(); as u) {
               <section class="s-card ax-panel">
-                <h3>@if (u.can_edit) { <input [value]="u.name" (change)="rename(u, $any($event.target).value)" aria-label="Name" style="font-size: 15px; font-weight: 600"> } @else { {{ u.name }} }
+                <h3>@if (u.can_edit) { <input [value]="u.name" (change)="rename(u, $any($event.target).value)" aria-label="Name" style="font-size: 14px; font-weight: 600"> } @else { {{ u.name }} }
                   <span class="ax-lv">{{ levelName(u.level) }}</span><span class="s-grow"></span>
                   @if (u.can_delete) { <button type="button" class="s-btn s-danger" (click)="removeUnit(u)">Delete {{ levelName(u.level).toLowerCase() }}</button> }</h3>
                 @if (u.parent) { <span class="s-muted">{{ u.path }}</span> }
@@ -2703,8 +2732,10 @@ type AccessTab = 'structure' | 'people' | 'roles' | 'types';
                 </tbody></table></div>
                 @if (u.roles_here.length) { <div class="ax-row">
                   <select (change)="grantFor.set($any($event.target).value)" aria-label="Person"><option value="">Give a role to…</option>@for (p of x.users; track p.id) { <option [value]="p.id">{{ p.name }}</option> }</select>
-                  <select #gr aria-label="Role">@for (r of rolesFor(grantFor(), u); track r.key) { <option [value]="r.key">{{ r.label }}</option> }</select>
-                  <button type="button" class="s-btn" [disabled]="!grantFor() || !rolesFor(grantFor(), u).length" (click)="grant(grantFor(), u.id, gr.value)">Give role</button>
+                  @if (grantFor() && rolesFor(grantFor(), u).length) {
+                    <select #gr aria-label="Role">@for (r of rolesFor(grantFor(), u); track r.key) { <option [value]="r.key">{{ r.label }}</option> }</select>
+                    <button type="button" class="s-btn s-primary" (click)="grant(grantFor(), u.id, gr.value)">Give role</button>
+                  }
                   @if (grantFor() && !rolesFor(grantFor(), u).length) { <span class="s-muted">No role you can give fits this person here.</span> }</div> }
                 @if (fromAbove().length) { <h4>Also have access here from above</h4>
                   <div>@for (r of fromAbove(); track r.g.id) { <span class="ax-g inh" [title]="r.p.email">{{ r.p.name }} · <b>{{ r.g.role_label }}</b> in {{ r.g.unit_name }}</span> }</div> }
@@ -2781,7 +2812,7 @@ type AccessTab = 'structure' | 'people' | 'roles' | 'types';
             </nav>
             @if (draft(); as r) {
               <section class="s-card ax-panel">
-                <h3>@if (!r.system && x.can_manage_roles) { <input [value]="r.label" (input)="edit({ label: $any($event.target).value })" aria-label="Role name" style="font-size: 15px; font-weight: 600"> } @else { {{ r.label }} }
+                <h3>@if (!r.system && x.can_manage_roles) { <input [value]="r.label" (input)="edit({ label: $any($event.target).value })" aria-label="Role name" style="font-size: 14px; font-weight: 600"> } @else { {{ r.label }} }
                   <span class="ax-lv">{{ r.system ? 'System role' : 'Custom role' }}</span><span class="s-grow"></span>
                   @if (x.can_manage_roles) { <button type="button" class="s-btn" (click)="duplicate(r)">Duplicate</button> }
                   @if (!r.system && x.can_manage_roles) { <button type="button" class="s-btn s-danger" (click)="removeRole(r)">Delete</button> }</h3>

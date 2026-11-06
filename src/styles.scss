@@ -385,7 +385,10 @@ lucide-icon svg {
    big tabular numbers, status dots, small physical feedback.
    ========================================================================== */
 body { background: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-font); letter-spacing: -0.006em; }
-.page-title { font-size: 26px !important; font-weight: 650 !important; letter-spacing: -0.035em !important; line-height: 1.15; color: var(--ds-text); }
+/* One page-title size everywhere (24/600), matching Echo and the shared screens. */
+.page-title, .rx-title, .cl-title, .cd-title, .dh-title, .erf__title, .er__title, .es__title, .ra-title {
+  font-size: var(--ds-fs-2xl) !important; font-weight: 600 !important; letter-spacing: -0.025em !important; line-height: 1.25 !important; color: var(--ds-text);
+}
 .section-title, .chart-title, .card__title {
   font-family: var(--ds-mono); font-size: 11px !important; font-weight: 500 !important; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ds-text-muted) !important;
 }
@@ -423,3 +426,14 @@ select:not(:disabled) { cursor: pointer; }
 select:not(:disabled):hover { border-color: var(--ds-border-input) !important; }
 .cl-page-btn:not(:disabled):hover { background: var(--ds-hover); color: var(--ds-text); }
 a.view-all-link, button.mt-3.text-sm { display: inline-flex; align-items: center; min-height: 24px; }
+
+/* Every single select gets the same chevron as the design-system inputs, not the OS arrow.
+   Zero specificity, so a component that styles its own select still wins. */
+:where(select:not([multiple]):not([size])) {
+  appearance: none; -webkit-appearance: none; padding-right: 30px; cursor: pointer; text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238f877c' stroke-width='1.6' stroke-linecap='round'/></svg>") !important;
+  background-repeat: no-repeat !important; background-position: right 10px center !important;
+}
+:where(select) option { background: var(--ds-surface-raised); color: var(--ds-text); }
+/* The chevron above is forced, so the text always keeps room beside it. */
+select:not([multiple]):not([size]) { padding-right: 30px !important; max-width: 100%; }

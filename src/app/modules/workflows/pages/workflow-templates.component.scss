@@ -79,7 +79,7 @@
 }
 
 .header-content {
-  flex: 1;
+  flex: 1 1 320px;
   min-width: 0;
 }
 
@@ -98,6 +98,7 @@
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
@@ -146,7 +147,7 @@
 /* Dashboard Stats */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 14px;
 }
 
@@ -446,8 +447,10 @@
 
 .action-group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
+  min-width: 0;
 }
 
 .action-btn {
@@ -767,7 +770,7 @@
 }
 
 // Metrics drawer: the agent's countable metrics, beside calls.
-.metrics-btn { width: auto; padding: 0 10px; font-size: 12.5px; font-weight: 500; }
+.metrics-btn { width: auto; padding: 0 8px; font-size: 12px; font-weight: 500; }
 .metrics-backdrop { position: fixed; inset: 0; background: rgba(12, 10, 9, .35); z-index: 900; }
 .metrics-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(880px, 100vw); background: var(--ds-surface, #fff); z-index: 901; padding: 20px 24px; overflow: auto;
   box-shadow: -12px 0 32px -16px rgba(0, 0, 0, .35); display: grid; align-content: start; gap: 16px; }

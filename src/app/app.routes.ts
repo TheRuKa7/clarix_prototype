@@ -116,7 +116,7 @@ export const routes: Routes = [
           {
             path: 'templates/:templateId/executions',
             component: WorkflowExecutionsComponent,
-            title: 'Workflow Executions | Clarix',
+            title: 'Contacts | Clarix',
             canActivate: [permissionGuard("workflows:executions:read")]
           },
           {
@@ -143,17 +143,17 @@ export const routes: Routes = [
           {
             path: 'reports',
             component: ExecutionReportsComponent,
-            title: 'Execution Reports | Clarix'
+            title: 'Scheduled reports | Clarix'
           },
           {
             path: 'reports/new',
             component: ExecutionReportFormComponent,
-            title: 'New Report | Clarix'
+            title: 'New report | Clarix'
           },
           {
             path: 'reports/:id/edit',
             component: ExecutionReportFormComponent,
-            title: 'Edit Report | Clarix'
+            title: 'Edit report | Clarix'
           }
         ]
       },
@@ -196,7 +196,7 @@ export const routes: Routes = [
         path: 'admin/permissions',
         component: ManagePermissionsComponent,
         canActivate: [permissionGuard('manage-permissions:menuvisibility')],
-        title: 'Manage Permissions | Clarix'
+        title: 'Permissions | Clarix'
       },
       // Enrichments now live under Build > Data; kept as a redirect for existing bookmarks/links.
       {

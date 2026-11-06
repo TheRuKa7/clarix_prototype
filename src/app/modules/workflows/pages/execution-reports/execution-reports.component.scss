@@ -13,8 +13,6 @@
 
 .er__title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 700;
 }
 
 .er__subtitle {
@@ -23,23 +21,7 @@
   color: var(--text-muted, var(--ds-text-muted));
 }
 
-.er__new {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  border: none;
-  border-radius: 8px;
-  background: var(--primary, var(--ds-accent));
-  color: var(--ds-on-accent);
-  cursor: pointer;
-
-  &:hover {
-    filter: brightness(0.95);
-  }
-}
+.er__new { @include ds.btn(primary); }
 
 .er__error {
   margin-bottom: 16px;
@@ -134,8 +116,8 @@
 }
 
 .er__actions {
-  display: flex;
-  gap: 6px;
+  white-space: nowrap;
+  vertical-align: middle !important;
 
   button {
     display: inline-flex;
@@ -143,6 +125,7 @@
     justify-content: center;
     width: 30px;
     height: 30px;
+    margin-left: 6px;
     border: 1px solid var(--border-color, var(--ds-border));
     border-radius: 6px;
     background: var(--surface, #fff);

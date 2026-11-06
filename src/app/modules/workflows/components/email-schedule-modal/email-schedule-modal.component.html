@@ -1,7 +1,7 @@
 <div class="esm__backdrop" (click)="cancel()"></div>
 <div class="esm" role="dialog" aria-modal="true">
   <div class="esm__header">
-    <h2 class="esm__title">{{ isEdit() ? 'Edit Schedule' : 'New Mail Schedule' }}</h2>
+    <h2 class="esm__title">{{ isEdit() ? 'Edit schedule' : 'New mail schedule' }}</h2>
     <button type="button" class="esm__close" (click)="cancel()" aria-label="Close">
       <lucide-icon name="x" [size]="18"></lucide-icon>
     </button>
@@ -72,7 +72,7 @@
   <div class="esm__footer">
     <button type="button" class="esm__btn esm__btn--ghost" (click)="cancel()">Cancel</button>
     <button type="button" class="esm__btn esm__btn--primary" (click)="save()" [disabled]="saving()">
-      {{ saving() ? 'Saving…' : (isEdit() ? 'Save Changes' : 'Add Schedule') }}
+      {{ saving() ? 'Saving…' : (isEdit() ? 'Save changes' : 'Add schedule') }}
     </button>
   </div>
 </div>
