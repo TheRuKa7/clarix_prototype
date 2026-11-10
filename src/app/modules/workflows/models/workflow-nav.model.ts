@@ -22,6 +22,7 @@ export const WORKFLOW_NAV: Record<WorkflowMode, WorkflowNavItem[]> = {
     { label: 'Agent setup', route: '/workflows/build/agents', icon: 'settings-2' },
     { label: 'Data', route: '/workflows/build/data', icon: 'database' },
     { label: 'Orchestration', route: '/workflows/build/orchestration', icon: 'shuffle' },
+    { label: 'Pipelines', route: '/workflows/build/pipelines', icon: 'workflow' },
     { label: 'Reports', route: '/workflows/reports', icon: 'file-text' },
   ],
 };

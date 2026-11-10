@@ -338,6 +338,7 @@ const AREAS = [
   [/\/credits|\/wallet|\/billing/, 'billing'],
   [/\/data-sources|\/admin\/data-functions|\/integrations|\/sync-platforms/, 'data'],
   [/\/follow-ups/, 'actions'],
+  [/\/workflows\/(pipelines|orchestration)/, 'agents'],
   [/\/new-campaign|\/campaigns|\/workflows\/sheets|\/workflows\/trigger|\/workflows\/reports/, 'campaigns'],
   [/\/call\/|\/calls(\/|$|\.)|\/live(\/|$)|\/conversations|\/copilot|\/supplier|^\/api\/v1\/workflows(\/[^/]+)?(\/events|\/cancel|\/stop|\/execute-now|\/sync-status)?$|\/ozonetel\/start_call|\/webrtc\/(start_call|recording)/, 'calls'],
   [/\/agents|\/agent-stats|\/versions\/|\/tests\/|\/quality\/|\/call-handling|\/workflow-templates|\/retry-rules|\/transformation-catalog/, 'agents'],

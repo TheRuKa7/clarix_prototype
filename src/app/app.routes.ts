@@ -20,6 +20,7 @@ import { CallPageRouteComponent } from './modules/workflows/pages/call-page/call
 import { ClarixCallLogsPage, ClarixCampaignPage, ClarixCampaignsPage, ClarixFollowUpsPage, ClarixNewCampaignPage, ClarixSupplierPage } from './modules/workflows/pages/shared-screens/shared-screen-routes';
 import { DataHubComponent } from './modules/workflows/pages/data-hub/data-hub.component';
 import { OrchestrationHubComponent } from './modules/workflows/pages/orchestration-hub/orchestration-hub.component';
+import { PipelinesComponent } from './modules/workflows/pages/pipelines/pipelines.component';
 import { LoginComponent } from './pages/login.component';
 
 export const routes: Routes = [
@@ -139,6 +140,11 @@ export const routes: Routes = [
             path: 'build/orchestration',
             component: OrchestrationHubComponent,
             title: 'Orchestration | Clarix'
+          },
+          {
+            path: 'build/pipelines',
+            component: PipelinesComponent,
+            title: 'Pipelines | Clarix'
           },
           {
             path: 'reports',

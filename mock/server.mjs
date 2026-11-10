@@ -19,6 +19,7 @@ import { OUTCOMES } from './outcome.mjs';
 import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
+import { registerPipelines } from './pipeline.mjs';
 import { PEOPLE, auditRequest, auditView, AUDIT_COLUMNS, securityView, saveSecurity, testSso, newScimToken, deleteContact, isDeleted, supplierView } from './wave4.mjs';
 import { accessView, accessCreate, accessUpdate, accessRemove, accessActorFor, accessMe, setPreview, previewBlock, previewShape, seesCampaign, claimCampaign } from './access.mjs';
 import { liveCalls, liveAction, BUYER_LIST, telephonyView, testCarrier, connectCarrier, disconnectCarrier, saveSlots, copilotAnswer, COPILOT_SUGGESTIONS } from './wave3.mjs';
@@ -659,6 +660,7 @@ on('POST', '/api/v1/workflows/sheets/:id/stop', async ({ p }) => {
   ok(live.length);
 });
 registerOrchestration({ on, ok, fail, multipart, readSheet, templates, sheets, batches: S.batches, agentByKey, nowIso });
+registerPipelines({ on, ok, fail, multipart, readSheet, nowIso });
 
 // ── Overview and Call Logs (live Clarix, Oct 2026): Echo's 12 call status buckets plus Bad data ──
 const BUCKETS = ['completed', 'caller_hung_up', 'no_reply', 'voicemail', 'no_answer', 'busy', 'unreachable', 'wrong_number', 'blocked', 'rejected', 'call_dropped', 'network_error'];

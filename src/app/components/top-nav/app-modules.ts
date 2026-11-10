@@ -28,7 +28,7 @@ export const NAV_GROUPS: NavGroup[] = [
 const PAGE_NEED: [string, string][] = [
   ['/dashboard', 'dashboard:view'], ['/workflows/agents', 'agents:view'], ['/workflows/campaigns', 'campaigns:view'], ['/workflows/calls', 'calls:view'],
   ['/workflows/follow-ups', 'actions:view'], ['/workflows/build/agents', 'agents:create|agents:edit'], ['/workflows/build/data', 'data:view'],
-  ['/workflows/build/orchestration', 'agents:edit'], ['/workflows/reports', 'campaigns:export|calls:export'], ['/workflows', 'campaigns:view'],
+  ['/workflows/build/orchestration', 'agents:edit'], ['/workflows/build/pipelines', 'agents:edit'], ['/workflows/reports', 'campaigns:export|calls:export'], ['/workflows', 'campaigns:view'],
   ['/admin/access', 'people:view'], ['/admin/audit-log', 'audit:view'], ['/admin/permissions', 'settings:edit'], ['/admin', 'settings:view'],
 ];
 /** What a URL needs ('' when nothing). */

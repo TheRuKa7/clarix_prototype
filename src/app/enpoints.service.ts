@@ -65,6 +65,12 @@ export const ENDPOINTS = {
         sample: (id: string) => `${clarix.baseURL}/api/v1/workflows/orchestration/samples/${encodeURIComponent(id)}`,
         previewFile: `${clarix.baseURL}/api/v1/workflows/orchestration/preview`,
     },
+    pipelines: {
+        list: `${clarix.baseURL}/api/v1/workflows/pipelines`,
+        one: (id: string) => `${clarix.baseURL}/api/v1/workflows/pipelines/${id}`,
+        run: (id: string) => `${clarix.baseURL}/api/v1/workflows/pipelines/${id}/run`,
+        source: (id: string) => `${clarix.baseURL}/api/v1/workflows/pipelines/${id}/source`,
+    },
     callProviders: {
         list: `${clarix.baseURL}/api/v1/call-providers`,
         campaigns: (key: string) => `${clarix.baseURL}/api/v1/call-providers/${key}/campaigns`,

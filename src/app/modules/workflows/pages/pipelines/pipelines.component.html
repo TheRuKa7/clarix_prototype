@@ -1,0 +1,202 @@
+<div class="rx-page pl">
+  <div class="rx-head pl-head">
+    <div>
+      <h1 class="rx-title">Pipelines</h1>
+      <p class="pl-sub">One setup takes any sheet, API or webhook to calls and back: clean, route to agents, look up what is missing, turn rows into calls, and write every answer back to its rows. This is a dry run; nothing is dialled.</p>
+    </div>
+  </div>
+
+  <div class="pl-bar">
+    <select class="rx-select pl-pick" (change)="open($any($event.target).value)" aria-label="Pipeline">
+      @for (p of list(); track p.id) { <option [value]="p.id" [selected]="spec()?.id === p.id">{{ p.name }}</option> }
+    </select>
+    @if (spec(); as s) { <span class="rx-tag">{{ s.case }}</span> }
+    <span class="rx-grow"></span>
+    @if (summary(); as sum) {
+      <span class="pl-src"><lucide-icon [name]="spec()?.source?.kind === 'webhook' ? 'webhook' : 'file-spreadsheet'" [size]="14"></lucide-icon> {{ sum.source }}</span>
+      @if (sum.source !== spec()?.source?.label) { <button type="button" class="rx-btn rx-btn-sm" (click)="useSample()">Use the sample</button> }
+    }
+    <label class="rx-btn rx-btn-sm pl-upload"><lucide-icon name="upload" [size]="13"></lucide-icon> Try your own file<input type="file" accept=".xlsx,.csv" (change)="onFile($event)" /></label>
+    <button type="button" class="rx-btn rx-btn-primary" (click)="simulate()" [disabled]="busy() || !run()?.calls?.length"><lucide-icon name="play" [size]="14"></lucide-icon> Simulate answers</button>
+  </div>
+  @if (error()) { <p class="rx-note" role="alert">{{ error() }}</p> }
+
+  @if (run(); as r) {
+    <!-- Funnel: what each stage keeps -->
+    <ol class="pl-funnel" aria-label="What each stage keeps">
+      @for (f of r.funnel; track f.key; let i = $index) {
+        <li class="pl-step">
+          <span class="pl-step-n">{{ i + 1 }}</span>
+          <span class="pl-step-label">{{ f.label }}</span>
+          <b>{{ f.value }}</b>
+          <span class="pl-meter"><i [style.width.%]="pct(f.value)"></i></span>
+          <span class="pl-step-note">{{ f.note }}</span>
+        </li>
+      }
+      @if (r.results; as res) {
+        <li class="pl-step done">
+          <span class="pl-step-n"><lucide-icon name="check" [size]="12"></lucide-icon></span>
+          <span class="pl-step-label">Rows written back</span>
+          <b>{{ res.rows }}</b>
+          <span class="pl-meter"><i [style.width.%]="pct(res.rows)"></i></span>
+          <span class="pl-step-note">from {{ res.calls }} calls</span>
+        </li>
+      }
+    </ol>
+
+    <div class="pl-tabs" role="tablist" aria-label="Pipeline detail">
+      <button type="button" role="tab" [class.on]="tab() === 'lanes'" [attr.aria-selected]="tab() === 'lanes'" (click)="tab.set('lanes')">Stages</button>
+      <button type="button" role="tab" [class.on]="tab() === 'aside'" [attr.aria-selected]="tab() === 'aside'" (click)="tab.set('aside')">Set aside <span class="pl-count" [class.warn]="r.quarantine.length">{{ r.quarantine.length }}</span></button>
+      <button type="button" role="tab" [class.on]="tab() === 'calls'" [attr.aria-selected]="tab() === 'calls'" (click)="tab.set('calls')">Calls <span class="pl-count">{{ r.calls.length }}</span></button>
+      <button type="button" role="tab" [class.on]="tab() === 'back'" [attr.aria-selected]="tab() === 'back'" (click)="tab.set('back')">Write back</button>
+      <button type="button" role="tab" [class.on]="tab() === 'spec'" [attr.aria-selected]="tab() === 'spec'" (click)="tab.set('spec')">Setup (JSON) @if (!saved()) { <span class="pl-dot" title="Unsaved changes"></span> }</button>
+      <span class="rx-grow"></span>
+      @if (busy()) { <span class="rx-sub">Running…</span> } @else { <span class="rx-sub">Ran on {{ r.source }}</span> }
+    </div>
+
+    @switch (tab()) {
+      @case ('lanes') {
+        <div class="pl-grid">
+          <section class="rx-card pl-card">
+            <h2 class="pl-h2"><span class="pl-badge">1–2</span> Read and clean</h2>
+            <p class="pl-muted">{{ r.columns.length }} columns read. Values are put in one shape before any rule runs.</p>
+            <div class="pl-chips">@for (t of types(); track t.col) { <span class="pl-chip"><b>{{ t.col }}</b> {{ t.t }}</span> }</div>
+            @if (r.fixes.length) { <ul class="pl-list">@for (f of r.fixes; track f.what) { <li><lucide-icon name="wand-sparkles" [size]="13"></lucide-icon> Fixed {{ f.rows }} × {{ f.what }}</li> }</ul> }
+            @if (r.dropped.length) { <ul class="pl-list">@for (d of r.dropped; track d.reason) { <li><lucide-icon name="funnel-x" [size]="13"></lucide-icon> Dropped {{ d.rows }}: {{ d.reason }}</li> }</ul> }
+          </section>
+          <section class="rx-card pl-card">
+            <h2 class="pl-h2"><span class="pl-badge">4</span> Look up what is missing</h2>
+            @for (l of r.lookups; track l.lookup) {
+              <div class="pl-lookup">
+                <div><b>{{ l.label }}</b> <span class="rx-tag">{{ l.kind }}</span><br><code class="rx-mono">{{ l.call }}</code></div>
+                <div class="pl-lookup-n"><span><b>{{ l.requests }}</b> requests</span><span><b>{{ l.cached }}</b> reused</span>@if (l.empty) { <span class="warn"><b>{{ l.empty }}</b> found nothing</span> }</div>
+              </div>
+            } @empty { <p class="pl-muted">No lookups: the source already has everything the agents need.</p> }
+          </section>
+        </div>
+
+        <section class="rx-card pl-table-card">
+          <h2 class="pl-h2 pl-pad"><span class="pl-badge">3, 5</span> Route, reshape and hand to agents</h2>
+          <div class="pl-scroll">
+            <table class="pl-table">
+              <thead><tr><th>Lane</th><th>Rows that match</th><th>Agent</th><th>How rows become calls</th><th class="num">Rows</th><th class="num">Ready</th><th class="num">Set aside</th><th class="num">Calls</th><th></th></tr></thead>
+              <tbody>
+                @for (l of r.lanes; track l.id; let i = $index) {
+                  <tr>
+                    <td><span class="pl-order">{{ i + 1 }}</span> <b>{{ l.name }}</b></td>
+                    <td class="pl-rule"><code>{{ l.rule }}</code></td>
+                    <td>{{ l.agent }}</td>
+                    <td>{{ RESHAPE[l.reshape] }}@if (l.contacts) { <small>{{ l.contacts }} contacts found</small> }</td>
+                    <td class="num">{{ l.rows }}</td><td class="num">{{ l.ready }}</td>
+                    <td class="num" [class.warn]="l.set_aside">{{ l.set_aside }}</td>
+                    <td class="num"><b>{{ l.calls }}</b></td>
+                    <td><button type="button" class="rx-btn rx-btn-sm" (click)="laneFilter.set(l.id); tab.set('calls')">See calls</button></td>
+                  </tr>
+                }
+                @if (r.unmatched) { <tr class="pl-rest"><td colspan="4">Matched no lane, left out</td><td class="num">{{ r.unmatched }}</td><td colspan="4"></td></tr> }
+              </tbody>
+            </table>
+          </div>
+          <p class="pl-muted pl-pad">A row goes to the first lane it matches, top to bottom.</p>
+        </section>
+      }
+
+      @case ('aside') {
+        <section class="rx-card pl-table-card">
+          <div class="pl-pad pl-row">
+            <div><h2 class="pl-h2">Set aside, not called</h2><p class="pl-muted">Fix these in the file and upload only these rows again. Everything else goes ahead.</p></div>
+            <span class="rx-grow"></span>
+            <button type="button" class="rx-btn rx-btn-sm" (click)="downloadAside()" [disabled]="!r.quarantine.length"><lucide-icon name="download" [size]="13"></lucide-icon> Download these rows</button>
+          </div>
+          @if (r.quarantine.length) {
+            <div class="pl-scroll"><table class="pl-table">
+              <thead><tr><th>Row</th><th>Stage</th><th>Lane</th><th>Why</th>@for (c of asideCols(); track c) { <th>{{ c }}</th> }</tr></thead>
+              <tbody>@for (q of r.quarantine; track q.row_id + q.reason) {
+                <tr><td><code>{{ q.row_id }}</code></td><td><span class="rx-tag">{{ q.stage }}</span></td><td>{{ q.lane || '—' }}</td><td class="pl-why">{{ q.reason }}</td>@for (c of asideCols(); track c) { <td class="pl-cell">{{ q.row[c] }}</td> }</tr>
+              }</tbody>
+            </table></div>
+          } @else { <p class="rx-empty">Nothing set aside. Every row is either called or dropped by a rule.</p> }
+        </section>
+      }
+
+      @case ('calls') {
+        <div class="pl-bar">
+          <select class="rx-select pl-pick" (change)="laneFilter.set($any($event.target).value)" aria-label="Lane">
+            <option value="" [selected]="!laneFilter()">Every lane</option>
+            @for (l of r.lanes; track l.id) { <option [value]="l.id" [selected]="laneFilter() === l.id">{{ l.name }} · {{ l.calls }}</option> }
+          </select>
+          <span class="rx-sub">What each agent is given. <span class="pl-key spoken">Spoken</span> may be said on the call; <span class="pl-key">Internal</span> is known but never said.</span>
+        </div>
+        <div class="pl-calls">
+          @for (c of calls(); track c.call_id) {
+            <section class="rx-card pl-call" [class.open]="openCall() === c.call_id">
+              <button type="button" class="pl-call-head" (click)="openCall.set(openCall() === c.call_id ? '' : c.call_id)" [attr.aria-expanded]="openCall() === c.call_id">
+                <code>{{ c.call_id }}</code><b>{{ c.inputs[1]?.value }}</b><span class="rx-sub">{{ c.agent }}</span><span class="rx-grow"></span>
+                @if (c.part) { <span class="rx-tag">Part {{ c.part }}</span> }
+                <span class="rx-tag">{{ c.row_ids.length }} source row{{ c.row_ids.length === 1 ? '' : 's' }}</span>
+                <lucide-icon [name]="openCall() === c.call_id ? 'chevron-up' : 'chevron-down'" [size]="15"></lucide-icon>
+              </button>
+              @if (openCall() === c.call_id) {
+                <dl class="pl-inputs">
+                  @for (x of c.inputs; track x.input) {
+                    <div [class.multi]="isMulti(x.value)"><dt><span class="pl-key" [class.spoken]="x.spoken">{{ x.spoken ? 'Spoken' : 'Internal' }}</span> {{ x.input }}</dt><dd>{{ x.value }}</dd></div>
+                  }
+                </dl>
+                <p class="pl-muted pl-pad">Answers go back to {{ c.row_ids.join(', ') }}.</p>
+              }
+            </section>
+          } @empty { <p class="rx-empty">No calls in this lane.</p> }
+          @if (shownOf() > calls().length) { <p class="rx-sub">Showing the first {{ calls().length }}.</p> }
+        </div>
+      }
+
+      @case ('back') {
+        @if (r.results; as res) {
+          <div class="pl-grid">
+            <section class="rx-card pl-card">
+              <h2 class="pl-h2"><span class="pl-badge">6</span> Answers, by call</h2>
+              <ul class="pl-bars">@for (o of res.outcomes; track o.value) { <li><span>{{ o.value }}</span><i [style.width.%]="(o.calls / res.calls) * 100"></i><b>{{ o.calls }}</b></li> }</ul>
+              <p class="pl-muted">Simulated answers, so you can see where each one lands.</p>
+            </section>
+            <section class="rx-card pl-card">
+              <h2 class="pl-h2">Where they are written</h2>
+              @for (l of res.lanes; track l.name) {
+                <div class="pl-lookup"><div><b>{{ l.name }}</b><br><span class="pl-muted">{{ l.to }} · matched on <code>{{ l.key.join(' + ') }}</code></span></div>
+                  <div class="pl-lookup-n"><span><b>{{ l.calls }}</b> calls</span><span>→ <b>{{ l.rows }}</b> rows</span></div></div>
+              }
+            </section>
+          </div>
+          <section class="rx-card pl-table-card">
+            <h2 class="pl-h2 pl-pad">Each source row with its answer</h2>
+            <div class="pl-scroll"><table class="pl-table">
+              <thead><tr><th>Row</th><th>Matched on</th><th>Call</th><th>Lane</th>@for (c of backCols(); track c) { <th>{{ c }}</th> }</tr></thead>
+              <tbody>@for (x of res.sample; track x.row_id + x.call_id) {
+                <tr><td><code>{{ x.row_id }}</code></td><td class="pl-cell">{{ keyText(x.key) }}</td><td><code>{{ x.call_id }}</code></td><td>{{ x.lane }}</td>@for (c of backCols(); track c) { <td><span class="rx-tag">{{ x[c] }}</span></td> }</tr>
+              }</tbody>
+            </table></div>
+            @if (res.rows > res.sample.length) { <p class="rx-sub pl-pad">Showing {{ res.sample.length }} of {{ res.rows }} rows.</p> }
+          </section>
+        } @else {
+          <section class="rx-card rx-empty pl-empty">
+            <p>See how answers from {{ r.calls.length }} calls are written back to the rows they came from.</p>
+            <button type="button" class="rx-btn rx-btn-primary" (click)="simulate()" [disabled]="busy() || !r.calls.length"><lucide-icon name="play" [size]="14"></lucide-icon> Simulate answers</button>
+          </section>
+        }
+      }
+
+      @case ('spec') {
+        <section class="rx-card pl-card">
+          <div class="pl-row">
+            <div><h2 class="pl-h2">Setup</h2><p class="pl-muted">The whole pipeline as one setup: source, cleaning, lanes with lookups, reshape, agent inputs and write-back. Try a change before saving it.</p></div>
+            <span class="rx-grow"></span>
+            @if (!saved()) { <button type="button" class="rx-btn rx-btn-sm" (click)="resetDraft()">Undo changes</button> }
+            <button type="button" class="rx-btn rx-btn-sm" (click)="tryDraft()" [disabled]="busy()">Try it</button>
+            <button type="button" class="rx-btn rx-btn-primary rx-btn-sm" (click)="saveDraft()" [disabled]="saved() || busy()">{{ saved() ? 'Saved' : 'Save' }}</button>
+          </div>
+          @if (draftError()) { <p class="rx-note" role="alert">{{ draftError() }}</p> }
+          <textarea class="pl-json" spellcheck="false" [value]="draft()" (input)="editDraft($any($event.target).value)" aria-label="Pipeline setup as JSON"></textarea>
+        </section>
+      }
+    }
+  } @else if (!error()) { <p class="rx-sub">Loading…</p> }
+</div>
