@@ -71,15 +71,17 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
     .nm-btn:focus-visible, .nm-slot:focus-visible, .nm-seg button:focus-visible, .nm-x:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
     select, input[type=date] { min-height: 36px; padding: 0 10px; border: 1px solid var(--ds-border-input, var(--m-line)); border-radius: var(--m-r); background-color: var(--ds-input-bg, var(--m-bg)); color: var(--m-text); font: inherit; font-size: 13px; max-width: 100%; }
     select { width: 100%; }
-    input[type=file] { font: inherit; font-size: 13px; color: var(--m-muted); max-width: 100%; }
-    input[type=file]::file-selector-button { border: 1px solid var(--m-line); background: var(--m-bg); color: var(--m-text); border-radius: 8px; padding: 6px 12px; margin-right: 10px; font: inherit; font-size: 13px; cursor: pointer; }
-    .nm-upload { border: 1px dashed var(--ds-border-strong, var(--m-line)); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
-    .nm-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-    .nm-nums div { background: var(--m-soft); border-radius: 8px; padding: 8px 12px; display: grid; gap: 2px; }
-    .nm-nums span { font-size: 12px; color: var(--m-muted); }
-    .nm-nums b { font-size: 22px; font-variant-numeric: tabular-nums; }
-    .nm-nums .ok b { color: var(--m-good); } .nm-nums .no b { color: var(--m-bad); }
-    .nm-note { margin: 0; padding: 10px 12px; border-radius: var(--m-r); border: 1px solid var(--m-line); background: var(--m-soft); line-height: 1.45; }
+    .nm-file { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .nm-ico { flex: none; display: inline-grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--ds-border-strong, var(--m-line)); border-radius: var(--m-r); background: var(--m-bg); color: var(--m-text); cursor: pointer; }
+    .nm-ico:hover:not(:disabled) { background: var(--m-soft); }
+    .nm-ico:disabled { opacity: .45; cursor: not-allowed; }
+    .nm-ico.sm { width: 30px; height: 30px; }
+    .nm-ico:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
+    .nm-fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+    .nm-fname.none { color: var(--m-muted); font-weight: 400; }
+    .nm-stats { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; color: var(--m-muted); }
+    .nm-stats b { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .nm-stats .ok { color: var(--m-good); } .nm-stats .no { color: var(--m-bad); }    .nm-note { margin: 0; padding: 10px 12px; border-radius: var(--m-r); border: 1px solid var(--m-line); background: var(--m-soft); line-height: 1.45; }
     .nm-note.good { border-color: color-mix(in srgb, var(--m-good) 40%, var(--m-line)); background: color-mix(in srgb, var(--m-good) 8%, var(--m-bg)); color: var(--m-good); }
     .nm-note.bad { border-color: color-mix(in srgb, var(--m-bad) 40%, var(--m-line)); background: color-mix(in srgb, var(--m-bad) 6%, var(--m-bg)); color: var(--m-bad); }
     .nm-table { border: 1px solid var(--m-line); border-radius: 10px; overflow: hidden; }
@@ -135,28 +137,28 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
               @if (agentInfo(); as a) { <p class="nm-desc">{{ a.description }}</p> }
             </div>
 
-            <div class="nm-upload">
-              <div class="nm-row">
-                <button type="button" class="nm-btn" [disabled]="!agent()" (click)="template()">Download template</button>
-                <input type="file" accept=".xlsx,.xls,.csv" [disabled]="!agent() || checking()" (change)="pick($any($event.target).files?.[0])" aria-label="Filled template to upload (.xlsx or .csv)">
+            <div class="nm-field">
+              <span class="nm-label">Sheet</span>
+              <div class="nm-file">
+                <button type="button" class="nm-ico" [disabled]="!agent()" (click)="template()" title="Download template" aria-label="Download template">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+                </button>
+                <button type="button" class="nm-ico" [disabled]="!agent() || checking()" (click)="fi.click()" title="Browse for your filled sheet (.xlsx or .csv)" aria-label="Browse for your filled sheet">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                </button>
+                <input #fi type="file" hidden accept=".xlsx,.xls,.csv" (change)="pick($any($event.target).files?.[0]); $any($event.target).value = ''" aria-label="Filled template to upload (.xlsx or .csv)">
+                <span class="nm-fname" [class.none]="!file()" [attr.role]="checking() ? 'status' : null">{{ checking() ? 'Checking your sheet…' : file()?.name || (agent() ? 'No file yet' : 'Choose an agent first') }}</span>
               </div>
-              <span class="nm-desc" [attr.role]="checking() ? 'status' : null">{{ checking() ? 'Checking your sheet…' : 'Fill the template, then upload it here (.xlsx or .csv). It is checked as soon as it is chosen.' }}</span>
             </div>
-
             @if (check(); as k) {
               @if (k.missing.includes('contact_phone') || !k.rows) {
                 <p class="nm-note bad" role="alert">{{ k.rows ? 'The phone column is missing. Every row needs a phone number: add the column and upload again.' : 'No rows found in this file.' }}</p>
               }
-              <div class="nm-nums">
-                <div><span>Rows in file</span><b>{{ k.rows }}</b></div>
-                <div class="ok"><span>Calls that will be placed</span><b>{{ k.will_dial }}</b></div>
-                <div [class.no]="k.bad.length"><span>Rows with bad data</span><b>{{ k.bad.length }}</b></div>
-              </div>
-              @if (k.bad.length) {
+              <p class="nm-stats"><span>{{ k.rows }} rows</span><b class="ok">{{ k.will_dial }} will be called</b>@if (k.bad.length) { <b class="no">{{ k.bad.length }} need fixing</b> }</p>              @if (k.bad.length) {
                 <div class="nm-table">
                   <div class="nm-table-head">
-                    <b>Rows with bad data: not called</b>
-                    <button type="button" class="nm-btn sm" (click)="downloadBad()" [disabled]="exporting()">{{ exporting() ? 'Preparing…' : 'Download as Excel' }}</button>
+                    <b>Rows we will skip</b>
+                    <button type="button" class="nm-ico sm" (click)="downloadBad()" [disabled]="exporting()" [title]="exporting() ? 'Preparing…' : 'Download these rows as Excel'" aria-label="Download these rows as Excel"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg></button>
                   </div>
                   <div class="nm-scroll">
                     <table>
@@ -177,9 +179,9 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
                   }
                 </div>
               } @else if (k.will_dial) {
-                <p class="nm-note good">All {{ k.will_dial }} rows are good.</p>
+                <p class="nm-note good">All rows look good.</p>
               }
-              @if (k.tests) { <p class="nm-desc">{{ k.tests }} internal test number{{ k.tests === 1 ? ' is' : 's are' }} left out.</p> }
+              @if (k.tests) { <p class="nm-desc">{{ k.tests }} test number{{ k.tests === 1 ? '' : 's' }} left out.</p> }
             }
           }
 
