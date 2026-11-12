@@ -47,14 +47,13 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
       --m-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --m-accent: var(--ds-accent, var(--accent, #4c4184)); --m-on: var(--ds-on-accent, #fff); --m-good: var(--ds-success-fg, #146c34); --m-bad: var(--ds-danger-fg, #b91c1c);
       --m-warn: var(--ds-warning-fg, #a16207); --m-r: var(--ds-r-md, 8px); color: var(--m-text); font-size: 13px; }
     .nm-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(12, 10, 9, .48); display: grid; place-items: center; padding: 12px; }
-    .nm { width: min(720px, 100%); min-height: min(600px, calc(100vh - 24px)); max-height: calc(100vh - 24px); display: flex; flex-direction: column; background: var(--m-bg); border: 1px solid var(--m-line); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); overflow: hidden; }
+    .nm { width: min(520px, 100%); max-height: calc(100vh - 24px); animation: nmIn .18s ease-out both; display: flex; flex-direction: column; background: var(--m-bg); border: 1px solid var(--m-line); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); overflow: hidden; }
     .nm-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--m-line); }
     .nm-head h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
-    .nm-steps { margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--m-muted); font-size: 12px; }
-    .nm-steps b { color: var(--m-text); }
     .nm-x { margin-left: auto; flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--m-muted); font-size: 18px; line-height: 1; cursor: pointer; }
     .nm-x:hover { background: var(--m-soft); color: var(--m-text); }
-    .nm-body { flex: 1; padding: 18px 20px; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 14px; align-content: start; min-width: 0; }
+    .nm.wide { width: min(720px, 100%); }
+    .nm-body { padding: 16px 20px; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 14px; align-content: start; min-width: 0; }
     .nm-body > * { min-width: 0; }
     .nm-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--m-line); background: var(--m-bg); }
     .nm-field { display: grid; gap: 6px; }
@@ -77,16 +76,13 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
     .nm-ico.sm { width: 30px; height: 30px; }
     .nm-ico:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
     .nm-agentrow { display: flex; align-items: center; gap: 8px; } .nm-agentrow select { flex: 1 1 auto; min-width: 0; } .nm-agentrow .nm-ico { height: 36px; width: 36px; }
-    .nm-drop { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 168px; padding: 20px; text-align: center; border: 2px dashed var(--ds-border-strong, var(--m-line)); border-radius: 12px; background: var(--m-soft); color: var(--m-muted); cursor: pointer; transition: border-color .12s, background-color .12s; }
+    .nm-drop { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 112px; padding: 16px; text-align: center; border: 2px dashed var(--ds-border-strong, var(--m-line)); border-radius: 12px; background: var(--m-soft); color: var(--m-muted); cursor: pointer; transition: border-color .12s, background-color .12s; }
     .nm-drop:hover:not(.off), .nm-drop.over { border-color: var(--m-accent); background: color-mix(in srgb, var(--m-accent) 7%, var(--m-bg)); color: var(--m-text); }
-    .nm-drop.has { border-style: solid; color: var(--m-text); }
+    .nm-drop.has { border-style: solid; color: var(--m-text); min-height: 88px; padding: 12px; gap: 4px; }
     .nm-drop.off { opacity: .55; cursor: not-allowed; }
     .nm-drop:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
     .nm-drop-t { max-width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 550; }
-    .nm-drop-s { font-size: 12px; color: var(--m-muted); }    .nm-stats { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; color: var(--m-muted); }
-    .nm-stats b { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .nm-stats .ok { color: var(--m-good); } .nm-stats .no { color: var(--m-bad); }    .nm-note { margin: 0; padding: 10px 12px; border-radius: var(--m-r); border: 1px solid var(--m-line); background: var(--m-soft); line-height: 1.45; }
-    .nm-note.good { border-color: color-mix(in srgb, var(--m-good) 40%, var(--m-line)); background: color-mix(in srgb, var(--m-good) 8%, var(--m-bg)); color: var(--m-good); }
+    .nm-drop-s { font-size: 12px; color: var(--m-muted); }    .nm-note.good { border-color: color-mix(in srgb, var(--m-good) 40%, var(--m-line)); background: color-mix(in srgb, var(--m-good) 8%, var(--m-bg)); color: var(--m-good); }
     .nm-note.bad { border-color: color-mix(in srgb, var(--m-bad) 40%, var(--m-line)); background: color-mix(in srgb, var(--m-bad) 6%, var(--m-bg)); color: var(--m-bad); }
     .nm-table { border: 1px solid var(--m-line); border-radius: 10px; overflow: hidden; }
     .nm-table-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 12px; background: var(--m-soft); border-bottom: 1px solid var(--m-line); }
@@ -111,21 +107,70 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
     .nm-slot:disabled { cursor: not-allowed; color: var(--m-muted); background: var(--m-soft); text-decoration: line-through; }
     .nm-legend { color: var(--m-muted); font-size: 12px; line-height: 1.45; }
     .nm-sum { border: 1px solid color-mix(in srgb, var(--m-accent) 35%, var(--m-line)); background: color-mix(in srgb, var(--m-accent) 5%, var(--m-bg)); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
-    .nm-sum dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; }
-    .nm-sum dt { color: var(--m-muted); } .nm-sum dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
     .nm-done { display: grid; gap: 6px; justify-items: start; }
     .nm-done h3 { margin: 0; font-size: 16px; }
-    @media (max-width: 560px) { .nm-body, .nm-head, .nm-foot { padding-left: 14px; padding-right: 14px; } .nm-sum dl { grid-template-columns: minmax(0, 1fr); gap: 0; } .nm-sum dd { margin-bottom: 6px; } .nm-foot .nm-btn { flex: 1 1 100%; } }
+    @keyframes nmIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+    @keyframes nmFade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes nmRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes nmSlide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+    @keyframes nmPop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: none; } }
+    .nm-backdrop { animation: nmFade .16s ease-out both; }
+    .nm-head { position: relative; align-items: center; padding-bottom: 14px; }
+    .nm-prog { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--m-line); overflow: hidden; pointer-events: none; }
+    .nm-prog i { display: block; height: 100%; background: var(--m-accent); transform-origin: left; transition: transform .2s ease-out; }
+    .nm-steps { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--m-muted); }
+    .nm-steps li { display: inline-flex; align-items: center; gap: 6px; }
+    .nm-steps li i { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 999px; border: 1px solid var(--m-line); font-style: normal; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .nm-steps li.on { color: var(--m-text); font-weight: 600; }
+    .nm-steps li.on i { background: var(--m-accent); border-color: var(--m-accent); color: var(--m-on); }
+    .nm-steps li.done i { background: color-mix(in srgb, var(--m-good) 14%, var(--m-bg)); border-color: transparent; color: var(--m-good); }
+    .nm-drop-ic { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--m-bg); border: 1px solid var(--m-line); color: var(--m-muted); transition: transform .16s ease-out, color .16s, border-color .16s; }
+    .nm-drop:hover:not(.off) .nm-drop-ic, .nm-drop.over .nm-drop-ic { transform: translateY(-3px); color: var(--m-accent); border-color: var(--m-accent); }
+    .nm-drop.over { border-style: solid; }
+    .nm-drop-ic.ok { color: var(--m-good); border-color: color-mix(in srgb, var(--m-good) 45%, var(--m-line)); background: color-mix(in srgb, var(--m-good) 10%, var(--m-bg)); animation: nmPop .22s ease-out both; }
+    .nm-ind { position: relative; width: 140px; height: 3px; border-radius: 3px; background: var(--m-line); overflow: hidden; }
+    .nm-ind::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 3px; background: var(--m-accent); animation: nmSlide .9s ease-in-out infinite; }
+    .nm-hero { display: grid; gap: 8px; animation: nmRise .2s ease-out both; }
+    .nm-hero-n { display: flex; align-items: baseline; gap: 10px; }
+    .nm-hero-n b { font-size: 40px; line-height: 1; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+    .nm-hero-n span { font-size: 15px; font-weight: 550; }
+    .nm-split { height: 6px; border-radius: 6px; background: var(--m-soft); overflow: hidden; }
+    .nm-split.has-bad { background: color-mix(in srgb, var(--m-bad) 32%, var(--m-soft)); }
+    .nm-split i { display: block; height: 100%; border-radius: 6px; background: var(--m-good); transform-origin: left; animation: nmGrow .35s ease-out both; }
+    @keyframes nmGrow { from { transform: scaleX(0); } }
+    .nm-hero-s { margin: 0; color: var(--m-muted); font-variant-numeric: tabular-nums; }
+    .nm-hero-s .no { color: var(--m-bad); font-weight: 600; }
+    .nm-table, .nm-note { animation: nmRise .2s ease-out both; }
+    .nm-slot { transition: transform .12s ease-out, border-color .12s, background-color .12s; }
+    .nm-slot:hover:not(:disabled):not(.on) { transform: translateY(-1px); }
+    .nm-sum { animation: nmRise .2s ease-out both; gap: 10px; }
+    .nm-sum-h { margin: 0; color: var(--m-muted); } .nm-sum-h b { font-size: 24px; font-weight: 650; color: var(--m-text); font-variant-numeric: tabular-nums; margin-right: 4px; }
+    .nm-tl { list-style: none; margin: 0; padding: 0 0 0 18px; display: grid; gap: 10px; position: relative; }
+    .nm-tl::before { content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 1px; background: var(--m-line); }
+    .nm-tl li { position: relative; display: grid; gap: 1px; }
+    .nm-tl li::before { content: ''; position: absolute; left: -18px; top: 5px; width: 9px; height: 9px; border-radius: 999px; background: var(--m-bg); border: 2px solid var(--m-accent); }
+    .nm-tl li:last-child::before { background: var(--m-accent); }
+    .nm-tl li span { font-size: 12px; color: var(--m-muted); }
+    .nm-tl li b { font-weight: 600; overflow-wrap: anywhere; }
+    .nm-tl li small { color: var(--m-muted); font-size: 12px; }
+    .nm-done-ic { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 999px; background: color-mix(in srgb, var(--m-good) 12%, var(--m-bg)); color: var(--m-good); animation: nmPop .3s ease-out both; margin-bottom: 4px; }
+    @media (prefers-reduced-motion: reduce) { .nm, .nm-backdrop, .nm-hero, .nm-table, .nm-note, .nm-sum, .nm-split i, .nm-drop-ic.ok, .nm-done-ic, .nm-ind::after { animation: none !important; } .nm-prog i, .nm-slot, .nm-drop, .nm-drop-ic { transition: none !important; } }    @media (max-width: 560px) { .nm-body, .nm-head, .nm-foot { padding-left: 14px; padding-right: 14px; } .nm-sum dl { grid-template-columns: minmax(0, 1fr); gap: 0; } .nm-sum dd { margin-bottom: 6px; } .nm-foot .nm-btn { flex: 1 1 100%; } }
   `],
   template: `
     <div class="nm-backdrop" (mousedown)="backdrop($event)">
-      <div class="nm" role="dialog" aria-modal="true" aria-labelledby="nm-title">
+      <div class="nm" [class.wide]="wide()" role="dialog" aria-modal="true" aria-labelledby="nm-title">
         <div class="nm-head">
           <div>
             <h2 id="nm-title">{{ step() === 3 ? (result()?.scheduled ? 'Campaign scheduled' : 'Campaign started') : 'New campaign' }}</h2>
-            @if (step() < 3) { <p class="nm-steps"><span [style.fontWeight]="step() === 1 ? 600 : 400">1 · Upload sheet</span><span [style.fontWeight]="step() === 2 ? 600 : 400">2 · Schedule</span></p> }
+            @if (step() < 3) {
+              <ol class="nm-steps" aria-label="Progress">
+                <li [class.on]="step() === 1" [class.done]="step() > 1" [attr.aria-current]="step() === 1 ? 'step' : null"><i>{{ step() > 1 ? '✓' : '1' }}</i>Upload sheet</li>
+                <li [class.on]="step() === 2" [attr.aria-current]="step() === 2 ? 'step' : null"><i>2</i>Schedule</li>
+              </ol>
+            }
           </div>
           <button type="button" class="nm-x" (click)="cancel()" aria-label="Close">✕</button>
+          <div class="nm-prog" aria-hidden="true"><i [style.transform]="'scaleX(' + progress() + ')'"></i></div>
         </div>
 
         <div class="nm-body">
@@ -153,17 +198,24 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
                 aria-label="Upload your filled sheet: drag and drop it here, or press to browse"
                 (click)="agent() && !checking() && fi.click()" (keydown.enter)="agent() && !checking() && fi.click()" (keydown.space)="$event.preventDefault(); agent() && !checking() && fi.click()"
                 (dragover)="drag($event, true)" (dragleave)="drag($event, false)" (drop)="drop($event)">
-                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5"/><path d="m7 9 5-5 5 5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
-                <span class="nm-drop-t" [attr.role]="checking() ? 'status' : null">{{ checking() ? 'Checking your sheet…' : file()?.name || (agent() ? 'Drag and drop your sheet here, or click to browse' : 'Choose an agent first') }}</span>
-                @if (!file() && !checking()) { <span class="nm-drop-s">.xlsx or .csv</span> }
-                @else if (file() && !checking()) { <span class="nm-drop-s">Click or drop another file to replace it</span> }
+                <span class="nm-drop-ic" [class.ok]="!!file() && !checking()">
+                  @if (file() && !checking()) { <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg> }
+                  @else { <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5"/><path d="m7 9 5-5 5 5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg> }
+                </span>                <span class="nm-drop-t" [attr.role]="checking() ? 'status' : null">{{ checking() ? 'Checking your sheet…' : file()?.name || (agent() ? 'Drag and drop your sheet here, or click to browse' : 'Choose an agent first') }}</span>
+                @if (checking()) { <i class="nm-ind" aria-hidden="true"></i> }
+                @else if (!file()) { <span class="nm-drop-s">.xlsx or .csv</span> }
+                @else { <span class="nm-drop-s">Click or drop another file to replace it</span> }
               </div>
             </div>
             @if (check(); as k) {
               @if (k.missing.includes('contact_phone') || !k.rows) {
                 <p class="nm-note bad" role="alert">{{ k.rows ? 'The phone column is missing. Every row needs a phone number: add the column and upload again.' : 'No rows found in this file.' }}</p>
               }
-              <p class="nm-stats"><span>{{ k.rows }} rows</span><b class="ok">{{ k.will_dial }} will be called</b>@if (k.bad.length) { <b class="no">{{ k.bad.length }} need fixing</b> }</p>              @if (k.bad.length) {
+              <div class="nm-hero" aria-live="polite">
+                <div class="nm-hero-n"><b>{{ k.will_dial }}</b><span>call{{ k.will_dial === 1 ? '' : 's' }} will be placed</span></div>
+                <div class="nm-split" [class.has-bad]="k.bad.length" aria-hidden="true"><i [style.transform]="'scaleX(' + (k.rows ? k.will_dial / k.rows : 0) + ')'"></i></div>
+                <p class="nm-hero-s">{{ k.rows }} row{{ k.rows === 1 ? '' : 's' }} in your sheet@if (k.bad.length) { · <b class="no">{{ k.bad.length }} skipped</b> }@if (k.tests) { · {{ k.tests }} test number{{ k.tests === 1 ? '' : 's' }} left out }</p>
+              </div>              @if (k.bad.length) {
                 <div class="nm-table">
                   <div class="nm-table-head">
                     <b>Rows we will skip</b>
@@ -190,7 +242,6 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
               } @else if (k.will_dial) {
                 <p class="nm-note good">All rows look good.</p>
               }
-              @if (k.tests) { <p class="nm-desc">{{ k.tests }} test number{{ k.tests === 1 ? '' : 's' }} left out.</p> }
             }
           }
 
@@ -245,12 +296,12 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
 
             @if (est(); as e) {
               <div class="nm-sum" aria-live="polite">
-                <dl>
-                  <dt>Calls to place</dt><dd>{{ e.calls }}</dd>
-                  <dt>Starts</dt><dd>{{ startText(e) }}</dd>
-                  <dt>Expected to finish</dt><dd>{{ stampIn(e.ends_at, e) }} (about {{ minutes(e.duration_min) }}{{ e.spans_days ? ', over more than one day' : '' }})</dd>
-                  <dt>Check back after</dt><dd>{{ stampIn(e.check_back_at, e) }}</dd>
-                </dl>
+                <p class="nm-sum-h"><b>{{ e.calls }}</b> call{{ e.calls === 1 ? '' : 's' }} to place</p>
+                <ol class="nm-tl">
+                  <li><span>Starts</span><b>{{ startText(e) }}</b></li>
+                  <li><span>Done around</span><b>{{ stampIn(e.ends_at, e) }}</b><small>about {{ minutes(e.duration_min) }}{{ e.spans_days ? ', over more than one day' : '' }}</small></li>
+                  <li><span>Check back after</span><b>{{ stampIn(e.check_back_at, e) }}</b></li>
+                </ol>
                 <span class="nm-legend">Times in {{ tz() === 'utc' ? 'UTC' : localTz() }}. Calls only go out inside the country's calling hours.</span>
               </div>
             } @else if (mode() === 'later') { <p class="nm-desc">Pick a free slot to see when the campaign should be done.</p> }
@@ -259,6 +310,7 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
           @if (step() === 3) {
             @if (result(); as r) {
               <div class="nm-done">
+                <span class="nm-done-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
                 <h3>{{ r.calls }} call{{ r.calls === 1 ? '' : 's' }} {{ r.scheduled ? 'scheduled' : 'queued' }}</h3>
                 <p class="nm-desc">It starts {{ stampIn(r.starts_at, r) }} and should be done around {{ stampIn(r.ends_at, r) }}.</p>
                 <p class="nm-desc"><b>Come back after {{ stampIn(r.check_back_at, r) }}</b> to see how the calls went.{{ r.scheduled ? ' It shows in Campaigns when it starts.' : '' }}</p>
@@ -320,6 +372,10 @@ export class NewCampaignComponent {
   private estSeq = 0;
   private started = false;
 
+  /** Starts compact; opens up when a table of rows or the grid of slots needs the room. */
+  protected readonly wide = computed(() => !!this.check()?.bad.length || (this.step() === 2 && this.mode() === 'later'));
+  /** 0 to 1 across the whole flow; drawn as a thin bar under the title. */
+  protected readonly progress = computed(() => this.step() === 3 ? 1 : this.step() === 2 ? (this.est() ? 0.92 : 0.68) : this.check() ? 0.42 : this.agent() ? 0.2 : 0.06);
   protected readonly agentInfo = computed(() => this.agents().find((a) => a.key === this.agent()) ?? null);
   protected readonly countryInfo = computed(() => this.countries().find((c) => c.code === this.country()) ?? null);
   protected readonly localTz = computed(() => shortTz(this.countryInfo()?.tz_label || this.view()?.tz_label || 'Local'));
