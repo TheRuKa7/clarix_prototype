@@ -47,14 +47,14 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
       --m-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --m-accent: var(--ds-accent, var(--accent, #4c4184)); --m-on: var(--ds-on-accent, #fff); --m-good: var(--ds-success-fg, #146c34); --m-bad: var(--ds-danger-fg, #b91c1c);
       --m-warn: var(--ds-warning-fg, #a16207); --m-r: var(--ds-r-md, 8px); color: var(--m-text); font-size: 13px; }
     .nm-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(12, 10, 9, .48); display: grid; place-items: center; padding: 12px; }
-    .nm { width: min(720px, 100%); max-height: calc(100vh - 24px); display: flex; flex-direction: column; background: var(--m-bg); border: 1px solid var(--m-line); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); overflow: hidden; }
+    .nm { width: min(720px, 100%); min-height: min(600px, calc(100vh - 24px)); max-height: calc(100vh - 24px); display: flex; flex-direction: column; background: var(--m-bg); border: 1px solid var(--m-line); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); overflow: hidden; }
     .nm-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--m-line); }
     .nm-head h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
     .nm-steps { margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--m-muted); font-size: 12px; }
     .nm-steps b { color: var(--m-text); }
     .nm-x { margin-left: auto; flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--m-muted); font-size: 18px; line-height: 1; cursor: pointer; }
     .nm-x:hover { background: var(--m-soft); color: var(--m-text); }
-    .nm-body { padding: 16px 20px; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 14px; align-content: start; min-width: 0; }
+    .nm-body { flex: 1; padding: 18px 20px; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 14px; align-content: start; min-width: 0; }
     .nm-body > * { min-width: 0; }
     .nm-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--m-line); background: var(--m-bg); }
     .nm-field { display: grid; gap: 6px; }
@@ -71,15 +71,19 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
     .nm-btn:focus-visible, .nm-slot:focus-visible, .nm-seg button:focus-visible, .nm-x:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
     select, input[type=date] { min-height: 36px; padding: 0 10px; border: 1px solid var(--ds-border-input, var(--m-line)); border-radius: var(--m-r); background-color: var(--ds-input-bg, var(--m-bg)); color: var(--m-text); font: inherit; font-size: 13px; max-width: 100%; }
     select { width: 100%; }
-    .nm-file { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .nm-ico { flex: none; display: inline-grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--ds-border-strong, var(--m-line)); border-radius: var(--m-r); background: var(--m-bg); color: var(--m-text); cursor: pointer; }
     .nm-ico:hover:not(:disabled) { background: var(--m-soft); }
     .nm-ico:disabled { opacity: .45; cursor: not-allowed; }
     .nm-ico.sm { width: 30px; height: 30px; }
     .nm-ico:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
-    .nm-fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-    .nm-fname.none { color: var(--m-muted); font-weight: 400; }
-    .nm-stats { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; color: var(--m-muted); }
+    .nm-agentrow { display: flex; align-items: center; gap: 8px; } .nm-agentrow select { flex: 1 1 auto; min-width: 0; } .nm-agentrow .nm-ico { height: 36px; width: 36px; }
+    .nm-drop { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 168px; padding: 20px; text-align: center; border: 2px dashed var(--ds-border-strong, var(--m-line)); border-radius: 12px; background: var(--m-soft); color: var(--m-muted); cursor: pointer; transition: border-color .12s, background-color .12s; }
+    .nm-drop:hover:not(.off), .nm-drop.over { border-color: var(--m-accent); background: color-mix(in srgb, var(--m-accent) 7%, var(--m-bg)); color: var(--m-text); }
+    .nm-drop.has { border-style: solid; color: var(--m-text); }
+    .nm-drop.off { opacity: .55; cursor: not-allowed; }
+    .nm-drop:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
+    .nm-drop-t { max-width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 550; }
+    .nm-drop-s { font-size: 12px; color: var(--m-muted); }    .nm-stats { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; color: var(--m-muted); }
     .nm-stats b { font-weight: 600; font-variant-numeric: tabular-nums; }
     .nm-stats .ok { color: var(--m-good); } .nm-stats .no { color: var(--m-bad); }    .nm-note { margin: 0; padding: 10px 12px; border-radius: var(--m-r); border: 1px solid var(--m-line); background: var(--m-soft); line-height: 1.45; }
     .nm-note.good { border-color: color-mix(in srgb, var(--m-good) 40%, var(--m-line)); background: color-mix(in srgb, var(--m-good) 8%, var(--m-bg)); color: var(--m-good); }
@@ -130,24 +134,29 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
           @if (step() === 1) {
             <div class="nm-field">
               <label for="nm-agent">Agent</label>
-              <select id="nm-agent" [value]="agent()" (change)="pickAgent($any($event.target).value)">
-                <option value="">Choose an agent…</option>
-                @for (a of agents(); track a.key) { <option [value]="a.key" [selected]="a.key === agent()">{{ a.label }}</option> }
-              </select>
+              <div class="nm-agentrow">
+                <select id="nm-agent" [value]="agent()" (change)="pickAgent($any($event.target).value)">
+                  <option value="">Choose an agent…</option>
+                  @for (a of agents(); track a.key) { <option [value]="a.key" [selected]="a.key === agent()">{{ a.label }}</option> }
+                </select>
+                <button type="button" class="nm-ico" [disabled]="!agent()" (click)="template()" title="Download the template for this agent" aria-label="Download template">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+                </button>
+              </div>
               @if (agentInfo(); as a) { <p class="nm-desc">{{ a.description }}</p> }
             </div>
 
             <div class="nm-field">
               <span class="nm-label">Sheet</span>
-              <div class="nm-file">
-                <button type="button" class="nm-ico" [disabled]="!agent()" (click)="template()" title="Download template" aria-label="Download template">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
-                </button>
-                <button type="button" class="nm-ico" [disabled]="!agent() || checking()" (click)="fi.click()" title="Browse for your filled sheet (.xlsx or .csv)" aria-label="Browse for your filled sheet">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                </button>
-                <input #fi type="file" hidden accept=".xlsx,.xls,.csv" (change)="pick($any($event.target).files?.[0]); $any($event.target).value = ''" aria-label="Filled template to upload (.xlsx or .csv)">
-                <span class="nm-fname" [class.none]="!file()" [attr.role]="checking() ? 'status' : null">{{ checking() ? 'Checking your sheet…' : file()?.name || (agent() ? 'No file yet' : 'Choose an agent first') }}</span>
+              <input #fi type="file" hidden accept=".xlsx,.xls,.csv" (change)="pick($any($event.target).files?.[0]); $any($event.target).value = ''" aria-label="Filled template to upload (.xlsx or .csv)">
+              <div class="nm-drop" role="button" tabindex="0" [class.over]="over()" [class.has]="!!file()" [class.off]="!agent()" [attr.aria-disabled]="!agent() || checking()"
+                aria-label="Upload your filled sheet: drag and drop it here, or press to browse"
+                (click)="agent() && !checking() && fi.click()" (keydown.enter)="agent() && !checking() && fi.click()" (keydown.space)="$event.preventDefault(); agent() && !checking() && fi.click()"
+                (dragover)="drag($event, true)" (dragleave)="drag($event, false)" (drop)="drop($event)">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5"/><path d="m7 9 5-5 5 5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+                <span class="nm-drop-t" [attr.role]="checking() ? 'status' : null">{{ checking() ? 'Checking your sheet…' : file()?.name || (agent() ? 'Drag and drop your sheet here, or click to browse' : 'Choose an agent first') }}</span>
+                @if (!file() && !checking()) { <span class="nm-drop-s">.xlsx or .csv</span> }
+                @else if (file() && !checking()) { <span class="nm-drop-s">Click or drop another file to replace it</span> }
               </div>
             </div>
             @if (check(); as k) {
@@ -295,6 +304,7 @@ export class NewCampaignComponent {
   protected readonly error = signal('');
   protected readonly page = signal(0);
   protected readonly exporting = signal(false);
+  protected readonly over = signal(false);
   protected readonly countries = signal<WizardCountry[]>([]);
   protected readonly country = signal('IN');
   protected readonly mode = signal<'now' | 'later'>('now');
@@ -349,6 +359,8 @@ export class NewCampaignComponent {
   protected pickAgent(key: string): void {
     this.agent.set(key); this.file.set(null); this.check.set(null); this.page.set(0); this.error.set('');
   }
+  protected drag(e: DragEvent, on: boolean): void { e.preventDefault(); if (this.agent()) this.over.set(on); }
+  protected drop(e: DragEvent): void { e.preventDefault(); this.over.set(false); if (!this.agent() || this.checking()) return; const f = e.dataTransfer?.files?.[0]; if (f) void this.pick(f); }
   protected async template(): Promise<void> {
     try { download(await this.source().template(this.agent()), `${(this.agentInfo()?.label || 'agent').replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`); } catch { this.error.set('Could not download the template.'); }
   }
