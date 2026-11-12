@@ -15,19 +15,12 @@ export const environment = {
     },
     clarix: {
       baseURL: 'http://localhost:8081'
-    },
-    genbi: {
-      baseURL: 'http://localhost:8000'
     }
   },
   casApi: {
     baseUrl: 'http://localhost:9000/api/v1'
   },
-  genbiApi: {
-    baseUrl: '/api/v1'
-  },
   features: {
-    genbi: true,
     workflows: true,
     analytics: true
   }

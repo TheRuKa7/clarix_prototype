@@ -15,19 +15,12 @@ export const environment = {
     },
     clarix: {
       baseURL: 'https://api.example.com'
-    },
-    genbi: {
-      baseURL: 'https://api.example.com'
     }
   },
   casApi: {
     baseUrl: '/cas/api/v1'
   },
-  genbiApi: {
-    baseUrl: '/api/v1'
-  },
   features: {
-    genbi: true,
     workflows: true,
     analytics: true
   }

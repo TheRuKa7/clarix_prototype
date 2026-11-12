@@ -5,7 +5,7 @@ real backend, Microsoft sign in or the database.
 
 ```
 npm ci
-npm run start:local        # mock on :8081 (api), :9000 (CAS), :8000 (GenBI); app on http://localhost:4310
+npm run start:local        # mock on :8081 (api), :9000 (CAS); app on http://localhost:4310
 ```
 
 Then open **http://localhost:4310/__local/signin** once. It stores a local

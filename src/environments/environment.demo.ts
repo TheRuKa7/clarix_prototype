@@ -14,9 +14,7 @@ export const environment = {
     financeAp: { baseURL: base + 'finance' },
     financeAr: { baseURL: base + 'finance' },
     clarix: { baseURL: base + 'api' },
-    genbi: { baseURL: base + 'genbi' },
   },
   casApi: { baseUrl: base + 'cas/api/v1' },
-  genbiApi: { baseUrl: '/api/v1' },
-  features: { genbi: true, workflows: true, analytics: true },
+  features: { workflows: true, analytics: true },
 };

@@ -131,8 +131,11 @@ export class ReportService {
   saveRetryRule(agent: string, rule: any): Observable<any> { return this.data(this.http.put<{ data: any }>(`${this.callingBase}/retry-rules/${encodeURIComponent(agent)}`, rule)); }
   newCampaignRecheck(agent: string, rows: unknown): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/new-campaign/recheck`, { rows }, { params: new HttpParams().set('agent', agent) })); }
   newCampaignTemplate(agent: string): Observable<Blob> { return this.http.get(`${this.callingBase}/new-campaign/template.xlsx`, { params: new HttpParams().set('agent', agent), responseType: 'blob' }); }
-  newCampaignPost(step: 'check' | 'start', agent: string, file: File): Observable<any> {
-    const fd = new FormData(); fd.append('file', file, file.name);
+  newCampaignSlots(agent: string, country: string, date: string): Observable<any> { return this.data(this.http.get<{ data: any }>(`${this.callingBase}/new-campaign/slots`, { params: new HttpParams().set('agent', agent).set('country', country).set('date', date) })); }
+  newCampaignEstimate(b: { calls: number; when: string; country: string }): Observable<any> { return this.data(this.http.post<{ data: any }>(`${this.callingBase}/new-campaign/estimate`, b)); }
+  newCampaignBadRows(columns: string[], rows: unknown[]): Observable<Blob> { return this.http.post(`${this.callingBase}/new-campaign/bad-rows.xlsx`, { columns, rows }, { responseType: 'blob' }); }
+  newCampaignPost(step: 'check' | 'start', agent: string, file: File, extra: Record<string, string> = {}): Observable<any> {
+    const fd = new FormData(); Object.entries(extra).forEach(([k, v]) => fd.append(k, v)); fd.append('file', file, file.name);
     return this.data(this.http.post<{ data: any }>(`${this.callingBase}/new-campaign/${step}`, fd, { params: new HttpParams().set('agent', agent) }));
   }
   private logParams(p: HttpParams, f?: { q: string; cols: Record<string, string | string[] | { op: string; a?: string; b?: string }> }): HttpParams { return f ? p.set('q', f.q).set('filters', Object.keys(f.cols).length ? JSON.stringify(f.cols) : '') : p; }

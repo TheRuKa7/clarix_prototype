@@ -3,7 +3,8 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ReportService } from '../../../dashboard/services/report.service';
 import { CallingReportComponent, CallingReportSource } from '../../../dashboard/components/calling-report/calling-report.component';
-import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, SupplierPageComponent, SupplierSource, SecurityCenterComponent, SecuritySource, AuditLogComponent, AuditSource, AccessComponent, AccessSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource, NewCampaignComponent, NewCampaignSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { AlertsComponent, AlertsSource, TelephonyHubComponent, TelephonySource, SupplierPageComponent, SupplierSource, SecurityCenterComponent, SecuritySource, AuditLogComponent, AuditSource, AccessComponent, AccessSource, CallingRulesComponent, CallingRulesSource, DncListComponent, DncSource, CampaignPageComponent, CampaignsListComponent, CampaignsSource, FollowUpsListComponent, FollowUpsSource } from '../../../dashboard/components/shared-screens/shared-screens';
+import { CampaignWizardSource } from '../../../dashboard/components/shared-screens/new-campaign-modal';
 
 /** Clarix's wiring for the screens it shares with Echo (same components, Clarix API). */
 function reportSource(r: ReportService, router: Router): CallingReportSource {
@@ -18,12 +19,21 @@ function reportSource(r: ReportService, router: Router): CallingReportSource {
   };
 }
 const ALL = () => ({ period: 'all' as const, from: new Date(0).toISOString(), to: new Date().toISOString(), days: 0, agents: [], includeTests: false });
+/** New campaign: one modal, upload and check, then schedule. */
+function wizardSource(r: ReportService, router: Router): CampaignWizardSource {
+  return {
+    agents: () => firstValueFrom(r.newCampaignAgents()), template: (a) => firstValueFrom(r.newCampaignTemplate(a)), check: (a, f) => firstValueFrom(r.newCampaignPost('check', a, f)),
+    countries: async () => ((await firstValueFrom(r.callingRules())).countries as { code: string; name: string; tz_label: string; law?: string }[]).map((c) => ({ code: c.code, name: c.name, tz_label: c.tz_label, law: c.law })),
+    slots: (a, c, d) => firstValueFrom(r.newCampaignSlots(a, c, d)), estimate: (b) => firstValueFrom(r.newCampaignEstimate(b)), badRows: (cols, rows) => firstValueFrom(r.newCampaignBadRows(cols, rows)),
+    start: (a, f, o) => firstValueFrom(r.newCampaignPost('start', a, f, o)), opened: (id) => { router.navigate(['/workflows/campaigns', id]); },
+  };
+}
 function campaignsSource(r: ReportService, router: Router): CampaignsSource {
   return {
     list: (p) => firstValueFrom(r.reportCampaigns(p)), get: (id) => firstValueFrom(r.reportCampaign(id)), stop: (id) => firstValueFrom(r.stopReportCampaign(id)), resume: (id) => firstValueFrom(r.resumeReportCampaign(id)),
     results: (id) => firstValueFrom(r.callingReportExport({ ...ALL(), campaign: id } as any, 'uploaded')),
     open: (c) => router.navigate(['/workflows/campaigns', c.campaign_id]), newCampaign: () => router.navigate(['/workflows/campaigns/new']),
-    report: reportSource(r, router), listPath: '/workflows/campaigns',
+    wizard: wizardSource(r, router), report: reportSource(r, router), listPath: '/workflows/campaigns',
   };
 }
 
@@ -37,19 +47,8 @@ export class ClarixCampaignsPage { readonly source = campaignsSource(inject(Repo
 @Component({ selector: 'app-clarix-campaign', standalone: true, imports: [CampaignPageComponent], template: `<div class="rx-page"><app-campaign-page [source]="source"></app-campaign-page></div>` })
 export class ClarixCampaignPage { readonly source = campaignsSource(inject(ReportService), inject(Router)); }
 
-@Component({ selector: 'app-clarix-new-campaign', standalone: true, imports: [NewCampaignComponent], template: `<div class="rx-page"><app-new-campaign [source]="source"></app-new-campaign></div>` })
-export class ClarixNewCampaignPage {
-  private r = inject(ReportService); private router = inject(Router);
-  readonly source: NewCampaignSource = {
-    agents: () => firstValueFrom(this.r.newCampaignAgents()), template: (a) => firstValueFrom(this.r.newCampaignTemplate(a)),
-    check: (a, f) => firstValueFrom(this.r.newCampaignPost('check', a, f)), start: (a, f) => firstValueFrom(this.r.newCampaignPost('start', a, f)),
-    dataSource: (a) => firstValueFrom(this.r.dsLoad(a)), previewSource: (a, s) => firstValueFrom(this.r.dsPreview(a, s)), runSource: (a) => firstValueFrom(this.r.dsRun(a)),
-    editSource: (a) => this.router.navigate(['/workflows/build/agents'], { queryParams: { templateId: a } }),
-    tips: (a) => firstValueFrom(this.r.newCampaignTips(a)), retryRules: () => firstValueFrom(this.r.retryRules()), saveRetryRule: (a, r) => firstValueFrom(this.r.saveRetryRule(a, r)), retryPreview: (r, c) => firstValueFrom(this.r.retryPreview(r, c)),
-    recheck: (a, rows) => firstValueFrom(this.r.newCampaignRecheck(a, rows)),
-    opened: (id) => this.router.navigate(['/workflows/campaigns', id]), cancel: () => this.router.navigate(['/workflows/campaigns']),
-  };
-}
+@Component({ selector: 'app-clarix-new-campaign', standalone: true, imports: [CampaignsListComponent], template: `<div class="rx-page"><app-campaigns-list [source]="source" [startOpen]="true"></app-campaigns-list></div>` })
+export class ClarixNewCampaignPage { readonly source = campaignsSource(inject(ReportService), inject(Router)); }
 
 @Component({ selector: 'app-clarix-follow-ups', standalone: true, imports: [FollowUpsListComponent], template: `<div class="rx-page"><app-follow-ups-list [source]="source"></app-follow-ups-list></div>` })
 export class ClarixFollowUpsPage {

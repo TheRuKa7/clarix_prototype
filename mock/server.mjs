@@ -1,4 +1,4 @@
-// Local stand-in for the Clarix backend (:8081), CAS (:9000) and GenBI (:8000), so the
+// Local stand-in for the Clarix backend (:8081) and CAS (:9000), so the
 // live Clarix UI runs unchanged. Built from the same synthetic scenario.json as the Echo
 // mock, so Clarix rows and Echo contacts are the same calls with the same ids.
 //
@@ -20,6 +20,7 @@ import { registerReports, withReason } from './reports.mjs';
 import { TRACKER, trackerAgent, trackerCampaign } from './rows-seed.mjs';
 import { registerOrchestration } from './orchestration.mjs';
 import { registerPipelines } from './pipeline.mjs';
+import { slotsFor, estimateRun, planStart, releaseDue, pendingStarts } from './campaign-plan.mjs';
 import { PEOPLE, auditRequest, auditView, AUDIT_COLUMNS, securityView, saveSecurity, testSso, newScimToken, deleteContact, isDeleted, supplierView } from './wave4.mjs';
 import { accessView, accessCreate, accessUpdate, accessRemove, accessActorFor, accessMe, setPreview, previewBlock, previewShape, seesCampaign, claimCampaign } from './access.mjs';
 import { liveCalls, liveAction, BUYER_LIST, telephonyView, testCarrier, connectCarrier, disconnectCarrier, saveSlots, copilotAnswer, COPILOT_SUGGESTIONS } from './wave3.mjs';
@@ -34,7 +35,6 @@ const numbersOf = (ctx) => Object.fromEntries(Object.entries(ctx || {}).filter((
 
 const PORT = Number(process.env.CLARIX_API_PORT || 8081);
 const CAS_PORT = Number(process.env.CLARIX_CAS_PORT || 9000);
-const GENBI_PORT = Number(process.env.CLARIX_GENBI_PORT || 8000);
 const ECHO_URL = process.env.ECHO_URL || 'http://localhost:8090';
 const APP_HOME = '/dashboard/overview';
 const ORG = 'org_moglix';
@@ -422,11 +422,10 @@ function orgDashboard() {
 }
 
 // ── Reference lists ──────────────────────────────────────────────────────────
-const PERMISSION_KEYS = ['genbi:menuvisibility', 'manage-permissions:menuvisibility', 'modules:add', 'modules:delete', 'modules:edit', 'modules:read', 'permissions:add', 'permissions:delete', 'permissions:edit', 'permissions:read', 'workflows:executions:debug', 'workflows:menuvisibility', 'workflows:template:create', 'workflows:template:edit', 'workflows:template:read', 'workflows:template:status-change', 'workflows:executions:read'];
+const PERMISSION_KEYS = ['manage-permissions:menuvisibility', 'modules:add', 'modules:delete', 'modules:edit', 'modules:read', 'permissions:add', 'permissions:delete', 'permissions:edit', 'permissions:read', 'workflows:executions:debug', 'workflows:menuvisibility', 'workflows:template:create', 'workflows:template:edit', 'workflows:template:read', 'workflows:template:status-change', 'workflows:executions:read'];
 const permissions = PERMISSION_KEYS.map((key, i) => ({ id: `perm_${i + 1}`, key, displayName: key.split(':').map((s) => s.replace(/-/g, ' ')).join(' / '), description: '', category: key.split(':')[0].toUpperCase(), createdAt: plus(firstBatchAt, -30 * 86400000), updatedAt: plus(firstBatchAt, -30 * 86400000) }));
 const modules = [
   { id: 'mod_workflows', name: 'workflows', displayName: 'Workflows', description: 'Agents, sheets and call logs', permissions: PERMISSION_KEYS.filter((k) => k.startsWith('workflows')), enabled: true },
-  { id: 'mod_genbi', name: 'genbi', displayName: 'GenBI', description: 'Ask questions of your data', permissions: ['genbi:menuvisibility'], enabled: true },
   { id: 'mod_admin', name: 'admin', displayName: 'Admin', description: 'Permissions and modules', permissions: PERMISSION_KEYS.filter((k) => /^(permissions|modules|manage)/.test(k)), enabled: true },
 ].map((m) => ({ ...m, updatedBy: USER, updatedAt: plus(firstBatchAt, -30 * 86400000) }));
 const PROVIDERS = [{ key: 'exchange', displayName: 'Echo', type: 'EXCHANGE' }, { key: 'voxera', displayName: 'Voxera', type: 'VOXERA' }];
@@ -820,7 +819,8 @@ function callDetail(id) {
 }
 // ── Shared screens (phase 3): campaigns, follow ups, new campaign. Same paths and shapes as the Echo mock. ──
 const campaignScope = (q) => ({ from: q.get('from') || null, to: q.get('to') || null, state: q.get('state') || 'all', q: q.get('q') || '' });
-on('GET', '/api/v1/reports/calling/campaigns', ({ q }) => {
+on('GET', '/api/v1/reports/calling/campaigns', async ({ q }) => {
+  const mine = R; await releaseDue(); R = mine;
   const all = callingRows(); const metas = statsByAgent(clarixAgentsMeta());
   const list = filterCampaigns(campaignSummaries(all), campaignScope(q)).map((c) => ({ ...c, stats: campaignStats(all.filter((r) => r.campaign_id === c.campaign_id), metas.find((m) => m.agent === c.agent_key)?.stats || []) }));
   const skip = Number(q.get('skip') || 0), limit = Number(q.get('limit') || 20);
@@ -836,7 +836,7 @@ on('POST', '/api/v1/reports/calling/campaigns/:id/stop', ({ p }) => {
 on('GET', '/api/v1/reports/calling/follow-ups', ({ q }) => ok(followUpRows(scopeRows(callingRows(), callingScope(q)), q.get('tab') || 'callback', q.get('show') || 'open')));
 on('POST', '/api/v1/reports/calling/follow-ups/:id', ({ p, body }) => ok(followUpAction(p.id, body?.action || 'open', USER)));
 // New campaign: pick an agent, get its template, check the file, start.
-const newCampaignAgents = () => templates.filter((t) => t.status === 'ACTIVE').map((t) => ({ key: t.id, label: t.name, inputs: ['contact_name', 'contact_phone', 'contact_email', ...(t.contextMappings || []).map((m) => m.fieldName)] }));
+const newCampaignAgents = () => templates.filter((t) => t.status === 'ACTIVE').map((t) => ({ key: t.id, label: t.name, description: t.description || 'Calls the contacts in your sheet and records what they say.', inputs: ['contact_name', 'contact_phone', 'contact_email', ...(t.contextMappings || []).map((m) => m.fieldName)] }));
 on('GET', '/api/v1/reports/calling/new-campaign/agents', () => ok(newCampaignAgents()));
 on('GET', '/api/v1/reports/calling/new-campaign/template.xlsx', ({ q }) => {
   const a = newCampaignAgents().find((x) => x.key === q.get('agent')); if (!a) return fail(404, 'Agent not found'); file(writeXlsx([a.inputs], 'Contacts'), XLSX, `${a.label.replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`);
@@ -904,17 +904,37 @@ const cleanRule = (b) => cleanRetryRule(b);
 on('GET', '/api/v1/reports/calling/retry-rules', () => ok({ schedules: RETRY_SCHEDULES, agents: templates.map((t) => { const rule = retryRuleOf(t.id); return { agent: t.id, label: t.name, rule, gaps: retryGaps(rule) }; }) }));
 on('PUT', '/api/v1/reports/calling/retry-rules/:agent', ({ p, body }) => { if (!templates.some((t) => t.id === p.agent)) return fail(404, 'Agent not found'); const rule = cleanRule(body); retryRules.set(p.agent, rule);
   ok({ agent: p.agent, rule, gaps: retryGaps(rule), example: retryPlan(rule, new Date().toISOString()) }); });
+// Slots a campaign can start in (per country, free or taken on the agent's line), a rough finish time, and bad rows as a spreadsheet.
+const planAgents = () => newCampaignAgents().map((a) => ({ key: a.key, label: a.label }));
+on('GET', '/api/v1/reports/calling/new-campaign/slots', ({ q }) => {
+  if (!templates.some((x) => x.id === q.get('agent'))) return fail(400, 'Pick an agent');
+  ok(slotsFor({ agents: planAgents(), agent: q.get('agent'), country: q.get('country') || 'IN', date: q.get('date') || '' }));
+});
+on('POST', '/api/v1/reports/calling/new-campaign/estimate', ({ body }) => {
+  const startMs = !body?.when || body.when === 'now' ? Date.now() : Date.parse(body.when); if (!Number.isFinite(startMs)) return fail(400, 'Pick a valid start time');
+  ok(estimateRun(Math.max(0, Number(body?.calls) || 0), startMs, String(body?.country || 'IN')));
+});
+on('POST', '/api/v1/reports/calling/new-campaign/bad-rows.xlsx', ({ body }) => {
+  const cols = Array.isArray(body?.columns) ? body.columns.map(String) : []; const rows = Array.isArray(body?.rows) ? body.rows : [];
+  file(writeXlsx([['Row', 'Reason', ...cols], ...rows.map((r) => [r.row, r.reason, ...cols.map((c) => r.cells?.[c] ?? '')])], 'Rows with bad data'), XLSX, 'rows_with_bad_data.xlsx');
+});
 on('POST', '/api/v1/reports/calling/new-campaign/start', async ({ q, req, raw }) => {
   const t = templates.find((x) => x.id === q.get('agent')); if (!t) return fail(400, 'Pick an agent'); const form = multipart(req, raw); if (!form.file?.content) return fail(400, 'Choose a file');
   let r; try { r = newCampaignRows(t, form); } catch { return fail(400, 'Could not read that spreadsheet'); }
+  const calls = sheetFor(t, r, form.file.filename, false).will_dial; if (!calls) return fail(400, 'No valid calls in this file');
+  const plan = planStart({ agents: planAgents(), agent: t.id, label: t.name, calls, when: form.when, country: form.country || 'IN' }); if (plan.error) return fail(400, plan.error);
+  if (plan.later) { pendingStarts.push({ at: Date.parse(plan.est.starts_at), run: () => launchSheet(t, form, r) }); return ok({ campaign_id: null, dialled: 0, scheduled: true, ...plan.est }); }
+  ok({ ...(await launchSheet(t, form, r)), scheduled: false, ...plan.est });
+});
+async function launchSheet(t, form, r) {
   const sheet = { id: hex24(), orgId: ORG, templateId: t.id, templateName: t.name, eventType: t.triggerEventTypes?.[0], sourceSystem: 'CSV', originalFilename: form.file.filename, fileUrl: null, uploadedBy: USER,
     total: r.rows.length, triggered: 0, failed: 0, failedRows: r.rows.filter((x) => x.bad).map((x) => ({ row: x.row, reason: x.bad })), createdAt: nowIso() };
   const good = r.rows.filter((x) => !x.bad && !x.check?.is_dummy).map((x) => ({ primary_id: hex24(), name: x.name, phone: x.phone, email: x.email, context: x.context }));
   good.forEach((row) => addExecution({ id: row.primary_id, template: t, batch: sheet, row, status: 'IN_PROGRESS', submittedAt: nowIso(), completedAt: null, duration: null, extracted: null, conv: { callStatus: 'QUEUED', attempts: 0 } }));
   sheet.failed = sheet.failedRows.length; sheet.triggered = good.length; claimCampaign(sheet.id); sheets.push(sheet);
   const mine = R; if (good.length) await dispatchToEcho(t, sheet, good); R = mine;
-  ok({ campaign_id: sheet.id, dialled: good.length });
-});
+  return { campaign_id: sheet.id, dialled: good.length };
+}
 async function dsStart(t, csv, filename) {
   const form = { file: { filename, content: Buffer.from(csv, 'utf8') } }; const r = newCampaignRows(t, form);
   const sheet = { id: hex24(), orgId: ORG, templateId: t.id, templateName: t.name, eventType: t.triggerEventTypes?.[0], sourceSystem: 'DATA_SOURCE', originalFilename: filename.replace(/\.csv$/, ''), fileUrl: null, uploadedBy: USER,
@@ -1377,26 +1397,17 @@ function handler(req, res) {
   });
 }
 
-// CAS is only called by the Microsoft sign-in; GenBI has no sample data. Both answer
-// politely so nothing hangs.
+// CAS is only called by the Microsoft sign-in; it answers politely so nothing hangs.
 function casHandler(req, res) {
   const h = cors(req);
   if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
   res.writeHead(501, { ...h, 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ status: 501, message: 'Microsoft sign in is not available locally. Open /__local/signin instead.', success: false }));
 }
-function genbiHandler(req, res) {
-  const h = cors(req);
-  if (req.method === 'OPTIONS') { res.writeHead(204, h); return res.end(); }
-  const path = new URL(req.url, 'http://x').pathname;
-  const body = /\/stats$/.test(path) ? {} : /\/health\/check$/.test(path) ? { status: 'ok' } : [];
-  res.writeHead(200, { ...h, 'Content-Type': 'application/json' }); res.end(JSON.stringify(body));
-}
 // The public demo runs this file in a service worker (mock/browser) and calls the handlers directly.
 if (!globalThis.__CLARIX_DEMO__) {
   http.createServer(handler).listen(PORT, () => console.log(`[clarix-mock] api on http://localhost:${PORT}`));
   http.createServer(casHandler).listen(CAS_PORT, () => console.log(`[clarix-mock] cas on http://localhost:${CAS_PORT}`));
-  http.createServer(genbiHandler).listen(GENBI_PORT, () => console.log(`[clarix-mock] genbi on http://localhost:${GENBI_PORT}`));
   console.log(`[clarix-mock] ${MODE} mode. ${templates.length} templates, ${sheets.length} sheets, ${executions.length} executions. Sign in: http://localhost:4310/__local/signin`);
 }
-export { handler, casHandler, genbiHandler };
+export { handler, casHandler };

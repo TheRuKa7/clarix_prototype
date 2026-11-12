@@ -5,7 +5,7 @@ import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import './server.mjs'; // starts the mock on :8081 (api), :9000 (cas) and :8000 (genbi)
+import './server.mjs'; // starts the mock on :8081 (api) and :9000 (cas)
 
 const APP_PORT = Number(process.env.CLARIX_PROD_PORT || 4340);
 const API_PORT = Number(process.env.CLARIX_API_PORT || 8081);

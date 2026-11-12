@@ -2,13 +2,12 @@
 // prototype works from one HTML file opened straight from disk (no server, no install).
 // API calls go to a made up origin; fetch, downloads, new tabs and media that point at it are answered here.
 import { Buffer } from 'buffer';
-import { handler, casHandler, genbiHandler } from '../server.mjs';
+import { handler, casHandler } from '../server.mjs';
 
 export const ORIGIN = 'https://clarix.local';
 const BASES = [
   { prefix: '/__mock/api', serve: handler },
   { prefix: '/__mock/cas', serve: casHandler },
-  { prefix: '/__mock/genbi', serve: genbiHandler },
   { prefix: '/__mock/finance', serve: handler },
 ];
 installInPageBackend(ORIGIN, BASES);

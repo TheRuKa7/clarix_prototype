@@ -1,6 +1,6 @@
 import { environment } from "../environments/environment"
 
-const { financeAp, clarix, genbi } = environment.backendServices;
+const { financeAp, clarix } = environment.backendServices;
 
 export const ENDPOINTS = {
     financeap: {

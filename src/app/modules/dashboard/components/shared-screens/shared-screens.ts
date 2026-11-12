@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnDestroy, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { CampaignWizardSource, NewCampaignComponent } from './new-campaign-modal';
 import { NeedDirective, PreviewMe, previewAs, previewMe, sendPreviewHeader, setPreviewAs } from './preview';
 export { NeedDirective, previewAs, previewCan, previewMe, setPreviewAs } from './preview';
 export type { PreviewMe } from './preview';
@@ -30,6 +31,8 @@ export interface CampaignsSource {
   results(id: string): Promise<Blob>;
   open(c: CampaignLine): void;
   newCampaign(): void;
+  /** When set, New campaign opens as a modal over the list instead of going to its own page. */
+  wizard?: CampaignWizardSource;
   /** The campaign's funnel, call status and call log: the calling report scoped to it. */
   report: CallingReportSource;
   /** Where Back goes from a campaign. */
@@ -116,31 +119,6 @@ export function retryTimes(r: RetryRule, start: number): number[] {
   let t = start; return retryGaps(r).map((g) => (t = fit(t + g * 60000)));
 }
 export interface RetryPreview { country: string; name: string; tz_label: string; start: string; times: { at: string; local: string; moved: string[] }[] }
-export interface NewCampaignSource {
-  agents(): Promise<{ key: string; label: string; inputs: string[] }[]>;
-  template(agent: string): Promise<Blob>;
-  /** Re-check rows after an on-screen edit. Dummy rows the person removed stay removed. */
-  recheck?(agent: string, rows: { row: number; is_dummy?: boolean; cells: Record<string, string> }[]): Promise<Awaited<ReturnType<NewCampaignSource['check']>>>;
-  check(agent: string, file: File): Promise<{ file: string; rows: number; will_dial: number; calls: number; bad: { row: number; reason: string }[]; tests: number; matched: string[]; missing: string[];
-    headers?: string[]; sheet_rows?: EditableSheetRow[]; columns?: { key: string; label: string }[]; dummies?: number;
-    fixed?: { row: number; notes: string[] }[]; warnings?: { row: number; notes: string[] }[]; note?: UploadNote; countries?: { code: string; name: string; rows: number }[] }>;
-  /** Tips for the agent's template, shown when it is picked. */
-  tips?(agent: string): Promise<UploadNote>;
-  /** Each agent's retry rule, and saving one. */
-  retryRules?(): Promise<{ agents: { agent: string; label: string; rule: RetryRule }[] }>;
-  saveRetryRule?(agent: string, rule: RetryRule): Promise<unknown>;
-  /** Retry times for a rule in a country, each with why it was moved (rest day, holiday, hours). */
-  retryPreview?(rule: RetryRule, country: string): Promise<RetryPreview>;
-  start(agent: string, file: File): Promise<{ campaign_id: string; dialled: number }>;
-  /** The agent's data source, when it has one: a run reads rows from it instead of a sheet. */
-  dataSource?(agent: string): Promise<DsView>;
-  previewSource?(agent: string, setup: DsSetup): Promise<DsPreview>;
-  runSource?(agent: string): Promise<{ campaign_id: string | null; calls: number; after_filters: number }>;
-  editSource?(agent: string): void;
-  opened(campaignId: string): void;
-  cancel(): void;
-}
-
 const CSS = `
   :host { display: block; --s-text: var(--ds-text, var(--text, #0c0a09)); --s-muted: var(--ds-text-muted, var(--muted, #5c5752)); --s-line: var(--ds-border, var(--line, #e7e5e2));
     --s-line-strong: var(--ds-border-strong, var(--s-line)); --s-bg: var(--ds-surface, var(--card, #fff)); --s-soft: var(--ds-surface-sunken, var(--bg-2, #f5f5f4)); --s-hover: var(--ds-hover, var(--s-soft));
@@ -310,7 +288,7 @@ export class PreviewBlockedComponent {
 @Component({
   selector: 'app-campaigns-list',
   standalone: true,
-  imports: [NeedDirective],
+  imports: [NeedDirective, NewCampaignComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [CSS],
   template: `
@@ -318,7 +296,7 @@ export class PreviewBlockedComponent {
       <div class="s-head">
         <div><h1 class="s-title">Campaigns</h1><p class="s-sub">Each uploaded sheet is one campaign. Open one to see its funnel, call status and every call.</p></div>
         <span class="s-grow"></span>
-        <button need="campaigns:create" type="button" class="s-btn s-primary" (click)="source().newCampaign()">New campaign</button>
+        <button need="campaigns:create" type="button" class="s-btn s-primary" (click)="openNew()">New campaign</button>
       </div>
       <div class="s-head">
         <div class="s-seg" role="group" aria-label="Created">@for (p of PERIODS; track p.key) { <button type="button" [class.on]="period() === p.key" (click)="period.set(p.key); reset()">{{ p.label }}</button> }</div>
@@ -358,11 +336,16 @@ export class PreviewBlockedComponent {
           </div>
         }
       </div>
+      @if (showNew() && source().wizard) { <app-new-campaign [source]="source().wizard!" (closed)="closeNew($event)"></app-new-campaign> }
     </div>
   `,
 })
 export class CampaignsListComponent {
   readonly source = input.required<CampaignsSource>();
+  /** Open the New campaign modal as soon as the page shows (the /campaigns/new address). */
+  readonly startOpen = input(false);
+  private readonly router = inject(Router);
+  protected readonly showNew = signal(false);
   protected readonly PERIODS = CAMPAIGN_PERIODS;
   protected readonly STATES = [{ key: 'all', label: 'All' }, { key: 'running', label: 'Running' }, { key: 'finished', label: 'Finished' }];
   protected readonly PAGE = 20;
@@ -379,7 +362,15 @@ export class CampaignsListComponent {
   private seq = 0;
   protected readonly when = when;
   protected readonly pct = pctText;
-  constructor() { effect(() => { this.period(); this.state(); this.page(); untracked(() => this.load()); }); }
+  constructor() {
+    effect(() => { this.period(); this.state(); this.page(); untracked(() => this.load()); });
+    effect(() => { if (this.startOpen() && this.source().wizard) untracked(() => this.showNew.set(true)); });
+  }
+  protected openNew(): void { if (this.source().wizard) this.showNew.set(true); else this.source().newCampaign(); }
+  protected closeNew(created: boolean): void {
+    this.showNew.set(false); if (created) this.load();
+    if (this.startOpen()) this.router.navigateByUrl(this.source().listPath);
+  }
   protected color(s: string): string { return STATUS_COLOR[s] || '#a8a29e'; }
   protected reset(): void { this.page.set(0); }
   protected go(step: number): void { this.page.set(Math.max(0, this.page() + step)); }
@@ -472,357 +463,6 @@ export class CampaignPageComponent {
   protected async stop(c: CampaignLine): Promise<void> {
     if (!confirm(`Stop the calls still waiting in ${c.campaign}?`)) return;
     const r = await this.source().stop(c.campaign_id); this.note.set(`${r.stopped} call${r.stopped === 1 ? '' : 's'} stopped.`); this.load(c.campaign_id);
-  }
-}
-
-// ── New campaign: pick an agent and get its template, upload and check, start ─
-@Component({
-  selector: 'app-new-campaign',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [CSS + `
-    .nc-steps { display: flex; gap: 8px; }
-    .nc-steps span { flex: 1; padding: 8px 12px; border-radius: 8px; background: var(--s-soft); font-size: 13px; color: var(--s-muted); }
-    .nc-steps span.on { background: var(--s-text); color: var(--s-bg); }
-    .nc-agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
-    .nc-agent { text-align: left; border: 1px solid var(--s-line); border-radius: 10px; padding: 10px 12px; background: var(--s-bg); font: inherit; color: var(--s-text); cursor: pointer; display: grid; gap: 2px; }
-    .nc-agent.on { border-color: var(--s-accent); box-shadow: 0 0 0 1px var(--s-accent); }
-    .nc-agent small { color: var(--s-muted); font-size: 12px; }
-    .nc-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-    .nc-nums div { background: var(--s-soft); border-radius: 8px; padding: 8px 12px; display: grid; }
-    .nc-nums span { font-size: 12px; color: var(--s-muted); }
-    .nc-nums b { font-size: 20px; }
-    .nc-bad { max-height: 200px; overflow: auto; font-size: 12px; display: grid; gap: 4px; }
-    .nc-foot { display: flex; gap: 8px; justify-content: flex-end; }
-    .nc-stop { color: var(--ds-danger-fg, #b91c1c); }
-    .nc-note { border: 1px solid color-mix(in srgb, var(--s-accent) 35%, var(--s-line)); background: color-mix(in srgb, var(--s-accent) 5%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
-    .nc-note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
-    .nc-note small { color: var(--s-muted); }
-    .nc-note-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-    .nc-ai { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--s-accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; }
-    .nc-fixed { max-height: 160px; overflow: auto; font-size: 12px; display: grid; gap: 4px; color: var(--s-good); }
-    .nc-warn { max-height: 120px; overflow: auto; font-size: 12px; display: grid; gap: 4px; color: var(--ds-warning-fg, #a16207); }
-    .nc-src { border: 2px solid var(--s-accent); background: color-mix(in srgb, var(--s-accent) 5%, var(--s-bg)); border-radius: 10px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
-    .nc-src-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
-    .nc-src-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-    .nc-retry { border: 1px solid var(--s-line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; font-size: 13px; }
-    .nc-retry-row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
-    .nc-retry input[type=number] { width: 72px; } .nc-retry input[type=number], .nc-retry input[type=time] { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; background: var(--s-bg); color: var(--s-text); }
-    .nc-retry label { display: inline-flex; gap: 6px; align-items: center; }
-    .nc-times { display: flex; flex-wrap: wrap; gap: 6px; }
-    .nc-times span { background: var(--s-soft); border-radius: 6px; padding: 3px 8px; font-size: 12px; }
-    .nc-times small { color: var(--s-muted); font-size: 12px; }
-    .nc-sheet { display: grid; gap: 8px; }
-    .nc-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .nc-grid th, .nc-grid td { border-bottom: 1px solid var(--s-line); padding: 4px 6px; text-align: left; vertical-align: top; }
-    .nc-grid th { color: var(--s-muted); font-weight: 600; white-space: nowrap; }
-    .nc-grid input { width: 148px; max-width: 28vw; border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px; background: var(--s-bg); color: var(--s-text); }
-    .nc-grid tr.bad input { border-color: #fca5a5; }
-    .nc-grid tr.dummy { background: var(--s-soft); }
-    .nc-pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; border: 1px solid var(--s-line); white-space: nowrap; }
-    .nc-more { border-top: 1px solid var(--s-line); padding-top: 8px; display: grid; gap: 8px; }
-    .nc-more summary { cursor: pointer; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; list-style: none; }
-    .nc-more summary::-webkit-details-marker { display: none; }
-    .nc-more summary::before { content: '▸'; color: var(--s-muted); width: 12px; transition: transform .15s; }
-    .nc-more[open] summary::before { transform: rotate(90deg); }
-    .nc-st { white-space: nowrap; } .nc-rm { margin-left: 6px; padding: 2px 8px; font-size: 12px; }
-    .s input[type=file], :host input[type=file] { font: inherit; font-size: 13px; color: var(--s-muted); }
-    :host input[type=file]::file-selector-button { border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); border-radius: 8px; padding: 6px 12px; margin-right: 10px; font: inherit; font-size: 13px; cursor: pointer; }
-    .nc-more summary .s-muted { font-weight: 400; font-size: 12px; }
-    .nc-res { border-collapse: collapse; font-size: 13px; width: 100%; }
-    .nc-res th { text-align: left; font-weight: 500; color: var(--s-muted); font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--s-line); }
-    .nc-res td { padding: 5px 6px; border-bottom: 1px solid var(--s-line); }
-    .nc-res td small { display: block; color: var(--s-muted); font-size: 12px; }
-    .nc-res input { width: 76px; } .nc-res select, .nc-res input { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; background: var(--s-bg); color: var(--s-text); }
-    .nc-res input:disabled { opacity: .45; }
-    .nc-pill.bad { color: var(--ds-danger-fg, #b91c1c); } .nc-pill.warn, .nc-pill.fixed { color: var(--ds-warning-fg, #a16207); } .nc-pill.ok { color: var(--s-good); } .nc-pill.dummy, .nc-pill.test { color: var(--s-muted); }
-    .nc-hint td { color: var(--s-muted); font-size: 12px; }
-    .nc-brand { display: grid; gap: 8px; border-top: 1px solid var(--s-line); padding-top: 8px; }
-    .nc-brand input[type=text] { border: 1px solid var(--s-line); border-radius: 6px; padding: 4px 8px; font: inherit; min-width: 200px; background: var(--s-bg); color: var(--s-text); }
-    .nc-brand small { display: block; color: var(--s-muted); font-size: 12px; }
-  `],
-  template: `
-    <div class="s">
-      <div class="s-head"><div><h1 class="s-title">New campaign</h1><p class="s-sub">Pick an agent, fill its template, upload it, check it, start.</p></div></div>
-      <div class="nc-steps"><span [class.on]="step() === 1">1 · Agent and template</span><span [class.on]="step() === 2">2 · Upload and check</span><span [class.on]="step() === 3">3 · Start</span></div>
-      @if (error()) { <p class="s-note">{{ error() }}</p> }
-      <div class="s-card s-pad">
-        @if (step() === 1) {
-          <b>Which agent makes these calls?</b>
-          <div class="nc-agents">
-            @for (a of agents(); track a.key) { <button type="button" class="nc-agent" [class.on]="agent() === a.key" (click)="agent.set(a.key)">{{ a.label }}<small>{{ a.inputs.length }} columns in its template</small></button> }
-          </div>
-          @if (agent() && ds(); as v) {
-            <!-- This agent reads its rows from a connected system: no sheet needed. -->
-            <div class="nc-src">
-              <div class="nc-src-head"><b>From {{ v.connector_name || 'its data source' }}</b><span class="s-muted">{{ v.setup.schedule.on ? scheduleText(v) : 'No schedule: runs when started' }}</span></div>
-              @if (dsPreview(); as p) { <span>Right now: <b>{{ p.after_filters }}</b> rows match → <b>{{ p.total_calls }}</b> call{{ p.total_calls === 1 ? '' : 's' }}@if (p.skipped_recent) { · {{ p.skipped_recent }} called recently, skipped }</span> }
-              <div class="nc-src-foot">
-                @if (source().editSource) { <button type="button" class="s-btn" (click)="source().editSource!(agent())">Edit data source</button> }
-                <button type="button" class="s-btn s-primary" [disabled]="dsBusy() || !dsPreview()?.total_calls" (click)="runSource()">{{ dsBusy() ? 'Starting…' : 'Run now from ' + (v.connector_name || 'the source') }}</button>
-              </div>
-              <small class="s-muted">Or upload a sheet below for a one-off list.</small>
-            </div>
-          }
-          @if (agent() && tips(); as t) {
-            <div class="nc-note"><div class="nc-note-head"><span class="nc-ai">AI NOTE</span><b>{{ t.title }}</b></div><ul>@for (l of t.lines; track $index) { <li>{{ l }}</li> }</ul><small>{{ t.source }}</small></div>
-          }
-          <div class="nc-foot">
-            <button type="button" class="s-btn" (click)="source().cancel()">Cancel</button>
-            <button type="button" class="s-btn" [disabled]="!agent()" (click)="template()">Download template</button>
-            <button type="button" class="s-btn s-primary" [disabled]="!agent()" (click)="step.set(2)">Next</button>
-          </div>
-        }
-        @if (step() === 2) {
-          <b>Upload the filled template ({{ agentLabel() }})</b>
-          <input type="file" accept=".xlsx,.xls,.csv" (change)="pick($any($event.target).files?.[0])" aria-label="Sheet to upload">
-          @if (check(); as k) {
-            <div class="nc-nums">
-              <div><span>Rows</span><b>{{ k.rows }}</b></div><div><span>Will be dialled</span><b>{{ k.will_dial }}</b></div>
-              <div><span>Bad data</span><b>{{ k.bad.length }}</b></div><div><span>Internal tests</span><b>{{ k.tests }}</b></div>
-            </div>
-            @if (k.countries?.length) { <span class="s-muted">Numbers by country: @for (c of k.countries!; track c.code; let last = $last) { {{ c.name }} {{ c.rows }}{{ last ? '' : ' · ' }} }. Each is called under its country's rules (Settings › Calling rules).</span> }
-            @if (sheet().length) {
-              <div class="nc-sheet">
-                <b>Sheet</b>
-                <span class="s-muted">Every column is here. Edit a cell and it is checked again. A sample row is included so the format is obvious: it is never called, and one click removes it. Bad rows are not called — fix them here, or continue without them.</span>
-                <div class="s-scroll">
-                  <table class="nc-grid">
-                    <thead><tr><th>Row</th><th>Status</th>@for (c of columns(); track c.key) { <th>{{ c.label }}</th> }</tr></thead>
-                    <tbody>
-                      @for (r of sheet(); track $index; let i = $index) {
-                        <tr [class]="r.status">
-                          <td>{{ r.is_dummy ? '—' : r.row }}</td>
-                          <td class="nc-st"><span class="nc-pill" [class]="'nc-pill ' + r.status">{{ statusWord(r.status) }}</span>@if (r.is_dummy) { <button type="button" class="s-btn nc-rm" (click)="removeRow(i)" aria-label="Remove the sample row">Remove</button> }</td>
-                          @for (c of columns(); track c.key) { <td><input [value]="r.cells[c.key] || ''" (change)="editCell(i, c.key, $any($event.target).value)" [attr.aria-label]="c.label + ', ' + (r.is_dummy ? 'sample row' : 'row ' + r.row)"></td> }
-                        </tr>
-                        @if (r.issue && !r.is_dummy) { <tr class="nc-hint"><td [attr.colspan]="columns().length + 2"><b>{{ r.issue }}</b> {{ r.issue.startsWith('On your do-not-call') ? 'Remove the row, or take the number off the list in the do-not-call settings.' : r.best_practice }}</td></tr> }
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            }
-            @if (k.missing.includes('contact_phone')) { <p class="s-note nc-stop" role="alert"><b>contact_phone is missing.</b> Every row needs the supplier's 10-digit mobile: it is the number called and it ties each call to the row's POs and items. Add the column and upload again.</p> }
-            @if (missingOther(k).length) { <p class="s-note">Columns not found in the file: {{ missingOther(k).join(', ') }}. Rows that need them will fail the check.</p> }
-            @if (!sheet().length && k.fixed?.length) { <b class="s-muted">Fixed for you ({{ k.fixed!.length }} row{{ k.fixed!.length === 1 ? '' : 's' }}): these will be called</b><div class="nc-fixed">@for (f of k.fixed!; track f.row) { <span>Row {{ f.row }}: {{ f.notes.join('; ') }}</span> }</div> }
-            @if (!sheet().length && k.warnings?.length) { <b class="s-muted">Check these ({{ k.warnings!.length }}): they will still be called</b><div class="nc-warn">@for (w of k.warnings!; track w.row) { <span>Row {{ w.row }}: {{ w.notes.join('; ') }}</span> }</div> }
-            @if (!sheet().length && k.bad.length) { <b class="s-muted">Not called ({{ k.bad.length }})</b><div class="nc-bad">@for (b of k.bad; track b.row) { <span>Row {{ b.row }}: {{ b.reason }}</span> }</div> }
-            @if (k.note; as n) {
-              <div class="nc-note">
-                <div class="nc-note-head"><span class="nc-ai">AI NOTE</span><b>{{ n.title }}</b><span class="s-muted">{{ n.summary }}</span><span class="s-grow"></span>
-                  <button type="button" class="s-btn" (click)="noteSent.set(true)" [disabled]="noteSent()">{{ noteSent() ? 'Emailed to you (demo)' : 'Email me this note' }}</button></div>
-                <ul>@for (l of n.lines; track $index) { <li>{{ l }}</li> }</ul><small>{{ n.source }}</small>
-              </div>
-            }
-          }
-          <div class="nc-foot">
-            <button type="button" class="s-btn" (click)="step.set(1)">Back</button>
-            <button type="button" class="s-btn s-primary" [disabled]="!check()?.will_dial || check()?.missing?.includes('contact_phone')" (click)="step.set(3)">Next</button>
-          </div>
-        }
-        @if (step() === 3) {
-          <b>Start calling {{ check()?.will_dial }} contacts with {{ agentLabel() }}?</b>
-          <p class="s-muted">{{ file()?.name }} · bad data and test rows are not dialled. Calls start now and the campaign page shows them as they finish.</p>
-          @if (rule(); as ru) {
-            <div class="nc-retry">
-              <div class="nc-note-head"><b>If a call is not answered</b><span class="s-muted">{{ agentLabel() }}'s retry rule, used for every campaign of this agent</span></div>
-              <div class="nc-retry-row">
-                <div class="s-seg" role="group" aria-label="Retry schedule">@for (sc of SCHEDULES; track sc.key) { <button type="button" [class.on]="ru.schedule === sc.key" (click)="setRule({ schedule: sc.key })" [title]="sc.hint">{{ sc.label }}</button> }</div>
-                <label>First gap <input type="number" min="1" max="1440" [value]="ru.base_minutes" (change)="setRule({ base_minutes: +$any($event.target).value })" aria-label="First gap in minutes"> min</label>
-                <label><input type="number" min="0" max="10" [value]="ru.retries" (change)="setRule({ retries: +$any($event.target).value })" aria-label="Number of retries"> retries</label>
-              </div>
-              <div class="nc-retry-row">
-                <label>Calling hours <input type="time" [value]="ru.from" (change)="setRule({ from: $any($event.target).value })" aria-label="From"> to <input type="time" [value]="ru.to" (change)="setRule({ to: $any($event.target).value })" aria-label="To"></label>
-                <label><input type="checkbox" [checked]="ru.skip_sunday" (change)="setRule({ skip_sunday: $any($event.target).checked })"> No Sundays</label>
-                <label><input type="checkbox" [checked]="ru.avoid_saturday !== false" (change)="setRule({ avoid_saturday: $any($event.target).checked })"> No Saturdays</label>
-                <label><input type="checkbox" [checked]="ru.avoid_lunch" (change)="setRule({ avoid_lunch: $any($event.target).checked })"> Not 1–2 pm</label>
-              </div>
-              <!-- The rest is set once per agent and rarely changed: folded so the start step stays short. -->
-              <details class="nc-more">
-                <summary>More retry options <span class="s-muted">voicemail, silent and short calls, DND unblock, best hours</span></summary>
-                <div class="nc-retry-row">
-                  <label><input type="checkbox" [checked]="ru.prefer_prime_slots !== false" (change)="setRule({ prefer_prime_slots: $any($event.target).checked })"> Prefer 10–12 and 2–5</label>
-                  <label><input type="checkbox" [checked]="ru.voicemail_drop !== false" (change)="setRule({ voicemail_drop: $any($event.target).checked })"> Leave a 15s voicemail</label>
-                  <label><input type="checkbox" [checked]="ru.retry_silent !== false" (change)="setRule({ retry_silent: $any($event.target).checked })"> Retry silent calls</label>
-                  <label><input type="checkbox" [checked]="ru.retry_system_issue !== false" (change)="setRule({ retry_system_issue: $any($event.target).checked })"> Retry system issues</label>
-                  <label><input type="checkbox" [checked]="ru.retry_cut_short !== false" (change)="setRule({ retry_cut_short: $any($event.target).checked })"> Retry calls under 15s</label>
-                  <label><input type="checkbox" [checked]="ru.callback_cta !== false" (change)="setRule({ callback_cta: $any($event.target).checked })"> Callback link in messages</label>
-                  <label>Unblock request after <input type="number" min="1" max="5" [value]="ru.dnd_unblock_after ?? 2" (change)="setRule({ dnd_unblock_after: +$any($event.target).value })" aria-label="DND results before the unblock request"> DND results</label>
-                </div>
-              </details>
-              <details class="nc-more">
-                <summary>By call result <span class="s-muted">{{ resultSummary(ru) }}</span></summary>
-                <span class="s-muted">Each result can have its own number of tries, gap and message. A blank gap uses the schedule above.</span>
-                <div class="s-scroll"><table class="nc-res">
-                  <thead><tr><th>After</th><th>Then</th><th>Tries</th><th>Gap (min)</th><th>Message</th></tr></thead>
-                  <tbody>@for (rr of RESULTS; track rr.key) { @if (resOf(ru, rr.key); as x) {
-                    <tr><td><b>{{ rr.label }}</b><small>{{ rr.hint }}</small></td>
-                      <td><select (change)="setRes(rr.key, { act: $any($event.target).value })" [attr.aria-label]="'After ' + rr.label">
-                        @if (rr.key === 'callback') { <option value="callback" [selected]="x.act === 'callback'">Call at the agreed time</option> }
-                        <option value="retry" [selected]="x.act === 'retry'">Try again</option><option value="stop" [selected]="x.act === 'stop'">Stop calling</option></select></td>
-                      <td><input type="number" min="0" max="10" [value]="x.tries" [disabled]="x.act === 'stop'" (change)="setRes(rr.key, { tries: +$any($event.target).value })" [attr.aria-label]="'Tries after ' + rr.label"></td>
-                      <td><input type="number" min="5" max="2880" [value]="x.gap ?? ''" placeholder="schedule" [disabled]="x.act !== 'retry'" (change)="setRes(rr.key, { gap: $any($event.target).value === '' ? null : +$any($event.target).value })" [attr.aria-label]="'Gap after ' + rr.label"></td>
-                      <td><select (change)="setRes(rr.key, { message: $any($event.target).value })" [attr.aria-label]="'Message after ' + rr.label"><option value="none" [selected]="x.message === 'none'">None</option><option value="whatsapp" [selected]="x.message === 'whatsapp'">WhatsApp</option><option value="both" [selected]="x.message === 'both'">WhatsApp and email</option></select></td></tr>
-                  } }</tbody></table></div>
-                <label><input type="checkbox" [checked]="ru.stop_on_goal !== false" (change)="setRule({ stop_on_goal: $any($event.target).checked })"> Stop calling a supplier once any of their rows reaches the goal</label>
-              </details>
-              <details class="nc-more nc-brand">
-                <summary>Branded caller ID <span class="s-muted">{{ ru.branded_name ? ru.branded_name + (ru.caller_id ? ' · ' + ru.caller_id : '') : 'Not set' }}</span></summary>
-                <span class="s-muted">One number for this workspace, registered with the providers you tick. The contact card goes out with unblock and callback messages.</span>
-                <div class="nc-retry-row">
-                  <label>Name on the phone <input type="text" [value]="ru.branded_name || ''" (change)="setRule({ branded_name: $any($event.target).value })" aria-label="Branded name"></label>
-                  <label>Number <input type="text" [value]="ru.caller_id || ''" (change)="setRule({ caller_id: $any($event.target).value })" aria-label="Caller ID"></label>
-                  <label>Call reason <input type="text" [value]="ru.call_reason || ''" (change)="setRule({ call_reason: $any($event.target).value })" aria-label="Call reason"></label>
-                </div>
-                @for (p of BRANDS; track p.key) {
-                  <label><input type="checkbox" [checked]="(ru.branding_providers || []).includes(p.key)" (change)="toggleBrand(p.key, $any($event.target).checked)"> {{ p.label }}<small>{{ p.sub }}</small></label>
-                }
-                <div><button type="button" class="s-btn" (click)="downloadVcard(ru)">Download contact card (.vcf)</button></div>
-              </details>
-              @if (preview(); as pv) {
-                <span class="s-muted">Gaps: {{ gapsText() }} minutes, inside {{ pv.name }}'s calling rules ({{ pv.tz_label }}). The agent's hours can only narrow the country's. Missed at {{ pv.start.slice(11) }} on {{ dayName(pv.start) }}, it is called again at:</span>
-                <div class="nc-times">@for (t of pv.times; track $index) { <span [title]="t.moved.length ? 'Moved: ' + t.moved.join('; ') : ''">{{ dayName(t.local) }} {{ t.local.slice(11) }}@if (t.moved.length) { <small> · {{ t.moved[0] }}</small> }</span> } @empty { <span>No retries</span> }</div>
-              } @else {
-                <span class="s-muted">Gaps: {{ gapsText() }} minutes. Missed at 10:00 today, it is called again at:</span>
-                <div class="nc-times">@for (t of example(); track $index) { <span>{{ t }}</span> } @empty { <span>No retries</span> }</div>
-              }
-            </div>
-          }
-          <div class="nc-foot">
-            <button type="button" class="s-btn" (click)="step.set(2)">Back</button>
-            <button type="button" class="s-btn s-primary" [disabled]="busy()" (click)="start()">{{ busy() ? 'Starting…' : 'Save rule and start' }}</button>
-          </div>
-        }
-      </div>
-    </div>
-  `,
-})
-export class NewCampaignComponent {
-  readonly source = input.required<NewCampaignSource>();
-  protected readonly step = signal(1);
-  protected readonly agents = signal<{ key: string; label: string; inputs: string[] }[]>([]);
-  protected readonly agent = signal('');
-  protected readonly file = signal<File | null>(null);
-  protected readonly check = signal<Awaited<ReturnType<NewCampaignSource['check']>> | null>(null);
-  protected readonly busy = signal(false);
-  protected readonly error = signal('');
-  protected readonly agentLabel = computed(() => this.agents().find((a) => a.key === this.agent())?.label ?? '');
-  protected readonly tips = signal<UploadNote | null>(null);
-  /** The picked agent's data source, when it has a saved one, and what a run would call right now. */
-  protected readonly ds = signal<DsView | null>(null);
-  protected readonly dsPreview = signal<DsPreview | null>(null);
-  protected readonly dsBusy = signal(false);
-  protected scheduleText(v: DsView): string {
-    const s = v.setup.schedule; const days = { once: 'Once', daily: 'Every day', weekdays: 'Weekdays', days: 'On chosen days' }[s.cadence];
-    return `${days} at ${s.time} IST${v.next_runs[0] ? ' · next ' + v.next_runs[0].label : ''}`;
-  }
-  protected async runSource(): Promise<void> {
-    const a = this.agent(); if (!a || !this.source().runSource) return; this.dsBusy.set(true); this.error.set('');
-    try { const r = await this.source().runSource!(a); if (r.campaign_id) this.source().opened(r.campaign_id); else this.error.set('Nothing to call right now: no row matches, or all were called recently.'); }
-    catch { this.error.set('Could not start the run.'); } finally { this.dsBusy.set(false); }
-  }
-  protected readonly noteSent = signal(false);
-  protected readonly SCHEDULES = RETRY_SCHEDULES;
-  protected readonly BRANDS = BRANDING_PROVIDER_LIST;
-  protected readonly RESULTS = RESULT_ROWS;
-  private readonly DEFAULT_RESULTS: Record<string, ResultRule> = {
-    no_answer: { act: 'retry', tries: 5, gap: null, message: 'whatsapp' }, voicemail: { act: 'retry', tries: 2, gap: 1440, message: 'both' }, silent: { act: 'retry', tries: 3, gap: 15, message: 'none' },
-    system: { act: 'retry', tries: 3, gap: 10, message: 'none' }, dnd: { act: 'retry', tries: 2, gap: null, message: 'both' }, cut_short: { act: 'retry', tries: 2, gap: null, message: 'whatsapp' },
-    partial: { act: 'retry', tries: 1, gap: 240, message: 'whatsapp' }, callback: { act: 'callback', tries: 1, gap: null, message: 'none' },
-  };
-  protected resOf(ru: RetryRule, k: string): ResultRule { return { ...this.DEFAULT_RESULTS[k], ...(ru.by_result?.[k] || {}) }; }
-  protected setRes(k: string, part: Partial<ResultRule>): void { const ru = this.rule(); if (!ru) return; this.setRule({ by_result: { ...(ru.by_result || {}), [k]: { ...this.resOf(ru, k), ...part } } }); }
-  /** "No answer: 5 tries · Voicemail: 2 next day · DND: stop…" in a few words. */
-  protected resultSummary(ru: RetryRule): string {
-    const stops = RESULT_ROWS.filter((r) => this.resOf(ru, r.key).act === 'stop').map((r) => r.label.toLowerCase());
-    return `${RESULT_ROWS.length - stops.length} results retried${stops.length ? ' · stop after ' + stops.join(', ') : ''}${ru.stop_on_goal !== false ? ' · stops once the goal is reached' : ''}`;
-  }
-  protected readonly columns = signal<{ key: string; label: string }[]>([]);
-  protected readonly sheet = signal<EditableSheetRow[]>([]);
-  private sheetDirty = false;
-  private recheckSeq = 0;
-  protected readonly rule = signal<RetryRule | null>(null);
-  private rules: { agent: string; rule: RetryRule }[] = [];
-  protected readonly gapsText = computed(() => { const r = this.rule(); return r ? retryGaps(r).join(', ') || 'none' : ''; });
-  /** Example retry times for a call missed at 10:00 today (IST). */
-  protected readonly example = computed(() => {
-    const r = this.rule(); if (!r) return [];
-    const ist = new Date(Date.now() + 330 * 60000); const ten = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), 10, 0) - 330 * 60000;
-    return retryTimes(r, ten).map((t) => new Date(t).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }));
-  });
-  constructor() {
-    effect(() => { const s = this.source(); untracked(() => s.agents().then((a) => this.agents.set(a)).catch(() => this.error.set('Could not load the agents.'))); });
-    effect(() => { const s = this.source(); untracked(() => s.retryRules?.().then((r) => { this.rules = r.agents; this.pickRule(); }).catch(() => {})); });
-    // The picked agent's tips and retry rule.
-    effect(() => { const a = this.agent(); untracked(() => {
-      this.tips.set(null); this.ds.set(null); this.dsPreview.set(null); this.pickRule(); if (!a) return;
-      this.source().dataSource?.(a).then((v) => { if (this.agent() !== a || !v.saved) return; this.ds.set(v); this.source().previewSource?.(a, v.setup).then((p) => { if (this.agent() === a) this.dsPreview.set(p); }).catch(() => {}); }).catch(() => {});
-      this.source().tips?.(a).then((t) => { if (this.agent() === a) this.tips.set(t); }).catch(() => {});
-      // The rules may not have loaded with the page (first visit after an update): ask again.
-      if (!this.rules.length) this.source().retryRules?.().then((r) => { this.rules = r.agents; this.pickRule(); }).catch(() => {});
-    }); });
-  }
-  private pickRule(): void { const a = this.agent(); const r = this.rules.find((x) => x.agent === a)?.rule; this.rule.set(a && r ? { ...r } : null); }
-  /** A sheet row's status in words: the check's codes (ok, warn…) mean nothing to a reader. */
-  protected statusWord(s: string): string { return ({ ok: 'Will be called', fixed: 'Fixed', warn: 'Check', bad: 'Not called', test: 'Test number', dummy: 'Sample' } as Record<string, string>)[s] ?? s; }
-  protected missingOther(k: { missing: string[] }): string[] { return k.missing.filter((m) => m !== 'contact_phone'); }
-  protected setRule(part: Partial<RetryRule>): void { const r = this.rule(); if (r) this.rule.set({ ...r, ...part }); }
-  /** The retry preview, from the server: the sheet's main country, else the workspace's home country. */
-  protected readonly preview = signal<RetryPreview | null>(null);
-  private previewSeq = 0;
-  private readonly previewEffect = effect(() => {
-    const r = this.rule(); const country = this.check()?.countries?.[0]?.code || 'IN'; if (!r || !this.source().retryPreview) return;
-    const my = ++this.previewSeq; untracked(() => this.source().retryPreview!(r, country).then((p) => { if (my === this.previewSeq) this.preview.set(p); }).catch(() => this.preview.set(null)));
-  });
-  protected dayName(local: string): string { const d = new Date(local.slice(0, 10) + 'T12:00:00Z'); return d.toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }); }
-  protected async template(): Promise<void> { save(await this.source().template(this.agent()), `${this.agentLabel().replace(/[^A-Za-z0-9]+/g, '_')}_template.xlsx`); }
-  protected async pick(f: File | undefined): Promise<void> {
-    this.file.set(f ?? null); this.check.set(null); this.sheet.set([]); this.columns.set([]); this.sheetDirty = false; this.error.set(''); this.noteSent.set(false); if (!f) return;
-    try { this.applySheet(await this.source().check(this.agent(), f)); } catch (e) { this.error.set(e instanceof Error ? e.message : 'Could not read that file.'); }
-  }
-  private applySheet(k: Awaited<ReturnType<NewCampaignSource['check']>>): void {
-    this.check.set(k); this.columns.set(k.columns || []); this.sheet.set(k.sheet_rows || []);
-  }
-  protected editCell(i: number, key: string, value: string): void {
-    this.sheet.set(this.sheet().map((r, j) => (j === i ? { ...r, cells: { ...r.cells, [key]: value } } : r)));
-    this.sheetDirty = true; this.queueRecheck();
-  }
-  protected removeRow(i: number): void {
-    const row = this.sheet()[i];
-    this.sheet.set(this.sheet().filter((_, j) => j !== i));
-    if (!(row?.is_dummy && row.row === 0)) this.sheetDirty = true;
-    this.queueRecheck();
-  }
-  private queueRecheck(): void {
-    const fn = this.source().recheck; if (!fn) return; const my = ++this.recheckSeq;
-    const rows = this.sheet().map((r) => ({ row: r.row, is_dummy: !!r.is_dummy, cells: { ...r.cells } }));
-    fn(this.agent(), rows).then((k) => { if (my === this.recheckSeq) this.applySheet(k); }).catch(() => {});
-  }
-  protected toggleBrand(key: string, on: boolean): void {
-    const r = this.rule(); if (!r) return; const cur = new Set(r.branding_providers || []);
-    if (on) cur.add(key); else cur.delete(key); this.setRule({ branding_providers: [...cur] });
-  }
-  protected downloadVcard(ru: RetryRule): void {
-    const name = ru.branded_name || 'Moglix Procurement'; const tel = ru.caller_id || '';
-    const vcf = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${name}`, `ORG:${name}`, `TEL;TYPE=WORK,VOICE:${tel}`, 'EMAIL;TYPE=WORK:procurement@moglix.com', `NOTE:${ru.call_reason || 'Purchase order follow-up'}. Save this number and unblock it.`, 'END:VCARD'].join('\r\n');
-    save(new Blob([vcf], { type: 'text/vcard' }), `${name.replace(/[^A-Za-z0-9]+/g, '_')}.vcf`);
-  }
-  private editedFile(current: File): File {
-    const cols = this.columns(); const lines = [cols.map((c) => c.key).join(',')];
-    for (const r of this.sheet()) {
-      if (r.is_dummy) continue;
-      lines.push(cols.map((c) => { const v = r.cells[c.key] || ''; return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(','));
-    }
-    return new File([lines.join('\n')], `${current.name.replace(/\.\w+$/, '')}-edited.csv`, { type: 'text/csv' });
-  }
-  protected async start(): Promise<void> {
-    const current = this.file(); if (!current) return; this.busy.set(true);
-    const f = this.sheetDirty && this.columns().length ? this.editedFile(current) : current;
-    try {
-      const ru = this.rule(); if (ru && this.source().saveRetryRule) await this.source().saveRetryRule!(this.agent(), ru);
-      const r = await this.source().start(this.agent(), f); this.source().opened(r.campaign_id);
-    } catch { this.error.set('Could not start the campaign.'); } finally { this.busy.set(false); }
   }
 }
 

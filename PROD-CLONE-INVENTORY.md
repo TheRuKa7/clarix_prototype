@@ -6,7 +6,7 @@ Local clone of https://clarix.moglix.com, frontend only.
 
 - This folder is the `TheRuKa7/clarix_prototype` repo from GitHub (main branch, downloaded 30 Oct 2026), rebuilt here after the earlier copy under `Products/clarix-clarix-revamp-new-ui` was deleted.
 - `prod/` holds the live Clarix build, copied from the live site on 30 Oct 2026 (`index.html`, `main-UZGW6STF.js`, `styles-P5J64YMI.css`, favicons, manifest). The saved pages under `Products/Clarix/clarix.moglix.com` use the same build.
-- `mock/prod.mjs` serves `prod/` on http://localhost:4340 and starts the mock backend (`mock/server.mjs`: API on 8081, CAS on 9000, GenBI on 8000). When it serves the JS it rewrites `clarixapi.moglix.com`, `fingateway.moglix.com` and `graph.microsoft.com` to the mock, so nothing reaches a live backend. `/__local/*` and `/cas/*` are proxied to the mock on the same origin.
+- `mock/prod.mjs` serves `prod/` on http://localhost:4340 and starts the mock backend (`mock/server.mjs`: API on 8081, CAS on 9000). When it serves the JS it rewrites `clarixapi.moglix.com`, `fingateway.moglix.com` and `graph.microsoft.com` to the mock, so nothing reaches a live backend. `/__local/*` and `/cas/*` are proxied to the mock on the same origin.
 - Run: `npm run start:prod` (or `node mock/prod.mjs`), or the `clarix-prod-clone` entry in `C:\rushilProcess\.claude\launch.json`. Then open http://localhost:4340/__local/signin. It stores a local session in the browser and opens the Overview. There is no Microsoft sign-in locally.
 - The screens, copy, buttons and flows are the live code itself. Only the data is mock data (`mock/scenario.json` and `mock/rows-seed.mjs`, both synthetic).
 - To change the UI later (for example the statuses in the call outcome PRD), get the current source from engineering or edit `prod/main-*.js`. Data and status changes can go in `mock/server.mjs`.
@@ -49,7 +49,7 @@ Local clone of https://clarix.moglix.com, frontend only.
 | Build > Orchestration (`/workflows/build/orchestration`) | Lanes / Call agenda / Who does what; New orchestration, Save, lanes with rules, Sort by, Group into one call by, Send to agent, Add lane, Preview matching | Same. The agent picker shows the template id until opened, which is also how live behaves. |
 | Execution Reports (`/workflows/reports`, `/new`, `/:id/edit`) | New Report; columns TITLE, WORKFLOW TEMPLATE, CREATED BY, CREATED, ACTIONS (Download CSV, Edit, Delete); editor tabs Basic Details / Report Data / Mail Schedules with next-send countdown and Add schedule | Same. |
 | Manage Permissions (`/admin/permissions`) | New Permission, Permissions / Account Service Modules tabs, category filter, columns KEY, DISPLAY NAME, CATEGORY, DESCRIPTION, UPDATED, ACTIONS, paging; New Module | Same layout. Live has 23 permissions; the mock has 17. |
-| Redirects | `/workflows/sheets` → campaigns, `/workflows/templates` → build/agents, `/admin/data-functions` → build/data, `/genbi` → overview | Same (live router). |
+| Redirects | `/workflows/sheets` → campaigns, `/workflows/templates` → build/agents, `/admin/data-functions` → build/data | Same (live router). |
 
 Every action runs against the mock: uploads, stopping calls, template edits, reports, schedules, data functions, permissions, modules and orchestration all change in-memory state, and downloads are generated (.xlsx, .csv, .wav, .txt). Restart to reset.
 

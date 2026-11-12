@@ -221,9 +221,9 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
             @for (g of groups(); track g.key) {
               @if (g.count || g.always) {
                 <div class="cr-group">
-                  <button type="button" class="cr-ghead" [class.on]="box()?.key === g.key" [attr.aria-pressed]="box()?.key === g.key" (click)="open(g.key, g.label)"><i [style.background]="g.color"></i>{{ g.label }} <b>{{ num(g.count) }}</b><small>{{ pct(g.share) }}</small></button>
+                  <button type="button" class="cr-ghead" [class.on]="box()?.key === g.key" [attr.aria-pressed]="box()?.key === g.key" (click)="open(g.key, g.label)"><i [style.background]="g.color"></i><span class="cr-lbl">{{ g.label }}</span><b>{{ num(g.count) }}</b><small>{{ pct(g.share) }}</small></button>
                   @for (l of g.lines; track l.key) {
-                    <button type="button" class="cr-chip" [class.on]="box()?.key === l.key" [attr.aria-pressed]="box()?.key === l.key" [class.zero]="!l.count" (click)="open(l.key, l.label)">{{ l.label }} <b>{{ num(l.count) }}</b><small>{{ pct(l.share) }}</small></button>
+                    <button type="button" class="cr-chip" [class.on]="box()?.key === l.key" [attr.aria-pressed]="box()?.key === l.key" [class.zero]="!l.count" (click)="open(l.key, l.label)"><span class="cr-lbl">{{ l.label }}</span><b>{{ num(l.count) }}</b><small>{{ pct(l.share) }}</small></button>
                   }
                 </div>
               }
@@ -386,14 +386,15 @@ const COLORS = { success: '#16a34a', not_successful: '#dc2626', no_conversation:
     .cr-status-head > span:first-child { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--cr-muted); font-weight: 600; }
     .cr-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--cr-soft); }
     .cr-bar span { height: 100%; }
-    .cr-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; }
-    .cr-group { display: flex; flex-direction: column; gap: 2px; }
-    .cr-ghead, .cr-chip { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 4px 6px; min-height: 26px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; text-align: left; }
+    .cr-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 8px 20px; align-items: start; }
+    .cr-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .cr-ghead, .cr-chip { display: flex; align-items: flex-start; width: 100%; min-width: 0; gap: 6px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 4px 6px; min-height: 26px; font: inherit; font-size: 13px; color: var(--cr-text); cursor: pointer; text-align: left; }
     .cr-ghead { font-weight: 600; }
     .cr-ghead i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
     .cr-chip { padding-left: 21px; }
-    .cr-ghead b, .cr-chip b { margin-left: auto; font-variant-numeric: tabular-nums; }
-    .cr-ghead small, .cr-chip small { color: var(--cr-muted); font-weight: 400; width: 36px; text-align: right; font-size: 12px; }
+    .cr-lbl { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+    .cr-ghead b, .cr-chip b { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
+    .cr-ghead small, .cr-chip small { color: var(--cr-muted); font-weight: 400; flex: none; width: 40px; text-align: right; font-size: 12px; white-space: nowrap; }
     .cr-ghead:hover, .cr-chip:hover { background: var(--cr-soft); }
     .cr-ghead.on, .cr-chip.on { border-color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 10%, var(--cr-bg)); box-shadow: inset 3px 0 0 var(--cr-accent); }
     .cr-chip.zero { color: var(--cr-muted); }

@@ -315,48 +315,6 @@ lucide-icon svg {
   display: block;
 }
 
-/* GenBi gradient animation */
-@keyframes logo-shift {
-  0%   { background-position: 0% center; }
-  100% { background-position: 250% center; }
-}
-
-.genbi-fab {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  z-index: 9999;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  border-radius: 9999px;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  box-shadow: 0 4px 18px rgba(66, 133, 244, 0.35);
-  transition: box-shadow 200ms, transform 100ms;
-  background: linear-gradient(90deg, #4285F4, #EA4335, #FBBC05, #34A853, #4285F4);
-  background-size: 250% auto;
-  animation: logo-shift 5s linear infinite;
-  -webkit-background-clip: unset;
-  background-clip: unset;
-  color: var(--ds-on-accent);
-
-  &:hover {
-    box-shadow: 0 6px 24px rgba(66, 133, 244, 0.5);
-  }
-
-  &:active {
-    transform: scale(0.96);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--ds-accent-border);
-    outline-offset: 2px;
-  }
-}
-
 /* =================================
    Tailwind to semantic tokens bridge
    ---------------------------------
@@ -407,7 +365,7 @@ body { background: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-fo
 .bg-blue-600, .bg-indigo-600 { background-color: var(--ds-accent); }
 .hover\:bg-blue-700:hover { background-color: var(--ds-accent-hover); }
 .text-blue-600 { color: var(--ds-accent-fg); }
-/* Stock Tailwind hues on older screens (GenBI tiles, chips) become the token tints, so colour still means status. */
+/* Stock Tailwind hues on older screens (older tiles, chips) become the token tints, so colour still means status. */
 .bg-blue-50, .bg-blue-100, .bg-indigo-50, .bg-indigo-100, .bg-purple-50, .bg-purple-100 { background-color: var(--ds-info-bg) !important; }
 .bg-green-50, .bg-green-100, .bg-emerald-50, .bg-emerald-100 { background-color: var(--ds-success-bg) !important; }
 .bg-yellow-50, .bg-yellow-100, .bg-amber-50, .bg-amber-100, .bg-orange-50, .bg-orange-100 { background-color: var(--ds-warning-bg) !important; }

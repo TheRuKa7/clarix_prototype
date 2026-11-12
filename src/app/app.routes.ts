@@ -210,8 +210,6 @@ export const routes: Routes = [
         redirectTo: '/workflows/build/data',
         pathMatch: 'full'
       },
-      // GenBI is no longer part of Clarix; old links land on the dashboard.
-      { path: 'genbi', redirectTo: '/dashboard/overview', pathMatch: 'prefix' },
       {
         // Operators start in Run (CLX-064): the call centre dashboard is not the home page.
         path: '',

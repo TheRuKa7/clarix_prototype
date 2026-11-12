@@ -1,13 +1,12 @@
 // Demo service worker: answers the app's API calls with the local mock, in the browser.
 // Data lives in memory, so it resets when the browser stops the worker.
 import { Buffer } from 'buffer';
-import { handler, casHandler, genbiHandler } from '../server.mjs';
+import { handler, casHandler } from '../server.mjs';
 
 const scope = new URL(self.registration.scope).pathname;
 const BASES = [
   { prefix: `${scope}__mock/api`, serve: handler },
   { prefix: `${scope}__mock/cas`, serve: casHandler },
-  { prefix: `${scope}__mock/genbi`, serve: genbiHandler },
   { prefix: `${scope}__mock/finance`, serve: handler },
 ];
 
