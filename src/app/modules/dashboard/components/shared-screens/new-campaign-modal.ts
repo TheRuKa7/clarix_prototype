@@ -53,8 +53,8 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
     .nm-x { margin-left: auto; flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--m-muted); font-size: 18px; line-height: 1; cursor: pointer; }
     .nm-x:hover { background: var(--m-soft); color: var(--m-text); }
     .nm.wide { width: min(720px, 100%); }
-    .nm-body { padding: 16px 20px; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 14px; align-content: start; min-width: 0; }
-    .nm-body > * { min-width: 0; }
+    .nm-body { padding: 16px 20px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; }
+    .nm-body > * { min-width: 0; flex: none; }
     .nm-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--m-line); background: var(--m-bg); }
     .nm-field { display: grid; gap: 6px; }
     .nm-field > label, .nm-label { font-weight: 600; font-size: 13px; }
@@ -78,7 +78,7 @@ const mins = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m %
     .nm-agentrow { display: flex; align-items: center; gap: 8px; } .nm-agentrow select { flex: 1 1 auto; min-width: 0; } .nm-agentrow .nm-ico { height: 36px; width: 36px; }
     .nm-drop { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 112px; padding: 16px; text-align: center; border: 2px dashed var(--ds-border-strong, var(--m-line)); border-radius: 12px; background: var(--m-soft); color: var(--m-muted); cursor: pointer; transition: border-color .12s, background-color .12s; }
     .nm-drop:hover:not(.off), .nm-drop.over { border-color: var(--m-accent); background: color-mix(in srgb, var(--m-accent) 7%, var(--m-bg)); color: var(--m-text); }
-    .nm-drop.has { border-style: solid; color: var(--m-text); min-height: 88px; padding: 12px; gap: 4px; }
+    .nm-drop.has { border-style: solid; color: var(--m-text); min-height: 0; padding: 10px 14px; gap: 0 12px; grid-template-columns: auto minmax(0, 1fr); justify-items: start; text-align: left; } .nm-drop.has .nm-drop-ic { grid-row: 1 / span 2; width: 36px; height: 36px; }
     .nm-drop.off { opacity: .55; cursor: not-allowed; }
     .nm-drop:focus-visible { outline: 2px solid var(--ds-focus, var(--m-accent)); outline-offset: 2px; }
     .nm-drop-t { max-width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 550; }
